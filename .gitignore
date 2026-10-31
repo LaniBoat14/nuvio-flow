@@ -32,3 +32,7 @@ flow-startup-backup-*/
 flow-device-backup-*/
 flow-analytics-backup-*/
 *.before-*
+
+# Required PUBLIC CA certificates (not private signing material)
+!app/src/main/res/raw/isrgrootx1.pem
+!app/src/main/res/raw/isrg_root_x2.pem
