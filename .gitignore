@@ -21,7 +21,9 @@ google-services.json
 .externalNativeBuild/
 .idea/
 .DS_Store
-**/build/
+# Only generated module outputs; core/build is Kotlin source.
+/build/
+/*/build/
 *.log
 *.hprof
 *.apk

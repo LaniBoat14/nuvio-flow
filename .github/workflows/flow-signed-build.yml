@@ -25,6 +25,27 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - name: Install Android components
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.22.1"
+      - name: Check required source inputs
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          required = [
+              "app/src/full/java/com/nuvio/tv/core/build/AppFeaturePolicy.kt",
+              "app/src/playstore/java/com/nuvio/tv/core/build/AppFeaturePolicy.kt",
+              "app/src/main/java/com/nuvio/tv/core/build/TrailerPlaybackMode.kt",
+              "app/src/main/res/raw/isrgrootx1.pem",
+              "app/src/main/res/raw/isrg_root_x2.pem",
+              "gradle/wrapper/gradle-wrapper.jar",
+          ]
+          missing = [name for name in required if not Path(name).is_file()]
+          if missing:
+              raise SystemExit("Incomplete source checkout: " + ", ".join(missing))
+          print("Required source packages, public certificates and wrapper are present.")
+          PY
+      - name: Generate localhost TLS test fixture
+        run: |
+          mkdir -p app/src/test/resources
+          keytool -genkeypair -alias subtitle-test -keyalg RSA -keysize 2048 -validity 3650 -storetype PKCS12 -keystore app/src/test/resources/subtitle-redirect-test.p12 -storepass changeit -keypass changeit -dname "CN=127.0.0.1" -ext "SAN=ip:127.0.0.1"
       - name: Restore private build configuration
         env:
           FLOW_KEYSTORE_BASE64: ${{ secrets.FLOW_KEYSTORE_BASE64 }}
