@@ -1,0 +1,34 @@
+# Local configuration and credentials
+local.properties
+local.*.properties
+.env
+.env.*
+!.env.example
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key
+key.properties
+keystore.properties
+credentials.json
+google-services.json
+# Machine state and generated outputs
+.gradle/
+.kotlin/
+.cxx/
+.externalNativeBuild/
+.idea/
+.DS_Store
+**/build/
+*.log
+*.hprof
+*.apk
+*.aab
+*.apks
+*.zip
+flow-startup-backup-*/
+flow-device-backup-*/
+flow-analytics-backup-*/
+*.before-*
