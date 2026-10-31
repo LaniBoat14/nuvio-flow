@@ -163,10 +163,10 @@ internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiS
         }
     }
     Column(
-        modifier.width(360.dp)
+        modifier.width(310.dp)
             .background(Color(0xB818202B), RoundedCornerShape(12.dp))
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         rows.forEach { (label, value) ->
             if (value.isEmpty()) {
@@ -179,14 +179,14 @@ internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiS
                             Box(Modifier.padding(top = 4.dp).size(5.dp).background(color, RoundedCornerShape(50)))
                         }
                     }
-                    Text(label, Modifier.width(87.dp), color = Color(0xFFD6DDE7), fontSize = 10.sp, maxLines = 1)
-                    Text(value, Modifier.weight(1f), color = Color.White, fontSize = 10.sp, maxLines = 1,
+                    Text(label, Modifier.width(72.dp), color = Color(0xFFD6DDE7), fontSize = 9.sp, maxLines = 1)
+                    Text(value, Modifier.weight(1f), color = Color.White, fontSize = 9.sp, maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
             }
             if (label == "Load errors") {
                 Text("60 s · buffer (cyan) / HTTP Mbps (gold) · separate scales", color = Color.LightGray, fontSize = 8.sp)
-                Canvas(Modifier.fillMaxWidth().height(25.dp)) {
+                Canvas(Modifier.fillMaxWidth().height(16.dp)) {
                     fun plot(values: List<Float>, color: Color) {
                         val max = (values.maxOrNull() ?: 1f).coerceAtLeast(1f)
                         for (i in 1 until values.size) drawLine(color,
