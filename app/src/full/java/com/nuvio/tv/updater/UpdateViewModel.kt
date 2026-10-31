@@ -70,6 +70,15 @@ class UpdateViewModel @Inject constructor(
                     autoInstallNoticeEnabled = autoInstallNoticeEnabled
                 )
             }
+            viewModelScope.launch {
+                while (true) {
+                    kotlinx.coroutines.delay(15 * 60 * 1000L)
+                    if (_uiState.value.updateBannerEnabled && !_uiState.value.isDownloading &&
+                        updateCheckJob?.isActive != true && !BuildConfig.IS_DEBUG_BUILD) {
+                        checkForUpdates(force = false, showNoUpdateFeedback = false)
+                    }
+                }
+            }
             downloadStore.clearIfInstalled()
             consumeAutoInstalledUpdate()
             syncBackgroundJobs()

@@ -41,9 +41,11 @@ internal object FlowTransferMeter : TransferListener {
     val bytes = AtomicLong(0)
     val active = AtomicInteger(0)
     @Volatile var host: String? = null
+    @Volatile var transport: String? = null
     override fun onTransferInitializing(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) = Unit
     override fun onTransferStart(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {
         if (isNetwork) {
+            transport = source.javaClass.simpleName
             active.incrementAndGet()
             host = source.uri?.host ?: dataSpec.uri.host
         }
@@ -70,15 +72,32 @@ internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiS
         var lastUnderruns = 0
         var lastErrors = 0
         var previousPlayer: Player? = null
+        var muxStartPosition = -1L
+        var muxStartBytes = 0L
+        var muxBps: Long? = null
         while (true) {
             val player = viewModel.exoPlayer
             if (player !== previousPlayer) {
+                muxStartPosition = -1L
+                muxBps = null
                 samples.clear()
                 history = emptyList()
                 previousPlayer = player
             }
             val now = SystemClock.elapsedRealtime()
             val bytes = FlowTransferMeter.bytes.get()
+            player?.let {
+                val position = it.bufferedPosition
+                if (muxStartPosition < 0 || position < muxStartPosition || position - muxStartPosition > 60000) {
+                    muxStartPosition = position
+                    muxStartBytes = bytes
+                    muxBps = null
+                } else if (position - muxStartPosition >= 5000) {
+                    muxBps = (bytes - muxStartBytes).coerceAtLeast(0) * 8000 / (position - muxStartPosition)
+                    muxStartPosition = position
+                    muxStartBytes = bytes
+                }
+            }
             val ahead = player?.let { (it.bufferedPosition - it.currentPosition).coerceAtLeast(0) / 1000f } ?: 0f
             val previous = samples.lastOrNull()
             samples.addLast(Triple(now, bytes, ahead))
@@ -140,6 +159,8 @@ internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiS
                     else -> "Unavailable"
                 })
                 add("File bitrate" to (info?.fileBitrate?.takeIf { it > 0 }?.let { "${f(it / 1_000_000f)} Mbps average" } ?: "Unavailable"))
+                add("Media bitrate" to (muxBps?.let { "${f(it / 1_000_000f)} Mbps · mux estimate" } ?: "Sampling…"))
+                add("Transport" to (FlowTransferMeter.transport ?: "Not observed"))
                 add("Decoder" to (diagnostics.videoDecoder ?: "Unavailable"))
                 add("Dropped" to "${diagnostics.dropped} frames")
                 add("AUDIO" to "")
