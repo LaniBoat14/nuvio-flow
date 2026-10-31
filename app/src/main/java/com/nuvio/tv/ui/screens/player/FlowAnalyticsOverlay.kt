@@ -106,7 +106,7 @@ internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiS
                 Player.STATE_IDLE -> "Idle"
                 else -> "Other engine — limited metrics"
             }
-            val info = viewModel.uiState.value.streamInfoData
+            val info = viewModel.flowStreamInfo()
             val green = Color(0xFF70D99B)
             val amber = Color(0xFFFFCA69)
             val red = Color(0xFFFF7777)
@@ -130,7 +130,7 @@ internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiS
                 add("File" to (info?.filename ?: "Unavailable"))
                 add("Size" to (viewModel.getCurrentFileSizeBytes()?.let { "${f(it / 1_073_741_824f)} GB" } ?: "Unavailable"))
                 add("VIDEO" to "")
-                add("Video" to "${video?.width ?: "—"} × ${video?.height ?: "—"} · ${video?.frameRate?.takeIf { it > 0 }?.let(::f) ?: "—"} fps")
+                add("Video" to "${video?.width ?: "—"} × ${video?.height ?: "—"} · ${(video?.frameRate?.takeIf { it > 0 } ?: info.videoFrameRate?.takeIf { it > 0 })?.let(::f) ?: "—"} fps")
                 add("Codec" to (video?.codecs ?: video?.sampleMimeType ?: "Unavailable"))
                 add("HDR" to when {
                     video?.sampleMimeType == "video/dolby-vision" || video?.codecs?.startsWith("dv") == true -> "Dolby Vision"
@@ -144,6 +144,7 @@ internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiS
                 add("Dropped" to "${diagnostics.dropped} frames")
                 add("AUDIO" to "")
                 add("Audio" to "${audio?.sampleMimeType ?: "—"} · ${audio?.channelCount ?: "—"} ch · ${audio?.sampleRate?.takeIf { it > 0 }?.div(1000f)?.let(::f) ?: "—"} kHz")
+                add("A. bitrate" to (audio?.bitrate?.takeIf { it > 0 }?.let { "${f(it / 1_000_000f)} Mbps · track" } ?: "Not reported"))
                 add("A. decoder" to (diagnostics.audioDecoder ?: "Unavailable"))
                 add("Output mode" to "Unavailable")
                 add("Underruns" to "${diagnostics.audioUnderruns}")
@@ -162,7 +163,7 @@ internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiS
         }
     }
     Column(
-        modifier.width(430.dp)
+        modifier.width(360.dp)
             .background(Color(0xB818202B), RoundedCornerShape(12.dp))
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
