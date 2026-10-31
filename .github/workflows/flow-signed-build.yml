@@ -1,8 +1,9 @@
 name: Flow signed build
 on:
   push:
-    branches: [main]
+    branches: [main, flow-playback-transport]
     paths:
+      - app/**
       - settings.gradle.kts
       - .github/workflows/flow-signed-build.yml
   workflow_dispatch:

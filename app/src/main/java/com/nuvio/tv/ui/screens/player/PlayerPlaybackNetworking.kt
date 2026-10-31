@@ -157,7 +157,9 @@ internal object PlayerPlaybackNetworking {
         context: android.content.Context,
         defaultHeaders: Map<String, String> = emptyMap()
     ): DataSource.Factory {
-        return DefaultDataSource.Factory(context, createHttpDataSourceFactory(defaultHeaders))
+        return DefaultDataSource.Factory(context,
+            FlowNativeTransport.factory(context, defaultHeaders)
+                ?: createHttpDataSourceFactory(defaultHeaders))
     }
 
     fun openConnection(
