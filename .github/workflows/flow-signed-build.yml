@@ -1,5 +1,10 @@
 name: Flow signed build
 on:
+  push:
+    branches: [main]
+    paths:
+      - settings.gradle.kts
+      - .github/workflows/flow-signed-build.yml
   workflow_dispatch:
 permissions:
   contents: read
@@ -80,7 +85,7 @@ jobs:
       - name: Test and assemble optimized Flow
         run: |
           chmod +x gradlew
-          ./gradlew :app:testFullReleaseUnitTest --tests com.nuvio.tv.updater.FlowUpdateVersionTest --tests com.nuvio.tv.data.local.ContinueWatchingSnapshotDecoderTest :app:assembleFullRelease --max-workers=2 --no-daemon --console=plain "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process
+          ./gradlew :app:testFullReleaseUnitTest --tests com.nuvio.tv.updater.FlowUpdateVersionTest --tests com.nuvio.tv.data.local.ContinueWatchingSnapshotDecoderTest :app:assembleFullRelease --max-workers=2 --no-daemon --console=plain --stacktrace "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process
       - name: Verify expected Flow APK
         run: |
           APK=app/build/outputs/apk/full/release/app-full-armeabi-v7a-release.apk

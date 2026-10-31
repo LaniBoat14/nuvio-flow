@@ -1,5 +1,17 @@
 pluginManagement {
+    // Resolve Hilt's implementation directly instead of its plugin marker.
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == "com.google.dagger.hilt.android") {
+                useModule("com.google.dagger:hilt-android-gradle-plugin:${requested.version}")
+            }
+        }
+    }
     repositories {
+        exclusiveContent {
+            forRepository { mavenCentral() }
+            filter { includeGroup("com.google.dagger") }
+        }
         google {
             content {
                 includeGroupByRegex("com\\.android.*")
