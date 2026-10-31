@@ -60,12 +60,15 @@ internal object FlowTransferMeter : TransferListener {
 @Composable
 internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiState, modifier: Modifier = Modifier) {
     var rows by remember { mutableStateOf(emptyList<Pair<String, String>>()) }
+    var indicators by remember { mutableStateOf(emptyMap<String, Color>()) }
     var history by remember { mutableStateOf(emptyList<Pair<Float, Float>>()) }
     LaunchedEffect(viewModel, uiState.currentStreamUrl) {
         val samples = ArrayDeque<Triple<Long, Long, Float>>()
         var cpuMs = Process.getElapsedCpuTime()
         var lastMs = SystemClock.elapsedRealtime()
-        var lastBuffer = 0f
+        var lastDropped = 0
+        var lastUnderruns = 0
+        var lastErrors = 0
         var previousPlayer: Player? = null
         while (true) {
             val player = viewModel.exoPlayer
@@ -104,57 +107,96 @@ internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiS
                 else -> "Other engine — limited metrics"
             }
             val info = viewModel.uiState.value.streamInfoData
+            val green = Color(0xFF70D99B)
+            val amber = Color(0xFFFFCA69)
+            val red = Color(0xFFFF7777)
+            indicators = buildMap {
+                put("Dropped", if (diagnostics.dropped > lastDropped) amber else green)
+                put("Underruns", if (diagnostics.audioUnderruns > lastUnderruns) amber else green)
+                if (player != null) put("Buffer", when {
+                    player.playbackState == Player.STATE_BUFFERING -> red
+                    ahead < 10f && player.isPlaying -> amber
+                    else -> green
+                })
+                put("Load errors", if (diagnostics.loadErrors > lastErrors) red else green)
+            }
+            lastDropped = diagnostics.dropped
+            lastUnderruns = diagnostics.audioUnderruns
+            lastErrors = diagnostics.loadErrors
             rows = buildList {
-                add("PLAYBACK" to state)
-                add("Position" to "${seconds(player?.currentPosition?.coerceAtLeast(0) ?: 0)} / ${seconds(player?.duration?.coerceAtLeast(0) ?: 0)}")
-                add("Rebuffers" to "${diagnostics.rebuffers} · ${seconds(diagnostics.rebufferMs)} total")
-                add("SOURCE" to (info?.addonName ?: "—"))
-                add("File" to (info?.filename?.take(55) ?: "—"))
-                add("Size" to (viewModel.getCurrentFileSizeBytes()?.let(::mb) ?: "Unavailable"))
-                add("VIDEO" to "${video?.width ?: "—"} × ${video?.height ?: "—"} · ${video?.frameRate?.takeIf { it > 0 }?.let(::f) ?: "—"} fps")
-                add("Format" to (video?.codecs ?: video?.sampleMimeType ?: "Unavailable"))
-                add("HDR transfer" to when (video?.colorInfo?.colorTransfer) { 6 -> "PQ / HDR"; 7 -> "HLG"; 3 -> "SDR"; else -> "Not reported" })
-                add("Decoder" to (diagnostics.videoDecoder ?: "Not reported"))
-                add("Dropped" to "${diagnostics.dropped}")
+                add("SOURCE" to "")
+                add("Add-on" to (info?.addonName ?: "Unavailable"))
+                add("Server" to (FlowTransferMeter.host ?: "Unavailable"))
+                add("File" to (info?.filename ?: "Unavailable"))
+                add("Size" to (viewModel.getCurrentFileSizeBytes()?.let { "${f(it / 1_073_741_824f)} GB" } ?: "Unavailable"))
+                add("VIDEO" to "")
+                add("Video" to "${video?.width ?: "—"} × ${video?.height ?: "—"} · ${video?.frameRate?.takeIf { it > 0 }?.let(::f) ?: "—"} fps")
+                add("Codec" to (video?.codecs ?: video?.sampleMimeType ?: "Unavailable"))
+                add("HDR" to when {
+                    video?.sampleMimeType == "video/dolby-vision" || video?.codecs?.startsWith("dv") == true -> "Dolby Vision"
+                    video?.colorInfo?.colorTransfer == 6 -> "PQ / HDR"
+                    video?.colorInfo?.colorTransfer == 7 -> "HLG"
+                    video?.colorInfo?.colorTransfer == 3 -> "SDR"
+                    else -> "Unavailable"
+                })
                 add("File bitrate" to (info?.fileBitrate?.takeIf { it > 0 }?.let { "${f(it / 1_000_000f)} Mbps average" } ?: "Unavailable"))
-                add("AUDIO" to "${audio?.sampleMimeType ?: "—"} · ${audio?.channelCount ?: "—"} ch · ${audio?.sampleRate ?: "—"} Hz")
-                add("Audio decoder" to (diagnostics.audioDecoder ?: "Not reported"))
-                add("Underruns" to "${diagnostics.audioUnderruns} · output/passthrough not inferred")
-                add("NETWORK" to "Buffer ${f(ahead)} s ahead · ${if (ahead >= lastBuffer) "growing / steady" else "shrinking"}")
-                add("HTTP payload 1s" to (one?.let { "${f(it)} Mbps" } ?: "Sampling…"))
-                add("HTTP payload ≤5s" to (five?.let { "${f(it)} Mbps" } ?: "Sampling…"))
-                add("Fetch activity" to when { observed -> "Receiving player HTTP data"; FlowTransferMeter.active.get() > 0 -> "Open transfer; no bytes in this window"; else -> "No observed HTTP transfer" })
-                add("Active transfers" to "${FlowTransferMeter.active.get()} HTTP (not TCP connections)")
-                add("Observed host" to (FlowTransferMeter.host ?: "Not observed"))
+                add("Decoder" to (diagnostics.videoDecoder ?: "Unavailable"))
+                add("Dropped" to "${diagnostics.dropped} frames")
+                add("AUDIO" to "")
+                add("Audio" to "${audio?.sampleMimeType ?: "—"} · ${audio?.channelCount ?: "—"} ch · ${audio?.sampleRate?.takeIf { it > 0 }?.div(1000f)?.let(::f) ?: "—"} kHz")
+                add("A. decoder" to (diagnostics.audioDecoder ?: "Unavailable"))
+                add("Output mode" to "Unavailable")
+                add("Underruns" to "${diagnostics.audioUnderruns}")
+                add("NETWORK" to "")
+                add("Buffer" to if (player != null) "${f(ahead)} s ahead" else "Unavailable")
+                add("HTTP speed" to (five?.let { "${f(it)} Mbps · ${if (observed) "receiving" else "no bytes"}" } ?: "Sampling…"))
+                add("Transfers" to "${FlowTransferMeter.active.get()} active HTTP requests")
+                add("Rebuffers" to "${diagnostics.rebuffers} · ${seconds(diagnostics.rebufferMs)}")
                 add("Load errors" to "${diagnostics.loadErrors}")
-                add("Bandwidth est." to (diagnostics.bandwidthEstimate?.let { "${f(it / 1_000_000f)} Mbps · player estimate" } ?: "Unavailable"))
-                add("SYSTEM" to "CPU ${f(cpu)}% · one-core basis")
+                add("SYSTEM" to "")
+                add("App CPU" to "${f(cpu)}% · one-core basis")
                 add("Memory" to "Java ${mb(runtime.totalMemory() - runtime.freeMemory())}/${mb(runtime.maxMemory())} · native ${mb(Debug.getNativeHeapAllocatedSize())}")
             }
-            lastBuffer = ahead
             history = (history + (ahead to (one ?: 0f))).takeLast(60)
             delay(1000)
         }
     }
-    Column(modifier.width(430.dp).background(Color(0xE6101520), RoundedCornerShape(12.dp)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text("FLOW · LIVE PLAYBACK ANALYTICS", color = Color.White, fontSize = 12.sp)
+    Column(
+        modifier.width(430.dp)
+            .background(Color(0xB818202B), RoundedCornerShape(12.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
         rows.forEach { (label, value) ->
-            Row {
-                Text(label, Modifier.width(110.dp), color = Color(0xFF9BAEC4), fontSize = 9.sp, maxLines = 1)
-                Text(value, Modifier.weight(1f), color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 9.sp, maxLines = 1)
+            if (value.isEmpty()) {
+                Text(label, color = Color(0xFFD6DDE7), fontSize = 11.sp)
+                Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.28f)))
+            } else {
+                Row {
+                    Box(Modifier.width(10.dp).height(13.dp)) {
+                        indicators[label]?.let { color ->
+                            Box(Modifier.padding(top = 4.dp).size(5.dp).background(color, RoundedCornerShape(50)))
+                        }
+                    }
+                    Text(label, Modifier.width(87.dp), color = Color(0xFFD6DDE7), fontSize = 10.sp, maxLines = 1)
+                    Text(value, Modifier.weight(1f), color = Color.White, fontSize = 10.sp, maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                }
+            }
+            if (label == "Load errors") {
+                Text("60 s · buffer (cyan) / HTTP Mbps (gold) · separate scales", color = Color.LightGray, fontSize = 8.sp)
+                Canvas(Modifier.fillMaxWidth().height(25.dp)) {
+                    fun plot(values: List<Float>, color: Color) {
+                        val max = (values.maxOrNull() ?: 1f).coerceAtLeast(1f)
+                        for (i in 1 until values.size) drawLine(color,
+                            Offset((i-1) * size.width / 59f, size.height * (1 - values[i-1] / max)),
+                            Offset(i * size.width / 59f, size.height * (1 - values[i] / max)), 2f)
+                    }
+                    plot(history.map { it.first }, Color.Cyan)
+                    plot(history.map { it.second }, Color(0xFFFFD166))
+                }
             }
         }
-        Text("Last 60 samples: buffer (cyan) · HTTP Mbps (gold), independent scales", color = Color.LightGray, fontSize = 8.sp)
-        Canvas(Modifier.fillMaxWidth().height(32.dp)) {
-            fun plot(values: List<Float>, color: Color) {
-                val max = (values.maxOrNull() ?: 1f).coerceAtLeast(1f)
-                for (i in 1 until values.size) drawLine(color,
-                    Offset((i-1) * size.width / 59f, size.height * (1 - values[i-1] / max)),
-                    Offset(i * size.width / 59f, size.height * (1 - values[i] / max)), 2f)
-            }
-            plot(history.map { it.first }, Color.Cyan)
-            plot(history.map { it.second }, Color(0xFFFFD166))
-        }
-        Text("HTTP includes player auxiliary requests; bypass/native paths may be unobserved. Back closes.", color = Color.LightGray, fontSize = 8.sp)
+        Text("HTTP includes auxiliary requests; native paths may be unobserved.", color = Color.LightGray, fontSize = 8.sp)
     }
 }

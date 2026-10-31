@@ -153,7 +153,7 @@ class UpdateViewModel @Inject constructor(
                             errorMessage = null,
                             feedbackMessage = if (showNoUpdateFeedback) {
                                 if (error is NoEligibleUpdateException) {
-                                    noUpdateFeedback(channel)
+                                    "No compatible Flow release has been published for this channel yet."
                                 } else {
                                     error.message ?: context.getString(R.string.update_error_check_failed)
                                 }

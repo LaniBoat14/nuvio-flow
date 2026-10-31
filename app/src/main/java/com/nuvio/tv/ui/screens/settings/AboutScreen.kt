@@ -132,7 +132,7 @@ fun AboutSettingsContent(
                             )
 
                             Text(
-                                text = "Nuvio Flow · " + BuildConfig.VERSION_NAME + "\nUpstream source baseline: Nuvio 1.1.0-beta.8",
+                                text = "Nuvio Flow · " + BuildConfig.VERSION_NAME + "\nUpstream source baseline: Nuvio " + BuildConfig.VERSION_NAME.substringBefore(".flow."),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = NuvioTheme.colors.TextSecondary,
                                 textAlign = TextAlign.Center
