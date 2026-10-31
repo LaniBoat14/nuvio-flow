@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.player
 
+import java.nio.ByteBuffer
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackParameters
@@ -72,9 +73,20 @@ internal class PlaybackSpeedAwareAudioSink(
     }
 
     override fun configure(inputFormat: Format, specifiedBufferSize: Int, outputChannels: IntArray?) {
+        FlowAudioTelemetry.rate.reset()
+        FlowAudioTelemetry.encodedBps = null
+        FlowAudioTelemetry.output = if (inputFormat.sampleMimeType == MimeTypes.AUDIO_RAW) "PCM" else "Encoded output"
         currentInputFormat = inputFormat
         markPcmFallbackIfNeeded(inputFormat, playbackSpeed)
         super.configure(inputFormat, specifiedBufferSize, outputChannels)
+    }
+
+    override fun handleBuffer(buffer: ByteBuffer, presentationTimeUs: Long, encodedAccessUnitCount: Int): Boolean {
+        if (currentInputFormat?.sampleMimeType != MimeTypes.AUDIO_RAW) {
+            FlowAudioTelemetry.rate.sample(presentationTimeUs, buffer.remaining())
+            FlowAudioTelemetry.encodedBps = FlowAudioTelemetry.rate.bitsPerSecond
+        }
+        return super.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
     }
 
     override fun setPlaybackParameters(playbackParameters: PlaybackParameters) {
