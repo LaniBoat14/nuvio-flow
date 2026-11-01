@@ -90,6 +90,14 @@ internal object PlayerPlaybackNetworking {
             .build()
     }
 
+    // Opt-in parallel ranges need independent TCP connections, not HTTP/2 streams
+    // multiplexed onto the same connection. The default single path negotiates HTTP/2.
+    internal val parallelHttpClient: OkHttpClient by lazy {
+        playbackHttpClient.newBuilder()
+            .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
+            .build()
+    }
+
     fun createHttpClient(
         defaultHeaders: Map<String, String> = emptyMap(),
         useLongReadTimeout: Boolean = false

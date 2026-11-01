@@ -133,7 +133,7 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
     // OkHttp client used only by the opt-in parallel-connections path.
     // Many piece sockets at once: each keeps the kernel's own window, so they cannot pile up big receive buffers.
     private val playbackHttpClient by lazy {
-        PlayerPlaybackNetworking.playbackHttpClient.newBuilder()
+        PlayerPlaybackNetworking.parallelHttpClient.newBuilder()
             .socketFactory(NoDelaySocketFactory)
             .cookieJar(NuvioApplication.extensionCookieJar)
             .let { NuvioExoPlayerPerformanceHelper.applyNetworkOptimizations(it) }

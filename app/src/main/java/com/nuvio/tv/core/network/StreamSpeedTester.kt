@@ -83,7 +83,7 @@ object StreamSpeedTester {
         var sampler: kotlinx.coroutines.Job? = null
         try {
             ParallelRangeDataSource.releaseRetainedSession()
-            val okHttpFactory = OkHttpDataSource.Factory(PlayerPlaybackNetworking.playbackHttpClient).apply {
+            val okHttpFactory = OkHttpDataSource.Factory(PlayerPlaybackNetworking.parallelHttpClient).apply {
                 setDefaultRequestProperties(headers)
             }
             val dataSource = ParallelRangeDataSource(
