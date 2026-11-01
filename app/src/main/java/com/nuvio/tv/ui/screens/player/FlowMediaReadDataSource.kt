@@ -19,11 +19,6 @@ internal class FlowMediaReadDataSource(private val upstream: DataSource) : DataS
         FlowMediaReadMeter.epoch.incrementAndGet()
         return length
     }
-    override fun read(buffer: java.nio.ByteBuffer, length: Int): Int {
-        val count = upstream.read(buffer, length)
-        if (count > 0) FlowMediaReadMeter.bytes.addAndGet(count.toLong())
-        return count
-    }
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         val count = upstream.read(buffer, offset, length)
         if (count > 0) FlowMediaReadMeter.bytes.addAndGet(count.toLong())

@@ -48,25 +48,6 @@ internal class BufferedReadDataSource(
         return available
     }
 
-    override fun read(target: java.nio.ByteBuffer, length: Int): Int {
-        require(length >= 0 && length <= target.remaining())
-        if (length == 0) return 0
-        if (position == limit) {
-            if (endOfInput) return C.RESULT_END_OF_INPUT
-            val filled = delegate.read(buffer, 0, buffer.size)
-            if (filled == C.RESULT_END_OF_INPUT) {
-                endOfInput = true
-                return C.RESULT_END_OF_INPUT
-            }
-            position = 0
-            limit = filled
-        }
-        val count = minOf(length, limit - position)
-        target.put(buffer, position, count)
-        position += count
-        return count
-    }
-
     override fun addTransferListener(transferListener: TransferListener) =
         delegate.addTransferListener(transferListener)
 

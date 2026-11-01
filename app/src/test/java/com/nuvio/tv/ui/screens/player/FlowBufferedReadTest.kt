@@ -43,21 +43,6 @@ class FlowBufferedReadTest {
         assertEquals(0, source.read(buffer, 0, 0))
         source.close()
     }
-    @Test fun directBufferReadsShareTheSameBufferedCursor() {
-        val payload = ByteArray(300_000) { (it % 251).toByte() }
-        val source = FlowMediaReadDataSource(BufferedReadDataSource(Source(payload)))
-        source.open(spec())
-        val prefix = ByteArray(123)
-        source.read(prefix, 0, prefix.size)
-        val direct = java.nio.ByteBuffer.allocateDirect(1000)
-        val count = source.read(direct, direct.remaining())
-        direct.flip()
-        val actual = ByteArray(count)
-        direct.get(actual)
-        assertArrayEquals(payload.copyOfRange(123, 123+count), actual)
-        assertEquals((123+count).toLong(), FlowMediaReadMeter.bytes.get())
-        source.close()
-    }
     @Test fun reopenDiscardsOldBufferedBytesAndRestartsMediaEpoch() {
         val upstream = Source(ByteArray(500_000) { (it % 251).toByte() })
         val source = FlowMediaReadDataSource(BufferedReadDataSource(upstream))
