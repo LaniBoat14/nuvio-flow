@@ -31,6 +31,8 @@ internal object FlowNativeTransport {
                 .setEnableQuic(true)
                 .build().also { engine = it }
             val factory = HttpEngineDataSource.Factory(shared, executor)
+                .setConnectionTimeoutMs(15_000)
+                .setReadTimeoutMs(15_000)
                 .setUserAgent(PlayerMediaSourceFactory.DEFAULT_USER_AGENT)
                 .setDefaultRequestProperties(headers.filterKeys { !it.equals("Range", true) })
             return DataSource.Factory {

@@ -56,6 +56,16 @@ class UpdateViewModel @Inject constructor(
     val uiState: StateFlow<UpdateUiState> = _uiState.asStateFlow()
     private var updateCheckJob: Job? = null
 
+    private var preferencesReady = false
+    private var lastAttemptMs = 0L
+
+    fun onAppForeground() {
+        if (preferencesReady && !BuildConfig.IS_DEBUG_BUILD &&
+            android.os.SystemClock.elapsedRealtime() - lastAttemptMs >= 60_000) {
+            checkForUpdates(force = false, showNoUpdateFeedback = false)
+        }
+    }
+
     init {
         viewModelScope.launch {
             val enabled = updatePreferences.updateBannerEnabled.first()
@@ -70,6 +80,16 @@ class UpdateViewModel @Inject constructor(
                     autoInstallNoticeEnabled = autoInstallNoticeEnabled
                 )
             }
+            viewModelScope.launch {
+                while (true) {
+                    kotlinx.coroutines.delay(15 * 60 * 1000L)
+                    if (_uiState.value.updateBannerEnabled && !_uiState.value.isDownloading &&
+                        updateCheckJob?.isActive != true && !BuildConfig.IS_DEBUG_BUILD) {
+                        checkForUpdates(force = false, showNoUpdateFeedback = false)
+                    }
+                }
+            }
+            preferencesReady = true
             downloadStore.clearIfInstalled()
             consumeAutoInstalledUpdate()
             syncBackgroundJobs()
@@ -82,13 +102,14 @@ class UpdateViewModel @Inject constructor(
     fun checkForUpdates(force: Boolean, showNoUpdateFeedback: Boolean) {
         if (!force && !_uiState.value.updateBannerEnabled) return
 
+        if (_uiState.value.isDownloading || updateCheckJob?.isActive == true) return
+        lastAttemptMs = android.os.SystemClock.elapsedRealtime()
         updateCheckJob?.cancel()
         updateCheckJob = viewModelScope.launch {
             val channel = _uiState.value.updateChannel
             _uiState.update {
                 it.copy(
                     isChecking = true,
-                    showBanner = false,
                     showUnknownSourcesDialog = false,
                     errorMessage = null,
                     feedbackMessage = null
@@ -143,12 +164,6 @@ class UpdateViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isChecking = false,
-                            update = null,
-                            isUpdateAvailable = false,
-                            isDownloading = false,
-                            downloadProgress = null,
-                            downloadedApkPath = null,
-                            showBanner = it.installedUpdate != null,
                             showUnknownSourcesDialog = false,
                             errorMessage = null,
                             feedbackMessage = if (showNoUpdateFeedback) {

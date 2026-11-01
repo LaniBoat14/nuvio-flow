@@ -38,3 +38,7 @@ flow-analytics-backup-*/
 # Required PUBLIC CA certificates (not private signing material)
 !app/src/main/res/raw/isrgrootx1.pem
 !app/src/main/res/raw/isrg_root_x2.pem
+
+# Python automation test bytecode
+__pycache__/
+*.pyc

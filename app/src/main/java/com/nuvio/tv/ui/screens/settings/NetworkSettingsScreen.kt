@@ -258,7 +258,8 @@ fun AdvancedSettingsContent(
                 streamTestState = "Baseline"
                 val baseline = com.nuvio.tv.core.network.StreamSpeedTester.runBaselineTest(
                     lastStreamUrl,
-                    lastHeadersMap
+                    lastHeadersMap,
+                    context
                 )
                 streamBaselineSpeed = baseline
 

@@ -1138,6 +1138,13 @@ open class MainActivity : ComponentActivity() {
                     }
 
                     val updateViewModel: UpdateViewModel = hiltViewModel(this@MainActivity)
+                    androidx.compose.runtime.DisposableEffect(updateViewModel) {
+                        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) updateViewModel.onAppForeground()
+                        }
+                        lifecycle.addObserver(observer)
+                        onDispose { lifecycle.removeObserver(observer) }
+                    }
                     val updateState by updateViewModel.uiState.collectAsState()
                     val updateBannerState = updateState.copy(
                         showBanner = updateState.showBanner && currentRoute?.startsWith("player/") != true

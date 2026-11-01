@@ -8,6 +8,7 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import com.nuvio.tv.ui.screens.player.ParallelRangeDataSource
 import com.nuvio.tv.ui.screens.player.PlayerPlaybackNetworking
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import okhttp3.Request
 
 @UnstableApi
@@ -29,45 +30,33 @@ object StreamSpeedTester {
 
     suspend fun runBaselineTest(
         url: String,
-        headers: Map<String, String>
+        headers: Map<String, String>,
+        context: android.content.Context
     ): Double = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val source = PlayerPlaybackNetworking.createDataSourceFactory(context, headers).createDataSource()
         try {
-            val request = Request.Builder().url(url).apply {
-                headers.forEach { (k, v) -> header(k, v) }
-            }.build()
-
-            PlayerPlaybackNetworking.playbackHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext 0.0
-                val inputStream = response.body?.byteStream() ?: return@withContext 0.0
-                val buffer = ByteArray(64 * 1024)
-
-                var warmed = 0L
-                val warmStart = System.currentTimeMillis()
-                while (warmed < WARMUP_BYTES &&
-                    System.currentTimeMillis() - warmStart < WARMUP_MAX_MS
-                ) {
-                    val read = inputStream.read(buffer)
-                    if (read == -1) return@withContext 0.0
-                    warmed += read
-                }
-
-                var totalBytes = 0L
-                val tStart = System.currentTimeMillis()
-                val tDeadline = tStart + MEASURE_MAX_MS
-                while (totalBytes < MEASURE_BYTES && System.currentTimeMillis() < tDeadline) {
-                    val read = inputStream.read(buffer)
-                    if (read == -1) break
-                    totalBytes += read
-                }
-                val elapsed = (System.currentTimeMillis() - tStart).coerceAtLeast(1)
-                return@withContext (totalBytes * 8.0) / (elapsed * 1000.0)
+            source.open(DataSpec.Builder().setUri(url).build())
+            val buffer = ByteArray(64 * 1024)
+            val warmStart = android.os.SystemClock.elapsedRealtime()
+            while (android.os.SystemClock.elapsedRealtime() - warmStart < 1500) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                if (source.read(buffer, 0, buffer.size) == -1) return@withContext 0.0
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return@withContext 0.0
-        }
-        @Suppress("UNREACHABLE_CODE")
-        0.0
+            var bytes = 0L
+            val start = android.os.SystemClock.elapsedRealtime()
+            while (android.os.SystemClock.elapsedRealtime() - start < 10000) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                val count = source.read(buffer, 0, buffer.size)
+                if (count == -1) break
+                bytes += count
+            }
+            bytes * 8.0 / ((android.os.SystemClock.elapsedRealtime() - start).coerceAtLeast(1) * 1000.0)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            android.util.Log.w("StreamSpeedTester", "Single-connection test failed", error)
+            0.0
+        } finally { runCatching { source.close() } }
     }
 
     suspend fun runParallelChunkTest(
@@ -94,7 +83,7 @@ object StreamSpeedTester {
         var sampler: kotlinx.coroutines.Job? = null
         try {
             ParallelRangeDataSource.releaseRetainedSession()
-            val okHttpFactory = OkHttpDataSource.Factory(PlayerPlaybackNetworking.playbackHttpClient).apply {
+            val okHttpFactory = OkHttpDataSource.Factory(PlayerPlaybackNetworking.parallelHttpClient).apply {
                 setDefaultRequestProperties(headers)
             }
             val dataSource = ParallelRangeDataSource(

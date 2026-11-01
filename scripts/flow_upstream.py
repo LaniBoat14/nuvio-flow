@@ -12,6 +12,19 @@ def blob(ref, path):
     r = subprocess.run(['git', 'show', f'{ref}:{path}'], capture_output=True)
     return r.stdout if r.returncode == 0 else None
 
+def normalize_owned_fields(name, data, reference):
+    """Keep Flow identity while still merging all unrelated upstream build/resources changes."""
+    if data is None or reference is None: return data
+    patterns = []
+    if name == 'app/build.gradle.kts':
+        patterns = [rb'versionCode\s*=\s*\d+', rb'versionName\s*=\s*"[^"]+"']
+    elif name.startswith('app/src/main/res/values') and name.endswith('/strings.xml'):
+        patterns = [rb'<string name="app_name">[^<]*</string>']
+    for pattern in patterns:
+        value = re.search(pattern, reference)
+        if value: data = re.sub(pattern, lambda _: value[0], data)
+    return data
+
 def main():
     baseline = Path('.flow/upstream-tag').read_text().strip()
     req = urllib.request.Request('https://api.github.com/repos/NuvioMedia/NuvioTV/releases?per_page=100', headers={'Accept':'application/vnd.github+json'})
@@ -28,8 +41,12 @@ def main():
         conflicts=[]
         for name in paths:
             # Never execute or import upstream release automation into our signed pipeline.
-            if name.startswith('.github/') or name in ('.gitignore','gradle.properties'): continue
+            if name.startswith('.github/') or name in ('.gitignore','gradle.properties',
+                'app/src/main/res/drawable-nodpi/app_logo_mark.png',
+                'app/src/main/res/drawable-nodpi/app_logo_wordmark.png'): continue
             p=Path(name); base=blob(old,name); remote=blob(new,name); local=p.read_bytes() if p.is_file() else None
+            base = normalize_owned_fields(name, base, local)
+            remote = normalize_owned_fields(name, remote, local)
             if local == remote: continue
             if local == base: result=remote
             elif remote == base: continue
@@ -46,6 +63,10 @@ def main():
             else: p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(result)
         if conflicts: raise SystemExit('Manual integration required; nothing published:\n'+'\n'.join(conflicts))
         Path('.flow/upstream-tag').write_text(target+'\n')
+    if not changed:
+        if os.environ.get('GITHUB_OUTPUT'):
+            with open(os.environ['GITHUB_OUTPUT'], 'a') as f: f.write('changed=false\n')
+        return
     # A Flow revision always has a monotonically increasing Android version code.
     p=Path('app/build.gradle.kts');s=p.read_text()
     current=int(re.search(r'versionCode\s*=\s*(\d+)',s)[1])
