@@ -74,6 +74,7 @@ internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiS
         var previousPlayer: Player? = null
         val mux = FlowMuxBitrate()
         var lastPlaybackPosition = -1L
+        var mediaEpoch = -1L
         while (true) {
             val player = viewModel.exoPlayer
             if (player !== previousPlayer) {
@@ -87,9 +88,11 @@ internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiS
             val bytes = FlowTransferMeter.bytes.get()
             player?.let {
                 val position = it.currentPosition
-                val discontinuity = lastPlaybackPosition >= 0 &&
-                    (position < lastPlaybackPosition || position - lastPlaybackPosition > 5000)
-                mux.sample(now, it.bufferedPosition, bytes, discontinuity)
+                val epoch = FlowMediaReadMeter.epoch.get()
+                val discontinuity = epoch != mediaEpoch || (lastPlaybackPosition >= 0 &&
+                    (position < lastPlaybackPosition || position - lastPlaybackPosition > 5000))
+                mux.sample(now, it.bufferedPosition, FlowMediaReadMeter.bytes.get(), discontinuity)
+                mediaEpoch = epoch
                 lastPlaybackPosition = position
             }
             val ahead = player?.let { (it.bufferedPosition - it.currentPosition).coerceAtLeast(0) / 1000f } ?: 0f

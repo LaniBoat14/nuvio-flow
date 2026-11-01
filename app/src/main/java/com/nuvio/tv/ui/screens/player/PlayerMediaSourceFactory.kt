@@ -282,9 +282,14 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
             currentVodCacheActive = false
             progressiveUpstreamFactory
         }
-        // The buffer only pays off against the cache's per-call cost, so a direct stream keeps its original chain.
-        val progressiveFactory: DataSource.Factory = if (currentVodCacheActive) {
-            DataSource.Factory { BufferedReadDataSource(cachedProgressiveFactory.createDataSource()) }
+        // Batch the extractor's tiny EBML reads even without disk cache. Native HTTP
+        // callbacks and Java/native copies should handle blocks, not individual fields.
+        val progressiveFactory: DataSource.Factory = if (!isHls && !isDash) {
+            DataSource.Factory {
+                FlowMediaReadDataSource(BufferedReadDataSource(
+                    cachedProgressiveFactory.createDataSource(), bufferBytes = 256 * 1024
+                ))
+            }
         } else {
             cachedProgressiveFactory
         }
