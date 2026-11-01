@@ -72,14 +72,13 @@ internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiS
         var lastUnderruns = 0
         var lastErrors = 0
         var previousPlayer: Player? = null
-        var muxStartPosition = -1L
-        var muxStartBytes = 0L
-        var muxBps: Long? = null
+        val mux = FlowMuxBitrate()
+        var lastPlaybackPosition = -1L
         while (true) {
             val player = viewModel.exoPlayer
             if (player !== previousPlayer) {
-                muxStartPosition = -1L
-                muxBps = null
+                mux.reset()
+                lastPlaybackPosition = -1L
                 samples.clear()
                 history = emptyList()
                 previousPlayer = player
@@ -87,16 +86,11 @@ internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiS
             val now = SystemClock.elapsedRealtime()
             val bytes = FlowTransferMeter.bytes.get()
             player?.let {
-                val position = it.bufferedPosition
-                if (muxStartPosition < 0 || position < muxStartPosition || position - muxStartPosition > 60000) {
-                    muxStartPosition = position
-                    muxStartBytes = bytes
-                    muxBps = null
-                } else if (position - muxStartPosition >= 5000) {
-                    muxBps = (bytes - muxStartBytes).coerceAtLeast(0) * 8000 / (position - muxStartPosition)
-                    muxStartPosition = position
-                    muxStartBytes = bytes
-                }
+                val position = it.currentPosition
+                val discontinuity = lastPlaybackPosition >= 0 &&
+                    (position < lastPlaybackPosition || position - lastPlaybackPosition > 5000)
+                mux.sample(now, it.bufferedPosition, bytes, discontinuity)
+                lastPlaybackPosition = position
             }
             val ahead = player?.let { (it.bufferedPosition - it.currentPosition).coerceAtLeast(0) / 1000f } ?: 0f
             val previous = samples.lastOrNull()
@@ -159,8 +153,7 @@ internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiS
                     else -> "Unavailable"
                 })
                 add("File bitrate" to (info?.fileBitrate?.takeIf { it > 0 }?.let { "${f(it / 1_000_000f)} Mbps average" } ?: "Unavailable"))
-                add("Media bitrate" to (muxBps?.let { "${f(it / 1_000_000f)} Mbps · mux estimate" } ?: "Sampling…"))
-                add("Transport" to (FlowTransferMeter.transport ?: "Not observed"))
+                add("Avg / now" to "${mux.averageBps?.let { f(it / 1_000_000f) } ?: "—"} / ${mux.currentBps?.let { f(it / 1_000_000f) } ?: "—"} Mbps · mux")
                 add("Decoder" to (diagnostics.videoDecoder ?: "Unavailable"))
                 add("Dropped" to "${diagnostics.dropped} frames")
                 add("AUDIO" to "")
@@ -170,6 +163,7 @@ internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiS
                 add("Output mode" to (FlowAudioTelemetry.output ?: "Not observed"))
                 add("Underruns" to "${diagnostics.audioUnderruns}")
                 add("NETWORK" to "")
+                add("Transport" to (FlowTransferMeter.transport ?: "Not observed"))
                 add("Buffer" to if (player != null) "${f(ahead)} s ahead" else "Unavailable")
                 add("HTTP speed" to (five?.let { "${f(it)} Mbps · ${if (observed) "receiving" else "no bytes"}" } ?: "Sampling…"))
                 add("Transfers" to "${FlowTransferMeter.active.get()} active HTTP requests")

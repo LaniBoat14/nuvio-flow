@@ -403,12 +403,11 @@ object NuvioExoPlayerPerformanceHelper {
     // ─── Networking ───────────────────────────────────────────────────────────
 
     /**
-     * Puts the given [builder] on the shared connection pool. Playback stays on HTTP/1.1: on
-     * HTTP/2 the player made about as much Java garbage as it downloaded, for no speed gain.
+     * Shares connections while preserving HTTP/2 negotiation and system TCP autotuning.
      */
     fun applyNetworkOptimizations(builder: okhttp3.OkHttpClient.Builder): okhttp3.OkHttpClient.Builder =
         builder.connectionPool(sharedConnectionPool)
-            .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
+
 
     // ─── Audio Renderer ───────────────────────────────────────────────────────
 
