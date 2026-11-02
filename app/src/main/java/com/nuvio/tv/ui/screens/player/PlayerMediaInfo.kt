@@ -143,3 +143,13 @@ private fun mpvCodecLabel(codec: String): String? =
             else -> codec.trim().uppercase()
         }
     }
+
+internal fun PlayerRuntimeController.playingFileName(): String? =
+    listOfNotNull(currentFilename, urlFileName(getCurrentStreamUrl()), _uiState.value.currentStreamName)
+        .firstOrNull { it.isNotBlank() }
+
+internal fun urlFileName(url: String?): String? = url
+    ?.let { runCatching { java.net.URI(it).path }.getOrNull() }
+    ?.substringAfterLast('/')
+    ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrNull() ?: it }
+    ?.takeIf { it.isNotBlank() && it.contains('.') }

@@ -6,7 +6,6 @@ import com.nuvio.tv.core.player.thumbnail.ConnectionLedger
 import com.nuvio.tv.core.player.thumbnail.LedgerKey
 import com.nuvio.tv.core.player.thumbnail.MemoryGovernor
 import com.nuvio.tv.core.player.thumbnail.PlaybackLine
-import com.nuvio.tv.core.player.thumbnail.SeekThumbnails
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
@@ -163,7 +162,7 @@ internal object AutoSpeedup {
      * Recomputed only on a fresh memory reading, so one reading never counts twice. While seek thumbnails are
      * generating it also leaves them the MemAvailable they need ([thumbFloorBytes]).
      */
-    fun updateReadAhead(roomBytes: Long, thumbFloorBytes: () -> Long = { SeekThumbnails.memoryFloorBytes() }) {
+    fun updateReadAhead(roomBytes: Long, thumbFloorBytes: () -> Long = { 0L /* Flow has no thumbnail memory owner. */ }) {
         if (roomReadAtMs == readAheadRoomAtMs && downloads > 1) return
         readAheadRoomAtMs = roomReadAtMs
         val floor = if (downloads > 1) thumbFloorBytes() else 0L

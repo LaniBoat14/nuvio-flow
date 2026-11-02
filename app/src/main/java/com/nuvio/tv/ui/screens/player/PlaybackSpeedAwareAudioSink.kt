@@ -22,6 +22,20 @@ internal class PlaybackSpeedAwareAudioSink(
     forcePcmForBluetooth: Boolean = false
 ) : ForwardingAudioSink(sink) {
 
+    private val arcMonitor = PlaybackAudioSinkMonitor(
+        sink as? androidx.media3.exoplayer.audio.DefaultAudioSink, 0)
+    val activeInputFormat: Format? get() = currentInputFormat
+    fun audioClockJitter(): AudioClockJitter? = arcMonitor.audioClockJitter()
+    fun nativeAudioTrackUnderrunCount(): Int? = arcMonitor.nativeAudioTrackUnderrunCount()
+    fun sampleAudioRoute(): AudioRouteSnapshot? = arcMonitor.sampleAudioRoute()
+    override fun play() { super.play(); arcMonitor.setPlaybackActive(true) }
+    override fun pause() { arcMonitor.setPlaybackActive(false); super.pause() }
+    override fun getCurrentPositionUs(sourceEnded: Boolean): Long {
+        val position = super.getCurrentPositionUs(sourceEnded)
+        arcMonitor.onPositionRead(position, playbackSpeed)
+        return position
+    }
+
     // Set when the sink is built with forcePcm (error recovery). Don't clear on speed reset.
     private val startedWithForcedPcm: Boolean = initialForcePcm
 
@@ -76,6 +90,7 @@ internal class PlaybackSpeedAwareAudioSink(
         FlowAudioTelemetry.rate.reset()
         FlowAudioTelemetry.encodedBps = null
         FlowAudioTelemetry.output = if (inputFormat.sampleMimeType == MimeTypes.AUDIO_RAW) "PCM" else "Encoded output"
+        arcMonitor.onTrackReset()
         currentInputFormat = inputFormat
         markPcmFallbackIfNeeded(inputFormat, playbackSpeed)
         super.configure(inputFormat, specifiedBufferSize, outputChannels)

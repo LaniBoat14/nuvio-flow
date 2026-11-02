@@ -494,39 +494,31 @@ internal fun PlayerRuntimeController.initializePlayer(
             )
             val isHlsStream = isHls || resolvedStreamMime == MimeTypes.APPLICATION_M3U8
             val isDashStream = resolvedStreamMime == MimeTypes.APPLICATION_MPD
-            val customNetwork = context.getSharedPreferences("flow-adaptive-hosts",android.content.Context.MODE_PRIVATE).getBoolean("custom_network_enabled",true)
+            val customNetwork = true // Arc network settings are authoritative.
             val parallelActive = customNetwork && playerSettings.parallelNetworkEnabled && playerSettings.useParallelConnections
             val useChunkSessionSource = parallelActive && !isHlsStream && !isDashStream
 
             val parallelOverheadMb = if (useChunkSessionSource) {
                 val chunkMb = Math.ceil(playerSettings.parallelChunkSizeKb / 1024.0)
                     .toInt()
-                    .coerceAtMost(MemoryBudget.tierMaxChunkMb)
+                    .coerceAtMost(MemoryBudget.tierMaxChunkMb(playerSettings.nuvioPerformanceModeEnabled, playerSettings.parallelConnectionCount))
                 MemoryBudget.parallelOverheadMb(playerSettings.parallelConnectionCount, chunkMb)
             } else {
                 0
             }
             currentParallelChunkOverheadMb = parallelOverheadMb
 
-            val adaptiveDefaults = customNetwork && !isHlsStream && !isDashStream && !PlayerMediaSourceFactory.isLoopbackUrl(url) &&
-                !playerSettings.bufferEngineEnabled &&
-                ((!playerSettings.parallelNetworkEnabled && context.getSharedPreferences("flow-adaptive-hosts",android.content.Context.MODE_PRIVATE).getBoolean("enabled",true)) || parallelActive)
             val loadControl = if (playerSettings.nuvioPerformanceModeEnabled) {
-                configuredBackBufferMs = if(adaptiveDefaults) 12_000 else NuvioExoPlayerPerformanceHelper.backBufferMs
+                configuredBackBufferMs = NuvioExoPlayerPerformanceHelper.backBufferMs
                 effectiveBackBufferDurationMs = configuredBackBufferMs
                 currentBitrateAwareLoadControl = null
                 Log.i(
                     PlayerRuntimeController.TAG,
                     "BUFFER_GATE: engine=exo-native-perf master=on parallelOverheadMb=$parallelOverheadMb; NuvioExoPlayerPerformanceHelper.buildLoadControl host=${url.safeHost()}"
                 )
-                NuvioExoPlayerPerformanceHelper.buildLoadControl(context, parallelOverheadMb, adaptiveDefaults).also {
+                NuvioExoPlayerPerformanceHelper.buildLoadControl(context, parallelOverheadMb).also {
                     currentBitrateAwareLoadControl = it as? BitrateAwareLoadControl
                 }
-            } else if (adaptiveDefaults) {
-                val allocator=androidx.media3.exoplayer.upstream.DefaultAllocator(true,C.DEFAULT_BUFFER_SEGMENT_SIZE)
-                BitrateAwareLoadControl(60_000,120_000,2500,5000,false,12_000,true,
-                    minOf(MemoryBudget.budgetMb,300).toLong()*1024*1024,allocator
-                ).also {currentBitrateAwareLoadControl=it;configuredBackBufferMs=12_000;effectiveBackBufferDurationMs=12_000}
             } else if (playerSettings.bufferEngineEnabled) {
                 val bufferSettings = playerSettings.bufferSettings
                 // Managed (default) caps the buffer at the device budget; off uses Target Buffer Size.
@@ -591,9 +583,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                     "BUFFER_GATE: engine=exo-stock master=off; DefaultLoadControl " +
                             "(1.5s back buffer, no VOD cache) host=${url.safeHost()}"
                 )
-                DefaultLoadControl.Builder()
-                    .setBackBuffer(1_500, /* retainBackBufferFromKeyframe = */ true)
-                    .build()
+                com.nuvio.tv.core.player.ReservableLoadControl.stock(1_500)
             }
             _loadControl = loadControl
 
@@ -609,9 +599,10 @@ internal fun PlayerRuntimeController.initializePlayer(
 
             mediaSourceFactory.nuvioPerformanceModeEnabled = playerSettings.nuvioPerformanceModeEnabled
             // Reserve room before prepare() starts filling player buffers.
-            FlowAdaptiveRuntime.reservedMb=if(customNetwork && !isHlsStream && !isDashStream) 112 else 0
-            currentBitrateAwareLoadControl?.setNetworkReserveBytes(FlowAdaptiveRuntime.reservedMb.toLong()*1024*1024)
-            mediaSourceFactory.networkManual = playerSettings.parallelNetworkEnabled
+            FlowAdaptiveRuntime.reservedMb = 0 // Arc owns its network memory budget.
+            mediaSourceFactory.customNetworkEnabled = playerSettings.parallelNetworkEnabled
+            mediaSourceFactory.autoSpeedupEnabled = playerSettings.autoSpeedupEnabled
+            com.nuvio.tv.core.network.PlaybackSocketFactory.windowEnabled = playerSettings.autoSpeedupEnabled
             if (playerSettings.parallelNetworkEnabled && !isTorrentStream) {
                 mediaSourceFactory.useParallelConnections = playerSettings.useParallelConnections
                 mediaSourceFactory.parallelConnectionCount = playerSettings.parallelConnectionCount
@@ -1118,6 +1109,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                         "bufferEngine=${playerSettings.bufferEngineEnabled} parallel=${mediaSourceFactory.useParallelConnections} " +
                         "vodCache=${mediaSourceFactory.vodCacheEnabled} tunneling=$tunnelingActive"
                 )
+                noteSpeedupHint(url)
+                armStartCushion(url)
                 val initialMediaSource = mediaSourceFactory.createMediaSource(
                     context = context,
                     url = url,
@@ -2778,7 +2771,7 @@ private fun PlayerRuntimeController.recordFirstFrameDiagnostics(
         // setting rather than to the back buffer guard.
         val shrinkBudgetForDv7 = keepZeroForDv7 && budgetManaged
         if (shrinkBudgetForDv7) {
-            val effectiveConversionMb = (MemoryBudget.conversionBudgetMb - currentParallelChunkOverheadMb)
+            val effectiveConversionMb = (MemoryBudget.conversionBudgetMb(MemoryBudget.budgetMb) - currentParallelChunkOverheadMb)
                 .coerceAtLeast(MemoryBudget.MIN_BUFFER_MB)
             lc.setBudgetBytesOverride(
                 effectiveConversionMb.toLong() * 1024L * 1024L
@@ -2792,7 +2785,7 @@ private fun PlayerRuntimeController.recordFirstFrameDiagnostics(
                     "managed=$budgetManaged " +
                     "parallelOverheadMb=$currentParallelChunkOverheadMb " +
                     "budgetMb=${when {
-                        shrinkBudgetForDv7 -> (MemoryBudget.conversionBudgetMb - currentParallelChunkOverheadMb).coerceAtLeast(MemoryBudget.MIN_BUFFER_MB)
+                        shrinkBudgetForDv7 -> (MemoryBudget.conversionBudgetMb(MemoryBudget.budgetMb) - currentParallelChunkOverheadMb).coerceAtLeast(MemoryBudget.MIN_BUFFER_MB)
                         budgetManaged -> (MemoryBudget.budgetMb - currentParallelChunkOverheadMb).coerceAtLeast(MemoryBudget.MIN_BUFFER_MB)
                         else -> (MemoryBudget.effectiveBufferMb(playerSettings.bufferSettings.targetBufferSizeMb) - currentParallelChunkOverheadMb).coerceAtLeast(MemoryBudget.MIN_BUFFER_MB)
                     }} " +
@@ -2876,3 +2869,11 @@ private fun PlayerView.videoBoundsFraction(aspectRatio: Float): RectF? {
         top + frameHeight / viewHeight,
     )
 }
+
+internal fun PlayerRuntimeController.fileBitrateBeforeBuild(url: String): Long {
+    val serverBytes = PlaybackByteCounter.contentLengthFor(url)
+    val seenMs = if (serverBytes != null) playbackTimeline.value.duration.takeIf { it > 0L } else null
+    val durationMs = seenMs ?: expectedRuntimeMinutes?.takeIf { it > 0 }?.let { it * 60_000L } ?: 0L
+    return AutoSpeedup.fileBitrate(serverBytes, currentVideoSize, durationMs)
+}
+

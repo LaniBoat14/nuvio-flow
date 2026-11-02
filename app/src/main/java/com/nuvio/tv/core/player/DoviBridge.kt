@@ -5,6 +5,48 @@ import com.nuvio.tv.BuildConfig
 import java.util.concurrent.atomic.AtomicLong
 
 object DoviBridge {
+    data class RpuDmInfo(
+        /** 40 = CM v4.0 (L254 present), 29 = CM v2.9, null = no DM metadata in this RPU. */
+        val cmVersion: Int?,
+        val levels: Int,
+        val l1MinPq: Int?,
+        val l1MaxPq: Int?,
+        val l1AvgPq: Int?,
+        val l5Left: Int?,
+        val l5Right: Int?,
+        val l5Top: Int?,
+        val l5Bottom: Int?,
+        val guessedProfile: Int?,
+        /** [EL_TYPE_FEL], [EL_TYPE_MEL], [EL_TYPE_NONE] or null. */
+        val elType: Int?,
+        val blBitDepth: Int?,
+        val elBitDepth: Int?,
+        /** True: the EL is coded at half the BL resolution (upsampled by the Dolby core). */
+        val elHalfResolution: Boolean?,
+        val level2Count: Int,
+        val level8Count: Int,
+        val level10Count: Int
+    ) {
+        fun hasLevel(level: Int): Boolean = when (level) {
+            in 1..11 -> levels and (1 shl level) != 0
+            254 -> levels and (1 shl 12) != 0
+            255 -> levels and (1 shl 13) != 0
+            else -> false
+        }
+
+        /** "L1 L2×4 L5 L6 L8×2 L9 L11 L254" (list levels with their block count when > 1). */
+        fun levelsLabel(): String = buildList {
+            for (n in 1..11) {
+                if (!hasLevel(n)) continue
+                val count = when (n) { 2 -> level2Count; 8 -> level8Count; 10 -> level10Count; else -> 1 }
+                add(if (count > 1) "L$n×$count" else "L$n")
+            }
+            if (hasLevel(254)) add("L254")
+            if (hasLevel(255)) add("L255")
+        }.joinToString(" ")
+    }
+
+
     private const val TAG = "DoviBridge"
     private const val LIB_NAME = "dovi_bridge"
 

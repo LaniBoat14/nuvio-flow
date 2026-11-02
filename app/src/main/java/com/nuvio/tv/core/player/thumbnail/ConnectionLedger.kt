@@ -217,7 +217,7 @@ internal class ConnectionLedger(
         const val START_SLOT_WAIT_MS = 5_000L
         const val HEALTH_TTL_MS = 10_000L
         /** How long the stream list's "nothing plays" holds without being renewed or ended. */
-        const val IDLE_LEASE_MS = CopyPrePick.HOLD_MAX_MS
+        const val IDLE_LEASE_MS = 5L * 60 * 1000 // Arc idle lease; Flow has no copy pre-pick owner.
         const val HEALTHY_AHEAD_MS = 30_000L
         /** A reset of an idle stream as playback resumes is not the server refusing. */
         const val AFTER_YIELD_QUIET_MS = 10_000L
