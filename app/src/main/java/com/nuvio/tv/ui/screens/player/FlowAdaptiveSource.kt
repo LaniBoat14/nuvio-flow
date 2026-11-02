@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicLong
 internal object FlowAdaptiveRuntime {
     @Volatile var bufferSeconds = 0.0
     @Volatile var durationMs = 0L
+    @Volatile var reservedMb = 0
     @Volatile var mode = "Single"
     @Volatile var reason = "Starting"
 }
@@ -85,6 +86,11 @@ internal class FlowAdaptiveSource(
             end=if(dataSpec.length==C.LENGTH_UNSET.toLong()) total else minOf(total, position+dataSpec.length)
             policy=AdaptivePolicy(if(adaptive) preferences.getInt(uri?.host ?: "",3) else 3, lastTick)
         } finally { runCatching { probe.close() } }
+        if(budgetMb()<16) {
+            val single=upstream.createDataSource();listeners.forEach(single::addTransferListener)
+            fallback=single;FlowAdaptiveRuntime.mode="Single (memory fallback)"
+            return single.open(dataSpec)
+        }
         schedule()
         return end-position
     }
@@ -97,6 +103,7 @@ internal class FlowAdaptiveSource(
     private fun schedule() {
         val m=mode()
         val capacity=(budgetMb()/m.chunkMb).coerceIn(1,m.workers)
+        FlowAdaptiveRuntime.reservedMb=(capacity+1)*m.chunkMb
         FlowAdaptiveRuntime.mode="${capacity}×${m.chunkMb} MB${if(adaptive) " · Auto" else " · Fixed"}"
         while(!closed.get() && chunks.size<capacity && next<end) {
             val size=minOf(m.chunkMb.toLong()*MB,end-next).toInt()
@@ -121,6 +128,8 @@ internal class FlowAdaptiveSource(
                         source.open(spec!!.buildUpon().setPosition(chunk.start).setLength(chunk.size.toLong()).build())
                         val contentRange=source.responseHeaders.entries.firstOrNull { it.key.equals("Content-Range",true) }?.value?.firstOrNull()
                         if(contentRange?.startsWith("bytes ${chunk.start}-") != true) throw IOException("Range response changed")
+                        val rt=Runtime.getRuntime()
+                        if(rt.maxMemory()-(rt.totalMemory()-rt.freeMemory()) < chunk.size*2L+16L*MB) throw IOException("Insufficient range memory")
                         val bytes=ByteArray(chunk.size)
                         var offset=0
                         while(offset<bytes.size && !closed.get() && !chunk.cancelled.get() && !chunk.result.isDone) {
@@ -184,7 +193,7 @@ internal class FlowAdaptiveSource(
         lastTick=now;previousBytes=bytes
     }
     override fun close() {
-        closed.set(true);chunks.values.forEach{it.cancel()};chunks.clear()
+        closed.set(true);FlowAdaptiveRuntime.reservedMb=0;chunks.values.forEach{it.cancel()};chunks.clear()
         fallback?.let{runCatching{it.close()}};fallback=null
     }
     override fun getUri(): Uri? = fallback?.uri ?: uri

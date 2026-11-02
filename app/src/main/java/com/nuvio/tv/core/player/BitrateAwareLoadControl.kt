@@ -61,6 +61,17 @@ class BitrateAwareLoadControl(
         budgetBytesOverride = if (bytes < 0L) -1L else bytes
     }
 
+    @Volatile private var networkReserveBytes: Long = 0
+
+    fun setNetworkReserveBytes(bytes: Long) { networkReserveBytes = bytes.coerceAtLeast(0) }
+
+    override fun shouldContinueLoading(parameters: androidx.media3.exoplayer.LoadControl.Parameters): Boolean {
+        val budget = if (budgetBytesOverride >= 0) budgetBytesOverride else budgetBytes
+        val cap = (budget - networkReserveBytes).coerceAtLeast(16L * 1024 * 1024)
+        if (allocator.totalBytesAllocated.toLong() >= cap) return false
+        return super.shouldContinueLoading(parameters)
+    }
+
     override fun getBackBufferDurationUs(playerId: PlayerId): Long {
         val override = backBufferOverrideUs
         return if (override >= 0L) override else super.getBackBufferDurationUs(playerId)
@@ -73,6 +84,6 @@ class BitrateAwareLoadControl(
         // just the memory cap. Sizing from advertised bitrate starved variable-bitrate peaks,
         // so let high-bitrate fill up to the budget and low-bitrate stop at the time limit.
         val effectiveBudget = if (budgetBytesOverride >= 0L) budgetBytesOverride else budgetBytes
-        return effectiveBudget.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        return (effectiveBudget-networkReserveBytes).coerceAtLeast(16L*1024*1024).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
     }
 }
