@@ -1,7 +1,7 @@
 name: Flow signed build
 on:
   push:
-    branches: [main, flow-playback-transport, flow-adaptive-engine]
+    branches: [main, flow-playback-transport, flow-adaptive-engine, flow-arc-port]
     paths:
       - app/**
       - settings.gradle.kts
