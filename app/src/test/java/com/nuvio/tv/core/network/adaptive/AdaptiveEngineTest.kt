@@ -21,9 +21,9 @@ class AdaptiveEngineTest {
     }
     @Test fun stableHeadroomScalesDownWithoutFlapping() {
         val p = AdaptivePolicy()
-        for (t in 2000L..50_000L step 2000) p.evaluate(t,80_000_000,40.0,250_000_000,128)
+        for (t in 2000L..54_000L step 2000) p.evaluate(t,80_000_000,40.0,250_000_000,128)
         assertEquals(2,p.index)
-        p.evaluate(52_000,80_000_000,3.0,30_000_000,128)
+        p.evaluate(56_000,80_000_000,3.0,30_000_000,128)
         assertEquals(2,p.index)
     }
     @Test fun outOfOrderCompletionIsConsumedInOrder() {

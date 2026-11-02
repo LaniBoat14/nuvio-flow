@@ -81,7 +81,7 @@ internal class FlowAdaptiveSource(
             position=dataSpec.position;next=position;spec=dataSpec
             end=if(dataSpec.length<0)fileLength else minOf(fileLength,position+dataSpec.length)
             val windowEnd=minOf(end,position+mode().workers*mode().chunkMb.toLong()*MB)
-            chunks.values.filter{it.start+it.size<=position || it.start>=windowEnd || it.start+it.size>windowEnd}.forEach{chunks.remove(it.start);it.cancel()}
+            chunks.values.filter{it.result.isCompletedExceptionally || it.result.isCancelled || it.start+it.size<=position || it.start>=windowEnd || it.start+it.size>windowEnd}.forEach{chunks.remove(it.start);it.cancel()}
             chunks.floorEntry(position)?.value?.takeIf{position<it.start+it.size}?.let{it.offset=(position-it.start).toInt()}
             schedule();return end-position
         }
@@ -136,6 +136,7 @@ internal class FlowAdaptiveSource(
     }
     private fun mode(): AdaptivePolicy.Mode = if(adaptive) policy.mode else AdaptivePolicy.Mode(fixedWorkers.coerceIn(1,4),fixedChunkMb.coerceIn(8,16))
     private fun schedule() {
+        next=maxOf(next,position)
         val m=mode()
         val capacity=(budgetMb()/m.chunkMb).coerceIn(1,m.workers)
         FlowAdaptiveRuntime.reservedMb=(capacity+1)*m.chunkMb
