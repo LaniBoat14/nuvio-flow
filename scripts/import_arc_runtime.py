@@ -54,6 +54,13 @@ def main():
    if not dest.exists(): dest.write_bytes(subprocess.check_output(['git','show','HEAD:app/src/main/res/raw/'+name],cwd=ROOT))
   regression=ROOT/'app/src/test/java/com/nuvio/tv/updater/FlowUpdateVersionTest.kt'
   regression.write_bytes(subprocess.check_output(['git','show','HEAD:app/src/test/java/com/nuvio/tv/updater/FlowUpdateVersionTest.kt'],cwd=ROOT))
+  # Updater tests must exercise Flow's configured feed, including rejection of look-alike URLs.
+  updater_test=ROOT/'app/src/testFull/java/com/nuvio/tv/updater/ForkUpdateRepositoryTest.kt'
+  text=updater_test.read_text()
+  text=text.replace('"ysosrs123", "NuvioTV-Fork"', 'BuildConfig.GITHUB_OWNER, BuildConfig.GITHUB_REPO')
+  text=text.replace('ysosrs123/NuvioTV-Fork', '${BuildConfig.GITHUB_OWNER}/${BuildConfig.GITHUB_REPO}')
+  text=text.replace('ysosrs123/Nuvio-Arc', '${BuildConfig.GITHUB_OWNER}/${BuildConfig.GITHUB_REPO_NEW_NAME}')
+  updater_test.write_text(text)
   shutil.copyfile(arc/'scripts/verify_native_apk.py',ROOT/'scripts/verify_native_apk.py')
   subprocess.run(['python3','scripts/verify_arc_runtime.py'],cwd=ROOT,check=True)
   print('Imported original Arc runtime:',ARC_COMMIT)
