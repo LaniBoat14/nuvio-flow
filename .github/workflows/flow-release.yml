@@ -70,7 +70,7 @@ jobs:
         if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true' || steps.pending.outputs.required == 'true'
         run: |
           mkdir -p app/src/test/resources
-          keytool -genkeypair -alias subtitle-test -keyalg RSA -keysize 2048 -validity 3650 -storetype PKCS12 -keystore app/src/test/resources/subtitle-redirect-test.p12 -storepass changeit -keypass changeit -dname "CN=127.0.0.1" -ext "SAN=ip:127.0.0.1"
+          test -f app/src/test/resources/subtitle-redirect-test.p12 || keytool -genkeypair -alias subtitle-test -keyalg RSA -keysize 2048 -validity 3650 -storetype PKCS12 -keystore app/src/test/resources/subtitle-redirect-test.p12 -storepass changeit -keypass changeit -dname "CN=127.0.0.1" -ext "SAN=ip:127.0.0.1"
       - name: Restore private build configuration
         if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true' || steps.pending.outputs.required == 'true'
         env:
