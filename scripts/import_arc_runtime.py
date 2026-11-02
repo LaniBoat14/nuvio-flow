@@ -61,6 +61,14 @@ def main():
   text=text.replace('ysosrs123/NuvioTV-Fork', '${BuildConfig.GITHUB_OWNER}/${BuildConfig.GITHUB_REPO}')
   text=text.replace('ysosrs123/Nuvio-Arc', '${BuildConfig.GITHUB_OWNER}/${BuildConfig.GITHUB_REPO_NEW_NAME}')
   updater_test.write_text(text)
+  # Synchronize the intended simultaneous server refusals. Without this barrier,
+  # an early 429 can close the gate before the other two requests even start.
+  workload=ROOT/'app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangeProductionWorkloadTest.kt'
+  text=workload.read_text()
+  old='            f.beforeWorkerOpen={ _,attempt,spec ->\n                if(attempt==1) throw HttpDataSource.InvalidResponseCodeException(\n                    429,"fixture limiter",null,emptyMap(),spec,byteArrayOf())\n            }'
+  new='            val firstBurst=CountDownLatch(3)\n            f.beforeWorkerOpen={ _,attempt,spec ->\n                if(attempt==1) {\n                    firstBurst.countDown()\n                    check(firstBurst.await(10,TimeUnit.SECONDS)) { "All three initial requests must reach the server before any refusal" }\n                    throw HttpDataSource.InvalidResponseCodeException(\n                        429,"fixture limiter",null,emptyMap(),spec,byteArrayOf())\n                }\n            }'
+  assert text.count(old)==1, 'Arc workload test changed; inspect before adapting'
+  workload.write_text(text.replace(old,new))
   shutil.copyfile(arc/'scripts/verify_native_apk.py',ROOT/'scripts/verify_native_apk.py')
   subprocess.run(['python3','scripts/verify_arc_runtime.py'],cwd=ROOT,check=True)
   print('Imported original Arc runtime:',ARC_COMMIT)
