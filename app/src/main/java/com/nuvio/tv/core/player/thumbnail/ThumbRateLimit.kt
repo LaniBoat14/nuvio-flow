@@ -74,7 +74,7 @@ internal class FetchRamp(limitedFromStart: Boolean = false) {
     fun succeeded(startedAtMs: Long) {
         if (startedAtMs <= lastHitAtMs) return
         hitsInRow = 0
-        if (limited || lanes >= ThumbFetchLanes.MAX) return
+        if (limited || lanes >= 8 /* Arc thumbnail lane ceiling; no thumbnail worker is installed. */) return
         if (++okSinceStep >= SUCCESSES_PER_STEP) {
             lanes++
             okSinceStep = 0

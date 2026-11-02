@@ -497,7 +497,9 @@ class PlayerRuntimeController(
     internal var hasRenderedFirstFrame = false
     internal var bufferMemoryKeeper: com.nuvio.tv.core.player.BufferMemoryKeeper? = null
     internal var autoSpeedupLender: com.nuvio.tv.core.player.BufferMemoryKeeper? = null
+    internal var currentManagedBudgetMb: Int = com.nuvio.tv.ui.screens.settings.MemoryBudget.autoBudgetMb
     internal var lastSeekWallMs: Long = 0L
+    internal var expectedRuntimeMinutes: Int? = savedStateHandle.get<Int>("runtimeMinutes")
     @Volatile internal var lastAppliedPlayerSettings: com.nuvio.tv.data.local.PlayerSettings? = null
 
     // Prevent the previous stream's end from completing the new stream.

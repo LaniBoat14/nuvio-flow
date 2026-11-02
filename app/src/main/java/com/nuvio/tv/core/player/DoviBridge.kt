@@ -5,6 +5,50 @@ import com.nuvio.tv.BuildConfig
 import java.util.concurrent.atomic.AtomicLong
 
 object DoviBridge {
+    data class RpuStaticMetadata(
+        val sourceMinPq: Int,
+        val sourceMaxPq: Int,
+        val l6MinMasteringLuminance: Int?,
+        val l6MaxMasteringLuminance: Int?,
+        val maxCll: Int?,
+        val maxFall: Int?
+    ) {
+        /**
+         * A one-line human-readable summary for the Diagnostics card. MaxCLL /
+         * MaxFALL are shown as libdovi reports them (nits); the mastering-display
+         * peak is derived from [sourceMaxPq] via the ST 2084 (PQ) EOTF, which is
+         * always available.
+         */
+        fun toDiagnosticLine(): String {
+            if (maxCll == 0 && maxFall == 0) return "CLL/FALL not set · MDL ${pqCodeToNits(sourceMaxPq)} nits"
+            val parts = ArrayList<String>(3)
+            // A present L6 block with a zero content-light value means "unknown"
+            // (common in WEB-DL masters), not literally zero nits - show a dash
+            // rather than a misleading "0". A wholly absent L6 stays omitted.
+            maxCll?.let { parts += "CLL ${if (it > 0) it.toString() else "-"}" }
+            maxFall?.let { parts += "FALL ${if (it > 0) it.toString() else "-"}" }
+            parts += "MDL ${pqCodeToNits(sourceMaxPq)} nits"
+            return parts.joinToString(" · ")
+        }
+
+        private fun pqCodeToNits(pq12: Int): Int = Math.round(pq12ToNits(pq12)).toInt()
+    }
+
+    /** SMPTE ST 2084 (PQ) EOTF applied to a 12-bit RPU code value, in nits (cd/m²). */
+    fun pq12ToNits(pq12: Int): Double {
+        val e = pq12.coerceIn(0, 4095).toDouble() / 4095.0
+        val m1 = 0.1593017578125
+        val m2 = 78.84375
+        val c1 = 0.8359375
+        val c2 = 18.8515625
+        val c3 = 18.6875
+        val ep = Math.pow(e, 1.0 / m2)
+        val num = (ep - c1).coerceAtLeast(0.0)
+        val den = c2 - c3 * ep
+        val l = if (den <= 0.0) 0.0 else Math.pow(num / den, 1.0 / m1)
+        return l * 10000.0
+    }
+
     data class RpuDmInfo(
         /** 40 = CM v4.0 (L254 present), 29 = CM v2.9, null = no DM metadata in this RPU. */
         val cmVersion: Int?,

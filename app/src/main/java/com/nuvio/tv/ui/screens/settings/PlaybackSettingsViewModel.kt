@@ -332,6 +332,14 @@ class PlaybackSettingsViewModel @Inject constructor(
         playerSettingsDataStore.setSubtitleOrganizationMode(mode)
     }
 
+    suspend fun setAutoSpeedupEnabled(enabled: Boolean) {
+        playerSettingsDataStore.setAutoSpeedupEnabled(enabled)
+    }
+
+    suspend fun setBufferAheadMs(ms: Int) {
+        playerSettingsDataStore.setBufferAheadMs(ms)
+    }
+
     // Buffer settings functions
 
     suspend fun setBufferMinBufferMs(ms: Int) {

@@ -46,7 +46,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          TAG=$(sed -n 's/.*versionName = "\\([^"]*\\)".*/\\1/p' app/build.gradle.kts | head -1)
+          TAG=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -1)
           READY=$(gh release view "$TAG" --json isDraft,assets --jq '(.isDraft == false) and (.assets | any(.name == "app-full-armeabi-v7a-release.apk"))' 2>/dev/null || echo false)
           if [ "$READY" = true ]; then
             echo "required=false" >> "$GITHUB_OUTPUT"
@@ -181,7 +181,7 @@ jobs:
           TARGET=$(git rev-parse HEAD)
           FLAGS=()
           case "$TAG" in *-*) FLAGS+=(--prerelease) ;; esac
-          gh release create "$TAG" --target "$TARGET" --draft --title "Nuvio Flow $TAG" --notes "Signed Flow update. Official source baseline: $(cat .flow/upstream-tag). Adds adaptive ranged playback and Automatic controls, measured mode comparisons, fresh TCP recovery, cumulative hedge limits, protocol reporting and memory-aware 60-120 second buffer targets. Playback performance requires device validation." "${FLAGS[@]}" app/build/outputs/apk/full/release/*.apk
+          gh release create "$TAG" --target "$TARGET" --draft --title "Nuvio Flow $TAG" --notes "Signed Flow update. Official source baseline: $(cat .flow/upstream-tag). Ports Arc networking, Automatic speed-up, host request limits and memory governance; replaces the custom Flow overlay with Arc live playback statistics. Preserves Flow installation and update identity. Device playback checks remain user-run." "${FLAGS[@]}" app/build/outputs/apk/full/release/*.apk
           gh release edit "$TAG" --draft=false
       - name: Remove private inputs
         if: always()

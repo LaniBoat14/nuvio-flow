@@ -328,7 +328,7 @@ class PlayerViewModel @Inject constructor(
         lastPingMs: PlaybackConnectSample?
     ): PlaybackStatsSample {
         val timeline = controller.playbackTimeline.value
-        val positionRow = positionStatsRow(timeline.playbackPosition, timeline.duration, timeline.isLive)
+        val positionRow = positionStatsRow(timeline.currentPosition, timeline.duration, timeline.isLive)
         val engine = controller.currentInternalPlayerEngine
         val mpvActive = controller.isUsingMpvEngine() ||
             (engine == InternalPlayerEngine.AUTO && controller.mpvView != null)
@@ -541,7 +541,7 @@ class PlayerViewModel @Inject constructor(
                 dvDiag.dv7DoviSignalRewrites > 0 || dvDiag.dv7DoviSuccess > 0
             val text = PlaybackStatsDv.profileRowText(
                 sourceProfile = sourceProfile,
-                elType = dvDiag.dvElType,
+                elType = null, // Flow does not expose an EL-type detector.
                 modeEffective = dvDiag.dv7ModeEffective,
                 sourceCodecs = controller.currentVideoTrackCodecs ?: player?.videoFormat?.codecs,
                 converting = converting

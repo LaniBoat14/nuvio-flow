@@ -90,7 +90,7 @@ internal fun exoAudioProfiles(audio: Format?): List<String> {
     }
 }
 
-private fun Format.hdrFormats(): List<String> = buildList {
+internal fun Format.hdrFormats(): List<String> = buildList {
     val lowerCodecs = codecs.orEmpty().lowercase()
     // Dolby Vision: mime type or codecs string (dual-layer DV has HEVC mime but dvhe/dav1 codecs)
     if (sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION

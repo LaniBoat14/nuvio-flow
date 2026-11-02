@@ -113,8 +113,8 @@ internal fun PlayerRuntimeController.getAudioRoutingSnapshot(isTunnelled: Boolea
     val sinkFormat = sink?.activeInputFormat
     val ffmpeg = ffmpegAudioRenderer
 
-    val isTranscodingAc3 = ffmpeg?.isTranscodingToAc3() == true ||
-        (sourceMime != MimeTypes.AUDIO_AC3 && sinkFormat?.sampleMimeType == MimeTypes.AUDIO_AC3)
+    val isTranscodingAc3 =
+        sourceMime != MimeTypes.AUDIO_AC3 && sinkFormat?.sampleMimeType == MimeTypes.AUDIO_AC3
 
     return resolveAudioRoutingSnapshot(
         sourceMime = sourceMime,
