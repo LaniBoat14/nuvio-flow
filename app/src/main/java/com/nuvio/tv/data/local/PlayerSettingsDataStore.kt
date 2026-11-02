@@ -224,8 +224,8 @@ data class BufferSettings(
         const val DEFAULT_MAX_BUFFER_MS = 45_000
         const val DEFAULT_BUFFER_FOR_PLAYBACK_MS = 5_000
         const val DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 3_000
-        const val DEFAULT_TARGET_BUFFER_SIZE_MB: Int = 50
-        const val DEFAULT_BACK_BUFFER_DURATION_MS = 0
+        const val DEFAULT_TARGET_BUFFER_SIZE_MB: Int = 150
+        const val DEFAULT_BACK_BUFFER_DURATION_MS = 5_000
     }
 }
 
@@ -409,7 +409,7 @@ data class PlayerSettings(
         fun isBoundedTimeout(timeoutSeconds: Int): Boolean =
             timeoutSeconds > 0 && timeoutSeconds != STREAM_AUTOPLAY_TIMEOUT_UNLIMITED
 
-        const val DEFAULT_BUFFER_BUDGET_MANAGED = false
+        const val DEFAULT_BUFFER_BUDGET_MANAGED = true
         const val DEFAULT_ALLOW_LARGE_TARGET_BUFFER = false
         const val LARGE_TARGET_BUFFER_MAX_MB = 2048
         const val DEFAULT_VOD_CACHE_ENABLED = false
@@ -421,7 +421,7 @@ data class PlayerSettings(
         const val DEFAULT_PARALLEL_CONNECTION_COUNT = 2
         const val DEFAULT_PARALLEL_CHUNK_SIZE_KB = 16 * 1024
         const val MIN_PARALLEL_CONNECTION_COUNT = 2
-        const val MAX_PARALLEL_CONNECTION_COUNT = 4
+        const val MAX_PARALLEL_CONNECTION_COUNT = 8
         const val MAX_PARALLEL_CONNECTION_COUNT_NATIVE_MEMORY = 16
         fun maxParallelConnectionCount(nativeMemory: Boolean): Int =
             if (nativeMemory) MAX_PARALLEL_CONNECTION_COUNT_NATIVE_MEMORY else MAX_PARALLEL_CONNECTION_COUNT

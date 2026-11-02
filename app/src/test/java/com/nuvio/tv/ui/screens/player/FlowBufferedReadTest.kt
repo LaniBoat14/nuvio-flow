@@ -43,20 +43,4 @@ class FlowBufferedReadTest {
         assertEquals(0, source.read(buffer, 0, 0))
         source.close()
     }
-    @Test fun reopenDiscardsOldBufferedBytesAndRestartsMediaEpoch() {
-        val upstream = Source(ByteArray(500_000) { (it % 251).toByte() })
-        val source = FlowMediaReadDataSource(BufferedReadDataSource(upstream))
-        source.open(spec())
-        val buffer = ByteArray(100)
-        source.read(buffer, 0, 100)
-        assertEquals(100L, FlowMediaReadMeter.bytes.get())
-        val epoch = FlowMediaReadMeter.epoch.get()
-        source.close()
-        source.open(spec(200_000))
-        assertTrue(FlowMediaReadMeter.epoch.get() > epoch)
-        assertEquals(0L, FlowMediaReadMeter.bytes.get())
-        source.read(buffer, 0, 100)
-        assertArrayEquals(upstream.payload.copyOfRange(200_000, 200_100), buffer)
-        source.close()
-    }
 }

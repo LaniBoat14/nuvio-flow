@@ -1402,6 +1402,7 @@ fun PlayerRuntimeController.onEvent(
         }
         is PlayerEvent.OnSeekBy -> {
             lastSeekWallMs = android.os.SystemClock.elapsedRealtime()
+            bufferMemoryKeeper?.onSeek()
             if (_playbackTimeline.value.isLive) return
             pendingPreviewSeekPosition = null
             val current = currentPlaybackPositionMs() ?: 0L
@@ -1464,6 +1465,7 @@ fun PlayerRuntimeController.onEvent(
         }
         is PlayerEvent.OnSeekTo -> {
             lastSeekWallMs = android.os.SystemClock.elapsedRealtime()
+            bufferMemoryKeeper?.onSeek()
             if (_playbackTimeline.value.isLive) return
             pendingPreviewSeekPosition = null
             val target = if (isPartyControlLocked) ownSeekTarget(event.position) ?: return else event.position

@@ -586,31 +586,10 @@ internal fun PlayerRuntimeController.initializePlayer(
                 com.nuvio.tv.core.player.ReservableLoadControl.stock(1_500)
             }
             _loadControl = loadControl
+            attachBufferMemoryKeeper(loadControl as? com.nuvio.tv.core.player.BufferBudgetControl,
+                com.nuvio.tv.core.player.BufferMemoryKeeper.budgetManaged(playerSettings.bufferEngineEnabled, playerSettings.bufferBudgetManaged))
 
-            // The cache wraps whichever upstream data source it is given, so it does not depend on
-            // either buffer engine. The low-RAM plus confirmed DV7 case is handled dynamically at
-            // first frame, since the stream content is not known here.
-            mediaSourceFactory.bufferEngineEnabled = playerSettings.bufferEngineEnabled
-            mediaSourceFactory.bufferBudgetManaged = playerSettings.bufferBudgetManaged
-            mediaSourceFactory.vodCacheEnabled = playerSettings.vodCacheEnabled
-            mediaSourceFactory.vodCacheSizeMode = playerSettings.vodCacheSizeMode
-            mediaSourceFactory.vodCacheSizeMb = playerSettings.vodCacheSizeMb
-            mediaSourceFactory.nativeEngineEnabled = playerSettings.nuvioPerformanceModeEnabled
-
-            mediaSourceFactory.nuvioPerformanceModeEnabled = playerSettings.nuvioPerformanceModeEnabled
-            // Reserve room before prepare() starts filling player buffers.
-            FlowAdaptiveRuntime.reservedMb = 0 // Arc owns its network memory budget.
-            mediaSourceFactory.customNetworkEnabled = playerSettings.parallelNetworkEnabled
-            mediaSourceFactory.autoSpeedupEnabled = playerSettings.autoSpeedupEnabled
-            com.nuvio.tv.core.network.PlaybackSocketFactory.windowEnabled = playerSettings.autoSpeedupEnabled
-            if (playerSettings.parallelNetworkEnabled && !isTorrentStream) {
-                mediaSourceFactory.useParallelConnections = playerSettings.useParallelConnections
-                mediaSourceFactory.parallelConnectionCount = playerSettings.parallelConnectionCount
-                mediaSourceFactory.parallelChunkSizeKb = playerSettings.parallelChunkSizeKb
-            } else {
-                // Reset each playback so the factory doesn't keep last stream's state.
-                mediaSourceFactory.useParallelConnections = false
-            }
+            applyMediaSourceFactorySettings(playerSettings)
 
             // Log the effective state (post-gating), not the raw settings.
             val engineNative = androidx.media3.common.NuvioEngineConfig.get().isNativeAllocationEnabled()
@@ -1047,6 +1026,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                 buildDefaultPlayer()
             }
             _loadControl = loadControl
+            attachBufferMemoryKeeper(loadControl as? com.nuvio.tv.core.player.BufferBudgetControl,
+                com.nuvio.tv.core.player.BufferMemoryKeeper.budgetManaged(playerSettings.bufferEngineEnabled, playerSettings.bufferBudgetManaged))
             activePlayerUsesLibass = useLibass
             libassPipelineSwitchInFlight = false
 
@@ -2875,5 +2856,33 @@ internal fun PlayerRuntimeController.fileBitrateBeforeBuild(url: String): Long {
     val seenMs = if (serverBytes != null) playbackTimeline.value.duration.takeIf { it > 0L } else null
     val durationMs = seenMs ?: expectedRuntimeMinutes?.takeIf { it > 0 }?.let { it * 60_000L } ?: 0L
     return AutoSpeedup.fileBitrate(serverBytes, currentVideoSize, durationMs)
+}
+
+
+internal fun PlayerRuntimeController.applyMediaSourceFactorySettings(playerSettings: PlayerSettings) {
+    if (playerSettings.bufferEngineEnabled) {
+        mediaSourceFactory.vodCacheEnabled = playerSettings.vodCacheEnabled
+        mediaSourceFactory.vodCacheSizeMode = playerSettings.vodCacheSizeMode
+        mediaSourceFactory.vodCacheSizeMb = playerSettings.vodCacheSizeMb
+    } else {
+        mediaSourceFactory.vodCacheEnabled = false
+    }
+
+    if (playerSettings.parallelNetworkEnabled) {
+        mediaSourceFactory.useParallelConnections = playerSettings.useParallelConnections
+        mediaSourceFactory.parallelConnectionCount = playerSettings.parallelConnectionCount
+        mediaSourceFactory.parallelChunkSizeKb = MemoryBudget.customChunkKb(context, playerSettings)
+    } else {
+        // Reset each playback so the factory doesn't keep last stream's state.
+        mediaSourceFactory.useParallelConnections = false
+    }
+    mediaSourceFactory.customNetworkEnabled = playerSettings.parallelNetworkEnabled
+    mediaSourceFactory.autoSpeedupEnabled = playerSettings.autoSpeedupEnabled
+    com.nuvio.tv.core.network.PlaybackSocketFactory.windowEnabled = playerSettings.autoSpeedupEnabled
+    mediaSourceFactory.nuvioPerformanceModeEnabled = playerSettings.nuvioPerformanceModeEnabled
+    mediaSourceFactory.nativeEngineEnabled = playerSettings.nuvioPerformanceModeEnabled
+    mediaSourceFactory.bufferEngineEnabled = playerSettings.bufferEngineEnabled
+    mediaSourceFactory.bufferBudgetManaged = playerSettings.bufferBudgetManaged
+    lastAppliedPlayerSettings = playerSettings
 }
 

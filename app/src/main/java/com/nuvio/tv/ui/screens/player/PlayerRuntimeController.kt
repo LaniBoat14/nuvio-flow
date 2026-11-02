@@ -194,7 +194,7 @@ class PlayerRuntimeController(
     internal val rememberedAudioLanguage: String? = navigationArgs.rememberedAudioLanguage
     internal val rememberedAudioName: String? = navigationArgs.rememberedAudioName
     internal val cloudSessionToken: String? = navigationArgs.cloudSessionToken
-    internal val mediaSourceFactory = PlayerMediaSourceFactory(context.applicationContext).apply {
+    internal val mediaSourceFactory = PlayerMediaSourceFactory(context.applicationContext, serverPlayback::isServerSource).apply {
         onStreamRedirected = { requestedUrl, resolvedUrl -> handleStreamRedirect(requestedUrl, resolvedUrl) }
     }
 
@@ -498,6 +498,7 @@ class PlayerRuntimeController(
     internal var bufferMemoryKeeper: com.nuvio.tv.core.player.BufferMemoryKeeper? = null
     internal var autoSpeedupLender: com.nuvio.tv.core.player.BufferMemoryKeeper? = null
     internal var lastSeekWallMs: Long = 0L
+    @Volatile internal var lastAppliedPlayerSettings: com.nuvio.tv.data.local.PlayerSettings? = null
 
     // Prevent the previous stream's end from completing the new stream.
     internal var endDetectionArmed = false

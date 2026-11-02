@@ -1,23 +1,21 @@
-# Arc source import — integration in progress
+# Arc runtime port — release candidate awaiting build validation
 
-Reference: supplied archive commit ccfd1d7b5ad681bde4615e5bae82a4e7d710a34d.
-SOURCE.json hashes the unchanged imported files. GPL-3.0 license retained.
+Reference archive commit: ccfd1d7b5ad681bde4615e5bae82a4e7d710a34d.
+SOURCE.json hashes the preserved original sources and tests. GPL-3.0 license retained.
 
-This branch is a preparation checkpoint, not a playable or published replacement.
-The isolated policy check runs the original Arc policy and ConnectionsChoice tests.
-It does not establish that the application port compiles or has passed playback tests.
+The app now uses Arc's media-source factory, HTTP/socket clients, range engine,
+automatic speed-up policy, host history, request ledger and memory governance.
+The existing analytics button opens Arc's sampled, sectioned live HUD. Arc's
+buffer/network settings and Automatic speed-up preference are persisted.
+The former Flow transport and custom HUD have been removed from production.
 
-Remaining integration: replace Flow data-source wiring and its adaptive engine;
-port Arc settings persistence and memory/request governance; match ExoPlayer native
-interfaces; connect Arc measurement providers and exact HUD renderer to Flow's
-existing analytics button; verify player UI and update identity stay intact; run
-application tests and signed APK checks before publication.
+Integration boundaries:
+- Flow uses the classic Nuvio HUD surface from Arc, without Arc's separate V2 UI.
+- Flow has no thumbnail allocator; that absent owner contributes zero memory.
+- Native-FEL-only RPU detail rows are not queried because Flow has no native FEL renderer.
+- Audio diagnostics use Arc's platform monitor; Flow has no separate IEC audio owner.
+- Flow's existing low-RAM DV7 back-buffer adjustment retains a compatibility method.
 
-Runtime integration candidate (not yet validated or published):
-- Arc media-source factory, socket/HTTP clients, range engine, automatic speed-up, host history and request ledger are now in app sources.
-- Persisted Automatic speed-up and original buffer/network settings replace Flow network controls.
-- Arc sampler, polling, sections/rows and renderer feed the existing analytics button.
-- Flow's classic theme is selected. Missing thumbnail owners charge zero memory; their optional interfaces retain Arc semantics.
-- Flow does not ship Arc's native FEL renderer: its native-FEL-only RPU detail rows are not queried. Platform audio monitoring uses the original Arc platform branch, without an IEC owner.
-- Existing Flow low-RAM DV7 back-buffer adjustment has a compatibility method on Arc's load control.
-- Original Arc tests are imported into the application test suite; signed CI must pass before release.
+Original Arc contract tests are included in application CI. Policy-only validation
+is insufficient: signed application compilation, selected runtime/network tests,
+and APK identity/signature checks must pass before publishing an update.

@@ -239,9 +239,7 @@ class PlayerViewModel @Inject constructor(
     val exoPlayer: ExoPlayer?
         get() = controller.exoPlayer
 
-    internal fun flowDiagnostics(): FlowDiagnosticSummary = controller.playbackAnalyticsDiagnostics.flowSummary(
-        controller.rebufferCount, controller.rebufferTotalMs, controller.rebufferStartedAtMs
-    )
+
 
     /** Called only on the player's application thread, by the two HUD samplers. */
     internal fun sampleVideoPresentation(): PlaybackVideoPresentation {
