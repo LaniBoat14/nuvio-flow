@@ -111,6 +111,7 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
         parallelStartupPrefetchUnlocked.set(true)
     }
 
+    var networkManual = false
     var useParallelConnections: Boolean = PlayerSettings.DEFAULT_USE_PARALLEL_CONNECTIONS
     var parallelConnectionCount: Int = PlayerSettings.DEFAULT_PARALLEL_CONNECTION_COUNT
     var parallelChunkSizeKb: Int = PlayerSettings.DEFAULT_PARALLEL_CHUNK_SIZE_KB
@@ -222,7 +223,17 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
         )
         val useChunkSessionSource = useParallelConnections && !isHls && !isDash
         parallelStartupPrefetchUnlocked.set(!useChunkSessionSource)
-        val networkProgressiveFactory: DataSource.Factory = if (useChunkSessionSource) {
+        val autoNetwork = context.getSharedPreferences("flow-adaptive-hosts", Context.MODE_PRIVATE).getBoolean("enabled", true) && !networkManual
+        val adaptiveEligible = !isHls && !isDash && !isLoopbackUrl(url) && url.startsWith("http")
+        val networkProgressiveFactory: DataSource.Factory = if (adaptiveEligible && (autoNetwork || useChunkSessionSource)) {
+            val factory = FlowNativeTransport.factory(context, sanitizedHeaders)
+                ?: PlayerPlaybackNetworking.createHttpDataSourceFactory(sanitizedHeaders)
+            DataSource.Factory {
+                FlowAdaptiveSource(context, factory, adaptive = !useChunkSessionSource,
+                    fixedWorkers = parallelConnectionCount.coerceIn(1,4),
+                    fixedChunkMb = (parallelChunkSizeKb/1024).coerceIn(8,16))
+            }
+        } else if (useChunkSessionSource) {
             val sessionConnections = parallelConnectionCount
             val okHttpFactory = OkHttpDataSource.Factory(playbackHttpClient).apply {
                 setDefaultRequestProperties(sanitizedHeaders)
