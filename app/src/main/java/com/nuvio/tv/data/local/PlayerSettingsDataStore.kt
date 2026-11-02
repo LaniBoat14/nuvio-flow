@@ -342,6 +342,7 @@ data class PlayerSettings(
 
     // Networking
     val bufferEngineEnabled: Boolean = false,
+    val autoSpeedupEnabled: Boolean = true,
     val parallelNetworkEnabled: Boolean = false,
     /** When true the device memory budget caps the buffer; when false Target Buffer Size drives it. */
     val bufferBudgetManaged: Boolean = DEFAULT_BUFFER_BUDGET_MANAGED,
@@ -672,6 +673,7 @@ class PlayerSettingsDataStore @Inject constructor(
     private val vodCacheSizeMbKey = intPreferencesKey("vod_cache_size_mb")
     private val useParallelConnectionsKey = booleanPreferencesKey("use_parallel_connections")
     private val bufferEngineEnabledKey = booleanPreferencesKey("buffer_engine_enabled")
+    private val autoSpeedupEnabledKey = booleanPreferencesKey("auto_speedup_enabled")
     private val parallelNetworkEnabledKey = booleanPreferencesKey("parallel_network_enabled")
     private val allowLargeTargetBufferKey = booleanPreferencesKey("allow_large_target_buffer")
     private val bufferBudgetManagedKey = booleanPreferencesKey("buffer_budget_managed")
@@ -1096,6 +1098,7 @@ class PlayerSettingsDataStore @Inject constructor(
                 vodCacheSizeMb = (prefs[vodCacheSizeMbKey] ?: PlayerSettings.DEFAULT_VOD_CACHE_SIZE_MB).coerceIn(PlayerSettings.MIN_VOD_CACHE_SIZE_MB, PlayerSettings.MAX_VOD_CACHE_SIZE_MB),
                 useParallelConnections = prefs[useParallelConnectionsKey] ?: PlayerSettings.DEFAULT_USE_PARALLEL_CONNECTIONS,
                 bufferEngineEnabled = prefs[bufferEngineEnabledKey] ?: false,
+                autoSpeedupEnabled = prefs[autoSpeedupEnabledKey] ?: true,
                 parallelNetworkEnabled = prefs[parallelNetworkEnabledKey] ?: false,
                 allowLargeTargetBuffer = prefs[allowLargeTargetBufferKey] ?: PlayerSettings.DEFAULT_ALLOW_LARGE_TARGET_BUFFER,
                 bufferBudgetManaged = prefs[bufferBudgetManagedKey] ?: PlayerSettings.DEFAULT_BUFFER_BUDGET_MANAGED,
@@ -1829,6 +1832,10 @@ class PlayerSettingsDataStore @Inject constructor(
     suspend fun setUseParallelConnections(enabled: Boolean) { store().edit { it[useParallelConnectionsKey] = enabled } }
     suspend fun setBufferEngineEnabled(enabled: Boolean) {
         store().edit { it[bufferEngineEnabledKey] = enabled }
+    }
+
+    suspend fun setAutoSpeedupEnabled(enabled: Boolean) {
+        store().edit { it[autoSpeedupEnabledKey] = enabled }
     }
 
     suspend fun setParallelNetworkEnabled(enabled: Boolean) {

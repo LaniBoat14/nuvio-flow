@@ -40,9 +40,12 @@ internal object ReceiveWindow {
     }.getOrNull()
 }
 
-/** [NoDelaySocketFactory] plus the playback receive buffer from [ReceiveWindow]. */
+/** [NoDelaySocketFactory] plus the playback receive buffer from [ReceiveWindow], while Automatic speed-up is on. */
 object PlaybackSocketFactory : SocketFactory() {
     private val delegate: SocketFactory = NoDelaySocketFactory
+
+    @Volatile
+    var windowEnabled: Boolean = true
 
     // OkHttp connects the unconnected socket itself, so the buffer is set before the handshake.
     override fun createSocket(): Socket = delegate.createSocket().window()
@@ -58,6 +61,7 @@ object PlaybackSocketFactory : SocketFactory() {
         delegate.createSocket(address, port, localAddress, localPort)
 
     private fun Socket.window(): Socket = apply {
+        if (!windowEnabled) return@apply
         val bytes = ReceiveWindow.bytes
         if (bytes > 0) runCatching { receiveBufferSize = bytes }
     }
