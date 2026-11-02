@@ -27,7 +27,13 @@ def main():
    if dest.is_dir(): shutil.rmtree(dest)
    if src.is_dir(): shutil.copytree(src,dest)
    else: shutil.copyfile(src,dest)
-  for d in brand.iterdir(): shutil.copytree(d,ROOT/'app/src/main/res'/d.name,dirs_exist_ok=True)
+  for d in brand.iterdir():
+   destination=ROOT/'app/src/main/res'/d.name
+   destination.mkdir(parents=True,exist_ok=True)
+   for icon in d.iterdir():
+    if icon.is_file():
+     for existing in destination.glob(icon.stem+'.*'): existing.unlink()
+   shutil.copytree(d,destination,dirs_exist_ok=True)
   s=(arc/'app/build.gradle.kts').read_text()
   s=s.replace('applicationId = "com.nuvio.tv.test"','applicationId = "com.jeffrey.nuvioflow"')
   s=s.replace('versionCode = 1568','versionCode = 2011').replace('versionName = "1.1.0-nt.9.2"','versionName = "1.1.0-beta.9.flow.13"')
