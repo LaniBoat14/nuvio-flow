@@ -103,7 +103,7 @@ jobs:
         run: |
           python3 scripts/test_flow_upstream.py
           chmod +x gradlew
-          ./gradlew :app:testFullReleaseUnitTest --tests com.nuvio.tv.ui.screens.player.FlowNetworkPolicyTest --tests com.nuvio.tv.ui.screens.player.FlowBufferedReadTest --tests com.nuvio.tv.ui.screens.player.FlowMuxBitrateTest --tests com.nuvio.tv.ui.screens.player.LibassOverlayGeometryTest --tests com.nuvio.tv.ui.screens.player.PlaybackMatchTextTest --tests com.nuvio.tv.updater.FlowUpdateVersionTest --tests com.nuvio.tv.data.local.ContinueWatchingSnapshotDecoderTest :app:assembleFullRelease --max-workers=2 --no-daemon --console=plain --stacktrace "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process
+          ./gradlew :app:testFullReleaseUnitTest --tests com.nuvio.tv.core.network.adaptive.AdaptiveEngineTest --tests com.nuvio.tv.ui.screens.player.FlowAdaptiveSourceTest --tests com.nuvio.tv.ui.screens.player.FlowNetworkPolicyTest --tests com.nuvio.tv.ui.screens.player.FlowBufferedReadTest --tests com.nuvio.tv.ui.screens.player.FlowMuxBitrateTest --tests com.nuvio.tv.ui.screens.player.LibassOverlayGeometryTest --tests com.nuvio.tv.ui.screens.player.PlaybackMatchTextTest --tests com.nuvio.tv.updater.FlowUpdateVersionTest --tests com.nuvio.tv.data.local.ContinueWatchingSnapshotDecoderTest :app:assembleFullRelease --max-workers=2 --no-daemon --console=plain --stacktrace "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process
       - name: Verify expected Flow APK
         if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true'
         run: |
@@ -147,7 +147,7 @@ jobs:
           TARGET=$(git rev-parse HEAD)
           FLAGS=()
           case "$TAG" in *-*) FLAGS+=(--prerelease) ;; esac
-          gh release create "$TAG" --target "$TARGET" --draft --title "Nuvio Flow $TAG" --notes "Signed Flow update. Official source baseline: $(cat .flow/upstream-tag). Includes the Flow analytics overlay and startup cache repair." "${FLAGS[@]}" app/build/outputs/apk/full/release/*.apk
+          gh release create "$TAG" --target "$TARGET" --draft --title "Nuvio Flow $TAG" --notes "Signed Flow update. Official source baseline: $(cat .flow/upstream-tag). Adds adaptive ranged playback, Automatic connection controls, bounded hedging, host profiles, seek reuse and shared buffer budgeting. Playback performance requires device validation." "${FLAGS[@]}" app/build/outputs/apk/full/release/*.apk
           gh release edit "$TAG" --draft=false
       - name: Remove private inputs
         if: always()

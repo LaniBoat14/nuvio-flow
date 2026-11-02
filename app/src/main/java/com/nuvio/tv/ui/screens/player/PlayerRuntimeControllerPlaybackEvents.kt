@@ -338,6 +338,11 @@ internal fun PlayerRuntimeController.startProgressUpdates() {
     progressJob?.cancel()
     progressJob = scope.launch {
         while (isActive) {
+            currentBitrateAwareLoadControl?.setNetworkReserveBytes(FlowAdaptiveRuntime.reservedMb.toLong()*1024*1024)
+            _exoPlayer?.let {
+                FlowAdaptiveRuntime.bufferSeconds=(it.bufferedPosition-it.currentPosition).coerceAtLeast(0)/1000.0
+                FlowAdaptiveRuntime.durationMs=it.duration.takeIf{d->d>0} ?: 0
+            }
             if (isUsingMpvEngine()) {
                 val view = mpvView
                 if (view != null) {

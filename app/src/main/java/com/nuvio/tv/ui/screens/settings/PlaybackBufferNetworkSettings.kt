@@ -92,15 +92,34 @@ internal fun PlaybackBufferNetworkSection(
     DiskCacheControls(settings = settings, onUpdate = onUpdate)
 
     SettingsSectionLabel(text = stringResource(R.string.playback_network_label))
+    val networkPrefs=context.getSharedPreferences("flow-adaptive-hosts", android.content.Context.MODE_PRIVATE)
+    var autoSpeedup by remember { mutableStateOf(networkPrefs.getBoolean("enabled",true)) }
     SettingsToggleRow(
-        title = stringResource(R.string.playback_net_custom),
-        subtitle = stringResource(R.string.playback_net_custom_sub),
-        checked = settings.parallelNetworkEnabled,
-        onToggle = { onUpdate { setParallelNetworkEnabled(!settings.parallelNetworkEnabled) } }
+        title = "Automatic speed-up",
+        subtitle = "Adjust downloads to the movie and available memory. Off: one standard download unless a fixed connection count is selected.",
+        checked = autoSpeedup,
+        onToggle = { autoSpeedup=!autoSpeedup;networkPrefs.edit().putBoolean("enabled",autoSpeedup).apply() }
     )
-    if (settings.parallelNetworkEnabled) {
-        ParallelNetworkControls(settings = settings, updateMemory = updateMemory)
+    val choice=if(!settings.parallelNetworkEnabled) 0 else if(!settings.useParallelConnections) 1 else settings.parallelConnectionCount.coerceIn(2,4)
+    SliderSettingsItem(
+        title="Connections",
+        subtitle="Automatic manages downloads. A number uses your fixed setting. Four normal downloads leave recovery capacity within the six-request limit.",
+        value=choice, valueText=if(choice==0) "Automatic" else choice.toString(),
+        minValue=0,maxValue=4,step=1,
+        onValueChange={ count -> updateMemory {
+            setParallelNetworkEnabled(count!=0)
+            setUseParallelConnections(count>=2)
+            if(count>=2)setParallelConnectionCount(count)
+        } }
+    )
+    if(choice>=2) {
+        SliderSettingsItem(title="Chunk size",subtitle="Larger ranges reduce request overhead but require more memory.",
+            value=if(settings.parallelChunkSizeKb>=16*1024) 1 else 0,
+            valueText=if(settings.parallelChunkSizeKb>=16*1024) "16 MB" else "8 MB",
+            minValue=0,maxValue=1,step=1,
+            onValueChange={value->updateMemory{setParallelChunkSizeKb(if(value==1)16*1024 else 8*1024)}})
     }
+
 }
 
 @androidx.annotation.OptIn(UnstableApi::class)

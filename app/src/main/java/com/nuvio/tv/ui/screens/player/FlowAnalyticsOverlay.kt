@@ -166,6 +166,8 @@ internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiS
                 add("Output mode" to (FlowAudioTelemetry.output ?: "Not observed"))
                 add("Underruns" to "${diagnostics.audioUnderruns}")
                 add("NETWORK" to "")
+                add("Mode" to FlowAdaptiveRuntime.mode)
+                add("Decision" to FlowAdaptiveRuntime.reason)
                 add("Transport" to (FlowTransferMeter.transport ?: "Not observed"))
                 add("Buffer" to if (player != null) "${f(ahead)} s ahead" else "Unavailable")
                 add("HTTP speed" to (five?.let { "${f(it)} Mbps · ${if (observed) "receiving" else "no bytes"}" } ?: "Sampling…"))
