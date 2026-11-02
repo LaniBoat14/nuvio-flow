@@ -92,6 +92,26 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:testFullReleaseUnitTest --tests com.nuvio.tv.ui.screens.player.FlowFreshConnectionTest --tests com.nuvio.tv.ui.screens.player.FlowAdaptiveSourceTest --tests com.nuvio.tv.core.network.adaptive.AdaptiveEngineTest --tests com.nuvio.tv.ui.screens.player.FlowNetworkPolicyTest --tests com.nuvio.tv.ui.screens.player.FlowBufferedReadTest --tests com.nuvio.tv.ui.screens.player.FlowMuxBitrateTest --tests com.nuvio.tv.ui.screens.player.LibassOverlayGeometryTest --tests com.nuvio.tv.ui.screens.player.PlaybackMatchTextTest --tests com.nuvio.tv.updater.FlowUpdateVersionTest --tests com.nuvio.tv.data.local.ContinueWatchingSnapshotDecoderTest --max-workers=2 --no-daemon --console=plain --stacktrace "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process
           ./gradlew :app:assembleFullRelease --max-workers=2 --no-daemon --console=plain --stacktrace "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process
+      - name: Collect test failure diagnostics
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          for name in glob.glob('app/build/test-results/**/TEST-*.xml', recursive=True):
+              root = ET.parse(name).getroot()
+              for case in root.iter('testcase'):
+                  for failure in list(case.findall('failure')) + list(case.findall('error')):
+                      print(case.get('classname'), case.get('name'), failure.text or failure.get('message'))
+          PY
+      - name: Preserve unit test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flow-test-reports
+          path: |
+            app/build/test-results/
+            app/build/reports/tests/
+          if-no-files-found: ignore
       - name: Verify expected Flow APK
         run: |
           APK=app/build/outputs/apk/full/release/app-full-armeabi-v7a-release.apk

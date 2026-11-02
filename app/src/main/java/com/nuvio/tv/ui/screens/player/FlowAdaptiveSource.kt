@@ -360,6 +360,8 @@ internal class FlowObservedConnection(
     private val snapshot:FlowConnectionInfo,
     private val refresh:(FlowConnectionInfo)->Unit = {}
 ):DataSource by source {
+    // DataSource's Java default method must be forwarded explicitly by Kotlin wrappers.
+    override fun getResponseHeaders(): Map<String,List<String>> = source.responseHeaders
     val details:FlowConnectionInfo get() {refresh(snapshot);return snapshot}
     override fun open(spec:DataSpec):Long {
         val length=source.open(spec)

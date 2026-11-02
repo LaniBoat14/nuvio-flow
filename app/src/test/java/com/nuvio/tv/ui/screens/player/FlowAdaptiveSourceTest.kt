@@ -27,9 +27,11 @@ class FlowAdaptiveSourceTest {
     @After fun cleanup() {unmockkStatic(SystemClock::class);unmockkStatic(Log::class)}
     private class Server(val file: ByteArray, val ranges: Boolean, val uri: Uri) : DataSource.Factory {
         val active=AtomicInteger();val peak=AtomicInteger()
+        val opens=java.util.concurrent.CopyOnWriteArrayList<Long>()
         override fun createDataSource(): DataSource = object:DataSource {
             var position=0;var end=0;var opened=false;var headers=emptyMap<String,List<String>>()
             override fun open(spec:DataSpec):Long {
+                opens.add(spec.length)
                 position=spec.position.toInt()
                 end=if(spec.length<0)file.size else minOf(file.size,position+spec.length.toInt())
                 if(!ranges)end=file.size
@@ -81,6 +83,15 @@ class FlowAdaptiveSourceTest {
         assertArrayEquals(file.copyOfRange(1000,1100),bytes);second.close()
     }
 
+    @Test fun observedConnectionPreservesRangeHeadersAndBytes(){
+        val file=ByteArray(1_000_000){(it%251).toByte()};val server=Server(file,true,uri)
+        val observed=DataSource.Factory { FlowObservedConnection(server.createDataSource(),FlowConnectionInfo()) }
+        val source=FlowAdaptiveSource(context(),observed,false)
+        assertArrayEquals(file,read(source,0))
+        assertTrue("Capability probe followed by bounded range",server.opens.size>=2)
+        assertTrue("No unbounded fallback request",server.opens.none { it < 0 })
+    }
+
     @Test fun partialRangeFailureRetriesWithoutDuplicatingBytes(){
         val file=ByteArray(1_000_000){(it%251).toByte()};val server=Server(file,true,uri)
         val failed=java.util.concurrent.atomic.AtomicBoolean()
@@ -88,6 +99,7 @@ class FlowAdaptiveSourceTest {
         val primary=DataSource.Factory {
             val original=server.createDataSource()
             object:DataSource by original {
+                override fun getResponseHeaders() = original.responseHeaders
                 var readOnce=false
                 override fun read(buffer:ByteArray,offset:Int,length:Int):Int {
                     if(readOnce && failed.compareAndSet(false,true))throw java.io.IOException("Injected range failure")
@@ -100,6 +112,7 @@ class FlowAdaptiveSourceTest {
         val source=FlowAdaptiveSource(context(),primary,false,3,16,recovery)
         assertArrayEquals(file,read(source,0))
         assertTrue(recoveryCount.get()>0)
+        assertTrue("Must exercise ranged fetching, not raw fallback", server.opens.none { it < 0 })
     }
 
 }
