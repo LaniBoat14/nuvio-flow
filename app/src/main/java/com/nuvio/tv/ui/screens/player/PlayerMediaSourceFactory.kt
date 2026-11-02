@@ -232,7 +232,9 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
                 ?: PlayerPlaybackNetworking.createHttpDataSourceFactory(sanitizedHeaders)
             FlowAdaptiveFactory(FlowAdaptiveSource(context, factory, adaptive = !useChunkSessionSource,
                 fixedWorkers = parallelConnectionCount.coerceIn(1,4),
-                fixedChunkMb = (parallelChunkSizeKb/1024).coerceIn(8,16)))
+                fixedChunkMb = (parallelChunkSizeKb/1024).coerceIn(8,16),
+                recoveryFactory = PlayerPlaybackNetworking.createRangeRecoveryFactory(sanitizedHeaders,true),
+                alternateFactory = PlayerPlaybackNetworking.createRangeRecoveryFactory(sanitizedHeaders,false)))
         } else if (useChunkSessionSource) {
             val sessionConnections = parallelConnectionCount
             val okHttpFactory = OkHttpDataSource.Factory(playbackHttpClient).apply {

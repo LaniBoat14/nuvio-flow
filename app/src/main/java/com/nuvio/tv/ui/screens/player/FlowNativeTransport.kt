@@ -6,7 +6,7 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
-import androidx.media3.datasource.HttpEngineDataSource
+import androidx.media3.datasource.FlowHttpEngineDataSource
 import java.util.concurrent.Executors
 
 /** One shared native engine for progressive media; each source opens one request. */
@@ -30,13 +30,17 @@ internal object FlowNativeTransport {
                 .setEnableHttp2(true)
                 .setEnableQuic(true)
                 .build().also { engine = it }
-            val factory = HttpEngineDataSource.Factory(shared, executor)
+            val factory = FlowHttpEngineDataSource.Factory(shared, executor)
                 .setConnectionTimeoutMs(15_000)
                 .setReadTimeoutMs(15_000)
                 .setUserAgent(PlayerMediaSourceFactory.DEFAULT_USER_AGENT)
                 .setDefaultRequestProperties(headers.filterKeys { !it.equals("Range", true) })
             return DataSource.Factory {
-                factory.createDataSource().apply { addTransferListener(FlowTransferMeter) }
+                val source=factory.createDataSource().apply { addTransferListener(FlowTransferMeter) }
+                FlowObservedConnection(source,FlowConnectionInfo()) { details ->
+                    details.protocol=source.negotiatedProtocol.takeIf{it.isNotBlank()}
+                    details.peer=null // The public native response API does not expose the connected IP.
+                }
             }
         }
     }

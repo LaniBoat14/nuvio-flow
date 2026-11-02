@@ -50,4 +50,26 @@ class AdaptiveEngineTest {
         assertEquals(setOf(a),s.complete(hedge))
         assertNull(s.complete(a));assertEquals(0L,s.consume())
     }
+    @Test fun modeComparisonUsesMedianRatherThanAnIsolatedPeak(){
+        val samples=(0..4).associateWith{listOf(60L,60L,250L)}.toMutableMap()
+        samples[3]=listOf(150L,150L,150L)
+        val result=ModeComparison.select(samples,96)!!
+        assertTrue(result.complete);assertEquals(3,result.index)
+    }
+    @Test fun modeComparisonRequestsMissingTrialsAndRespectsMemory(){
+        assertEquals(2,ModeComparison.select(emptyMap(),96)!!.index)
+        assertEquals(1,ModeComparison.select(emptyMap(),16)!!.index)
+        assertNull(ModeComparison.select(emptyMap(),8))
+    }
+
+    @Test fun cumulativeHedgeBudgetIncludesDuplicateRetries(){
+        val budget=HedgeBudget()
+        repeat(3){budget.normalStarted()}
+        assertTrue(budget.tryHedge())
+        assertFalse(budget.tryHedge())
+        repeat(3){budget.normalStarted()}
+        assertTrue(budget.tryHedge())
+        assertFalse(budget.tryHedge())
+    }
+
 }

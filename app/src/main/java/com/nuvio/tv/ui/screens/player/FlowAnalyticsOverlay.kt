@@ -167,6 +167,8 @@ internal fun FlowAnalyticsOverlay(viewModel: PlayerViewModel, uiState: PlayerUiS
                 add("Underruns" to "${diagnostics.audioUnderruns}")
                 add("NETWORK" to "")
                 add("Mode" to FlowAdaptiveRuntime.mode)
+                add("Protocol" to (FlowAdaptiveRuntime.protocol ?: "Not exposed by native transport"))
+                add("Server IP" to (FlowAdaptiveRuntime.peer ?: "Not exposed by native transport"))
                 add("Decision" to FlowAdaptiveRuntime.reason)
                 add("Transport" to (FlowTransferMeter.transport ?: "Not observed"))
                 add("Buffer" to if (player != null) "${f(ahead)} s ahead" else "Unavailable")
