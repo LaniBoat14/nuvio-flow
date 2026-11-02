@@ -12,7 +12,7 @@ import java.util.Locale
 object StreamTextSizeParser {
 
     private val SIZE_REGEX = Regex(
-        """(\d+(?:[.,]\d+)?)\s*(TB|GB|MB|KB)\b""",
+        """(\d+(?:[.,]\d+)?)\s*([TGMK])i?B\b""",
         RegexOption.IGNORE_CASE
     )
 
@@ -34,10 +34,10 @@ object StreamTextSizeParser {
         val match = SIZE_REGEX.find(text) ?: return null
         val value = match.groupValues[1].replace(',', '.').toDoubleOrNull() ?: return null
         val multiplier = when (match.groupValues[2].uppercase(Locale.ROOT)) {
-            "TB" -> KILO * KILO * KILO * KILO
-            "GB" -> KILO * KILO * KILO
-            "MB" -> KILO * KILO
-            "KB" -> KILO
+            "T" -> KILO * KILO * KILO * KILO
+            "G" -> KILO * KILO * KILO
+            "M" -> KILO * KILO
+            "K" -> KILO
             else -> return null
         }
         return (value * multiplier).toLong().takeIf { it > 0L }

@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -7,10 +9,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -18,6 +27,53 @@ import androidx.tv.material3.Icon
 import com.nuvio.tv.R
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.theme.accentBrush
+
+/** True on Home when the watched titles setting is Dim or Hide: watched posters sit under a veil until focused. */
+val LocalDimWatchedPosters = staticCompositionLocalOf { false }
+
+private const val WATCHED_VEIL_ALPHA = 0.68f
+private const val WATCHED_SATURATION = 0.4f
+private const val WATCHED_OPACITY = 0.8f
+
+/** 1 while a watched poster is dimmed, 0 while it is shown normally (focused, or dimming off). */
+@Composable
+fun watchedPosterDim(isWatched: Boolean, focused: Boolean): State<Float> {
+    // Posters that are never dimmed get no animation of their own: rows create them by the dozen while scrolling.
+    if (!isWatched || !LocalDimWatchedPosters.current) return NotDimmed
+    return animateFloatAsState(
+        targetValue = if (focused) 0f else 1f,
+        animationSpec = tween(durationMillis = 150),
+        label = "watchedPosterDim"
+    )
+}
+
+private object NotDimmed : State<Float> {
+    override val value: Float get() = 0f
+}
+
+fun watchedPosterSaturation(dim: Float): Float = 1f - (1f - WATCHED_SATURATION) * dim.coerceIn(0f, 1f)
+
+fun watchedPosterOpacity(dim: Float): Float = 1f - (1f - WATCHED_OPACITY) * dim.coerceIn(0f, 1f)
+
+fun watchedPosterFilter(dim: Float): ColorFilter? =
+    if (dim <= 0f) null else ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(watchedPosterSaturation(dim)) })
+
+fun Modifier.watchedPosterFade(dim: State<Float>): Modifier =
+    if (dim === NotDimmed) this else graphicsLayer { alpha = watchedPosterOpacity(dim.value) }
+
+@Composable
+fun WatchedPosterVeil(
+    focused: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val veilColor = NuvioTheme.colors.Background
+    val veilAlpha by animateFloatAsState(
+        targetValue = if (focused) 0f else WATCHED_VEIL_ALPHA,
+        animationSpec = tween(durationMillis = 150),
+        label = "watchedPosterVeil"
+    )
+    Box(modifier = modifier.drawBehind { drawRect(veilColor, alpha = veilAlpha) })
+}
 
 @Composable
 fun WatchedMarker(

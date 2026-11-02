@@ -12,8 +12,15 @@ internal fun PlayerRuntimeController.releasePlayer() {
 // engine's local url, which stops serving once the torrent stream is stopped.
 internal fun PlayerRuntimeController.releasePlayer(
     flushPlaybackState: Boolean,
-    keepTorrentStream: Boolean = false
+    preserveRecovery: Boolean = false,
+    keepTorrentStream: Boolean = false,
+    trimBufferInBackground: Boolean = false
 ) {
+    if (!preserveRecovery) {
+        playbackRecoveryJob?.cancel()
+        playbackRecoveryJob = null
+        playbackRecoveryGate.cancel(resetIdentity = flushPlaybackState)
+    }
     logScrobbleDiagnostic("release_player", "flushPlaybackState=$flushPlaybackState")
 
     // Preserve current subtitle selection across any rebuild. When the user explicitly
@@ -48,6 +55,8 @@ internal fun PlayerRuntimeController.releasePlayer(
     }
 
     isReleasingPlayer = true
+    PlaybackByteCounter.reset()
+    PlaybackLanes.clear()
     com.nuvio.tv.core.recommendations.TvRecommendationManager.isPlaybackActive.value = false
     if (flushPlaybackState) {
         if (!keepTorrentStream) stopTorrentStream()
@@ -101,23 +110,50 @@ internal fun PlayerRuntimeController.releasePlayer(
     mpvStableProgressResetJob?.cancel()
     mpvStableProgressResetJob = null
     releaseMpvPlayer()
+    // Ordering: notifyAudioSessionUpdate(false) above
+    // reads _exoPlayer.audioSessionId and MUST run before _exoPlayer is nulled
+    // below, or the audio-effect close broadcast silently no-ops and the
+    // session leaks. Keep that call ahead of this block in any refactor.
+    // Leaving the player: the playback thread would free the whole buffer while stop() and clearVideoSurface() wait
+    // for it on Main, so that is done on a background thread once the player is gone.
+    val deferredTrim = if (trimBufferInBackground) {
+        (_loadControl as? com.nuvio.tv.core.player.BufferBudgetControl)?.stopTrim?.also { it.deferred = true }
+    } else {
+        null
+    }
     _exoPlayer?.let { player ->
+        // No pause()/clearMediaItems(): they are redundant pre-release round
+        // trips (see disposeExoPlayerBeforeRebuild). release() itself must stay
+        // on Main (the engine enforces application-thread access), so the
+        // Main-thread block is instead capped by
+        // PLAYER_RELEASE_TIMEOUT_MS and measured here.
         runCatching { player.playWhenReady = false }
-        runCatching { player.pause() }
         runCatching { player.stop() }
-        runCatching { player.clearMediaItems() }
         runCatching { player.clearVideoSurface() }
         runCatching { player.releaseAssHandlerCompat() }
+        val releaseStartMs = android.os.SystemClock.elapsedRealtime()
         runCatching { player.release() }
+        val releaseMs = android.os.SystemClock.elapsedRealtime() - releaseStartMs
+        android.util.Log.i(
+            PlayerRuntimeController.TAG,
+            "PLAYER_RELEASE: site=teardown exoReleaseMs=$releaseMs"
+        )
+        com.nuvio.tv.core.player.AllocationRecorder.stop()
     }
+    deferredTrim?.trimInBackground()
     _exoPlayer = null
+    nativeVideoSelection.clear()
+    attachBufferMemoryKeeper(null)
     activeAssVideoEffect = null
     _loadControl = null
     currentBitrateAwareLoadControl = null
-    currentParallelChunkOverheadMb = 0
     ffmpegAudioRenderer = null
+    // No player, no bypass.
+    isAudioOutputBypassing = false
     updateAudioControlAvailability()
     playbackSpeedAwareAudioSink = null
+    currentExoPlayerListener = null
+    currentExoAnalyticsListener = null
     resetPlaybackTimeline()
     isReleasingPlayer = false
 }
@@ -135,6 +171,7 @@ internal fun PlayerRuntimeController.notifyAudioSessionUpdate(active: Boolean) {
                 intent.putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MOVIE)
             }
             context.sendBroadcast(intent)
+            effectControlSessionId = if (active) player.audioSessionId else null
         } catch (e: SecurityException) {
             e.printStackTrace()
         }

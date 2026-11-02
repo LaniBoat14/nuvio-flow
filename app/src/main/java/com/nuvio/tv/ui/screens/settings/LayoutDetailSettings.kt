@@ -33,6 +33,12 @@ internal fun LayoutDetailPageSection(
         onClick = { showOverlayStyleDialog = true }
     )
     SettingsToggleRow(
+        title = stringResource(R.string.layout_episode_synopsis_under_row),
+        subtitle = stringResource(R.string.layout_episode_synopsis_under_row_sub),
+        checked = uiState.episodeSynopsisUnderRow,
+        onToggle = { onEvent(LayoutSettingsEvent.SetEpisodeSynopsisUnderRow(!uiState.episodeSynopsisUnderRow)) }
+    )
+    SettingsToggleRow(
         title = stringResource(R.string.random_episode_title),
         subtitle = stringResource(R.string.layout_random_episode_sub),
         checked = uiState.randomEpisodeEnabled,
@@ -92,12 +98,6 @@ internal fun LayoutDetailPageSection(
                 }
             )
         }
-        SettingsToggleRow(
-            title = stringResource(R.string.layout_trailer_4k),
-            subtitle = stringResource(R.string.layout_trailer_4k_sub),
-            checked = uiState.trailer4kEnabled,
-            onToggle = { onEvent(LayoutSettingsEvent.SetTrailer4kEnabled(!uiState.trailer4kEnabled)) }
-        )
     }
     SettingsToggleRow(
         title = stringResource(R.string.layout_trailer_button),
@@ -106,6 +106,12 @@ internal fun LayoutDetailPageSection(
         onToggle = {
             onEvent(LayoutSettingsEvent.SetDetailPageTrailerButtonEnabled(!uiState.detailPageTrailerButtonEnabled))
         }
+    )
+    SettingsToggleRow(
+        title = "Use IMDb trailers",
+        subtitle = "Play ad-free IMDb trailers when available (HD only); otherwise falls back to YouTube. IMDb discovery runs in the background.",
+        checked = uiState.imdbTrailersEnabled,
+        onToggle = { onEvent(LayoutSettingsEvent.SetImdbTrailersEnabled(!uiState.imdbTrailersEnabled)) }
     )
 
     SettingsSectionLabel(text = stringResource(R.string.layout_detail_group_metadata))
@@ -183,7 +189,6 @@ internal fun LayoutStreamsSection(
         title = stringResource(R.string.settings_stream_badges_in_player_title),
         subtitle = stringResource(R.string.settings_stream_badges_in_player_description),
         checked = streamBadgeUiState.showInPlayer,
-        enabled = streamBadgeUiState.rules.hasImport,
         onToggle = { onShowInPlayerChange(!streamBadgeUiState.showInPlayer) }
     )
     if (streamBadgeUiState.showInPlayer && streamBadgeUiState.rules.hasImport) {

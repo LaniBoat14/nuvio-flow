@@ -43,4 +43,11 @@ class MemberBrandWordmarkTest {
         assertEquals(2.4f, MemberBadgeGradientWidthMultiplier)
         assertEquals(2_750, MemberBadgeSweepHalfDurationMs)
     }
+
+    @Test
+    fun badgeSweepEndsSoAStillPageStopsRedrawing() {
+        val totalMs = MemberBadgeSweepCycles * 2 * MemberBadgeSweepHalfDurationMs
+        assertEquals(1, MemberBadgeSweepCycles)
+        assertEquals(5_500, totalMs)
+    }
 }

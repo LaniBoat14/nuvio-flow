@@ -93,25 +93,19 @@ class SearchViewModelSuggestionsTest {
         assertEquals(listOf(TITLE), viewModel.uiState.value.suggestions)
     }
 
-    /**
-     * Walks the two debounces one at a time rather than asserting the settled state, so it fails
-     * on the original mechanism: the strip filling at 150ms and the live search emptying it at
-     * 350ms. An end-state assertion alone would pass even if the ordering were wrong.
-     */
+    /** The strip is filled by the live search's own answers, not by a second request for the same word. */
     @Test
-    fun `the strip fills before live search runs and survives it`() = runTest {
+    fun `the strip fills from the live search answers`() = runTest {
         val viewModel = newViewModel()
 
         viewModel.onEvent(SearchEvent.QueryChanged("wolf"))
 
-        // Past SUGGESTION_DEBOUNCE_MS, short of LIVE_SEARCH_DEBOUNCE_MS. An empty submittedQuery
-        // is what pins the ordering: the strip is full while live search is still pending.
+        // Short of LIVE_SEARCH_DEBOUNCE_MS: nothing has been asked yet.
         advanceTimeBy(200)
         runCurrent()
-        assertEquals(listOf(TITLE), viewModel.uiState.value.suggestions)
+        assertEquals(emptyList<String>(), viewModel.uiState.value.suggestions)
         assertEquals("", viewModel.uiState.value.submittedQuery)
 
-        // Past LIVE_SEARCH_DEBOUNCE_MS. This is the run that used to empty the strip.
         advanceTimeBy(200)
         runCurrent()
         assertEquals("wolf", viewModel.uiState.value.submittedQuery)
@@ -269,7 +263,7 @@ class SearchViewModelSuggestionsTest {
         assertEquals(listOf(SHORT_TITLE, TITLE), viewModel.uiState.value.suggestions)
     }
 
-    /** SUGGESTION_DEBOUNCE_MS has not elapsed, so nothing has been fetched for the new query. */
+    /** LIVE_SEARCH_DEBOUNCE_MS has not elapsed, so nothing has been fetched for the new query. */
     @Test
     fun `a keystroke that rules a title out drops it before the fetch runs`() = runTest {
         val viewModel = newViewModel(catalogIgnoresQuery = true)
@@ -316,10 +310,10 @@ class SearchViewModelSuggestionsTest {
         advanceUntilIdle()
         assertEquals(listOf(TITLE), viewModel.uiState.value.suggestions)
 
-        // Past SUGGESTION_DEBOUNCE_MS, so the unrelated batch has landed and the matching one
+        // Past LIVE_SEARCH_DEBOUNCE_MS, so the unrelated batch has landed and the matching one
         // has not. The strip should still be showing what it had.
         viewModel.onEvent(SearchEvent.QueryChanged("wolf"))
-        advanceTimeBy(200)
+        advanceTimeBy(400)
         runCurrent()
         assertEquals(listOf(TITLE), viewModel.uiState.value.suggestions)
 
@@ -365,8 +359,8 @@ class SearchViewModelSuggestionsTest {
         val viewModel = newViewModel(catalogTitles = SLO_CATALOGS, slowCatalogs = setOf(MOVIE_CATALOG))
 
         viewModel.onEvent(SearchEvent.QueryChanged("slo"))
-        // Past SUGGESTION_DEBOUNCE_MS, short of the movie catalog's pause.
-        advanceTimeBy(200)
+        // Past LIVE_SEARCH_DEBOUNCE_MS, short of the movie catalog's pause.
+        advanceTimeBy(400)
         runCurrent()
         assertEquals(listOf("Slow Horses", "Slo Pitch"), viewModel.uiState.value.suggestions)
 
@@ -374,7 +368,7 @@ class SearchViewModelSuggestionsTest {
         assertEquals(SLO_STRIP, viewModel.uiState.value.suggestions)
     }
 
-    /** SUGGESTION_DEBOUNCE_MS has not elapsed, so this is narrowing alone, before any fetch. */
+    /** LIVE_SEARCH_DEBOUNCE_MS has not elapsed, so this is narrowing alone, before any fetch. */
     @Test
     fun `narrowing keeps the addon's order`() = runTest {
         val viewModel = newViewModel(catalogTitles = SLO_CATALOGS)
@@ -453,6 +447,7 @@ class SearchViewModelSuggestionsTest {
             watchedSeriesStateHolder = watchedSeries,
             posterOptions = mockk<PosterOptionsController>(relaxed = true),
             serverCatalog = mockk { every { searchAddons } returns flowOf(emptyList()) },
+            catalogSpeed = SearchCatalogSpeed(),
             context = mockk<Context>(relaxed = true)
         )
     }
@@ -474,6 +469,8 @@ class SearchViewModelSuggestionsTest {
          *  search argument does. */
         private val ignoresQuery: Boolean = false
     ) : CatalogRepository {
+        override suspend fun clearCaches() = Unit
+
         override fun getCatalog(
             addonBaseUrl: String,
             addonId: String,
@@ -521,6 +518,8 @@ class SearchViewModelSuggestionsTest {
     /** Two catalogs of one addon answering out of order: the one with no usable titles first,
      *  the one holding the match after a pause. */
     private class StagedCatalogRepository(private val addon: Addon) : CatalogRepository {
+        override suspend fun clearCaches() = Unit
+
         override fun getCatalog(
             addonBaseUrl: String,
             addonId: String,
@@ -592,6 +591,8 @@ class SearchViewModelSuggestionsTest {
             if (catalogId in slowCatalogs) delay(100)
             emit(NetworkResult.Success(row(catalogId, catalogTitles.getValue(catalogId))))
         }
+
+        override suspend fun clearCaches() = Unit
 
         private fun row(catalogId: String, titles: List<String>): CatalogRow = CatalogRow(
             addonId = addon.id,

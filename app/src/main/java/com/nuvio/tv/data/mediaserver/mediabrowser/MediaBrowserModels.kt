@@ -27,6 +27,18 @@ internal data class AuthResult(
 )
 
 @Serializable
+internal data class QuickConnectResult(
+    @SerialName("Authenticated") val authenticated: Boolean = false,
+    @SerialName("Secret") val secret: String? = null,
+    @SerialName("Code") val code: String? = null
+)
+
+@Serializable
+internal data class QuickConnectSecret(
+    @SerialName("Secret") val secret: String
+)
+
+@Serializable
 internal data class UserInfo(
     @SerialName("Id") val id: String,
     @SerialName("Name") val name: String? = null
@@ -70,11 +82,43 @@ internal data class BaseItem(
     @SerialName("ParentIndexNumber") val parentIndexNumber: Int? = null,
     @SerialName("LocationType") val locationType: String? = null,
     @SerialName("UserData") val userData: UserItemData? = null,
-    @SerialName("MediaSources") val mediaSources: List<MediaSource> = emptyList()
+    @SerialName("MediaSources") val mediaSources: List<MediaSource> = emptyList(),
+    @SerialName("Chapters") val chapters: List<ChapterInfo> = emptyList(),
+    @SerialName("Trickplay") val trickplay: Map<String, Map<String, TrickplayInfoDto>>? = null
 ) {
     val isMissing: Boolean
         get() = locationType.equals("Virtual", ignoreCase = true)
 }
+
+/** Jellyfin's TrickplayInfoDto; Interval is in milliseconds. */
+@Serializable
+internal data class TrickplayInfoDto(
+    @SerialName("Width") val width: Int? = null,
+    @SerialName("Height") val height: Int? = null,
+    @SerialName("TileWidth") val tileWidth: Int? = null,
+    @SerialName("TileHeight") val tileHeight: Int? = null,
+    @SerialName("ThumbnailCount") val thumbnailCount: Int? = null,
+    @SerialName("Interval") val interval: Int? = null
+)
+
+@Serializable
+internal data class ChapterInfo(
+    @SerialName("StartPositionTicks") val startPositionTicks: Long? = null,
+    @SerialName("Name") val name: String? = null,
+    @SerialName("MarkerType") val markerType: String? = null
+)
+
+@Serializable
+internal data class MediaSegmentsResult(
+    @SerialName("Items") val items: List<MediaSegmentDto> = emptyList()
+)
+
+@Serializable
+internal data class MediaSegmentDto(
+    @SerialName("Type") val type: String? = null,
+    @SerialName("StartTicks") val startTicks: Long? = null,
+    @SerialName("EndTicks") val endTicks: Long? = null
+)
 
 @Serializable
 internal data class NamedItem(
@@ -105,9 +149,12 @@ internal data class MediaSource(
     @SerialName("Path") val path: String? = null,
     @SerialName("Container") val container: String? = null,
     @SerialName("Size") val size: Long? = null,
+    @SerialName("Bitrate") val bitrate: Long? = null,
+    @SerialName("RunTimeTicks") val runTimeTicks: Long? = null,
     @SerialName("ETag") val eTag: String? = null,
     @SerialName("SupportsDirectPlay") val supportsDirectPlay: Boolean = false,
     @SerialName("SupportsDirectStream") val supportsDirectStream: Boolean = false,
+    @SerialName("SupportsTranscoding") val supportsTranscoding: Boolean = false,
     @SerialName("TranscodingUrl") val transcodingUrl: String? = null,
     @SerialName("DefaultAudioStreamIndex") val defaultAudioStreamIndex: Int? = null,
     @SerialName("MediaStreams") val mediaStreams: List<MediaStream> = emptyList()
@@ -125,6 +172,17 @@ internal data class MediaStream(
     @SerialName("DisplayTitle") val displayTitle: String? = null,
     @SerialName("Width") val width: Int? = null,
     @SerialName("Height") val height: Int? = null,
+    @SerialName("BitRate") val bitRate: Long? = null,
+    @SerialName("Profile") val profile: String? = null,
+    @SerialName("Channels") val channels: Int? = null,
+    @SerialName("ChannelLayout") val channelLayout: String? = null,
+    @SerialName("IsDefault") val isDefault: Boolean = false,
+    @SerialName("VideoRange") val videoRange: String? = null,
+    @SerialName("VideoRangeType") val videoRangeType: String? = null,
+    @SerialName("DvProfile") val dvProfile: Int? = null,
+    @SerialName("DvBlSignalCompatibilityId") val dvBlSignalCompatibilityId: Int? = null,
+    @SerialName("ExtendedVideoType") val extendedVideoType: String? = null,
+    @SerialName("ExtendedVideoSubType") val extendedVideoSubType: String? = null,
     @SerialName("IsExternal") val isExternal: Boolean = false,
     @SerialName("DeliveryMethod") val deliveryMethod: String? = null,
     @SerialName("DeliveryUrl") val deliveryUrl: String? = null
@@ -153,7 +211,23 @@ internal data class DeviceProfile(
     @SerialName("MaxStreamingBitrate") val maxStreamingBitrate: Long,
     @SerialName("DirectPlayProfiles") val directPlayProfiles: List<DirectPlayProfile>,
     @SerialName("TranscodingProfiles") val transcodingProfiles: List<TranscodingProfile>,
+    @SerialName("CodecProfiles") val codecProfiles: List<CodecProfile> = emptyList(),
     @SerialName("SubtitleProfiles") val subtitleProfiles: List<SubtitleProfile>
+)
+
+@Serializable
+internal data class CodecProfile(
+    @SerialName("Type") val type: String = "Video",
+    @SerialName("Codec") val codec: String,
+    @SerialName("Conditions") val conditions: List<ProfileCondition>
+)
+
+@Serializable
+internal data class ProfileCondition(
+    @SerialName("Condition") val condition: String,
+    @SerialName("Property") val property: String,
+    @SerialName("Value") val value: String,
+    @SerialName("IsRequired") val isRequired: Boolean = false
 )
 
 @Serializable

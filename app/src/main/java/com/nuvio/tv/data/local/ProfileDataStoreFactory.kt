@@ -13,6 +13,10 @@ import com.nuvio.tv.domain.model.DiscoverLocation
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
@@ -22,6 +26,28 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 import java.io.File
+
+private val retainedStandaloneDataStoreNames = setOf(
+    "app_onboarding",
+    "appearance_v2",
+    "auth_session_notice_store",
+    "debug_settings",
+    "device_local_player_prefs",
+    "device_ui_preferences_v2",
+    "profile_lock_state",
+    "profile_settings",
+    "seek_thumbnails",
+    "torrent_settings",
+    "ui_scale_prefs"
+)
+
+internal fun isProfileScopedDataStoreFile(fileName: String): Boolean {
+    if (!fileName.endsWith(".preferences_pb")) return false
+    val dataStoreName = fileName.removeSuffix(".preferences_pb")
+    return dataStoreName !in retainedStandaloneDataStoreNames
+}
+
+private const val SHADOW_PART_SUFFIX = ".part"
 
 private class ScopedDataStore(
     val store: DataStore<Preferences>,
@@ -61,17 +87,15 @@ class ProfileDataStoreFactory @Inject constructor(
     private val cache = ConcurrentHashMap<String, ScopedDataStore>()
     private val deletedProfileIds = ConcurrentHashMap.newKeySet<Int>()
     private val lock = Any()
-    private val retainedStandaloneDataStoreNames = setOf(
-        "app_onboarding",
-        "auth_session_notice_store",
-        "debug_settings",
-        "device_local_player_prefs",
-        "profile_lock_state",
-        "profile_settings",
-        "sentry_settings",
-        "torrent_settings",
-        "tv_channel_prefs"
-    )
+    private val shadowLock = Any()
+    @Volatile
+    private var shadowGeneration = 0L
+    private val lifecycleMutex = Mutex()
+    private val historyGenerations = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    internal val historyGenerationChanges: kotlinx.coroutines.flow.StateFlow<Long> get() = historyGenerations
+    private val generationOwnedFeatures = setOf("watched_items_preferences", WATCH_PROGRESS_METADATA_FEATURE, WATCH_PROGRESS_RECENT_FEATURE, WATCH_PROGRESS_ARCHIVE_FEATURE)
+    private var resetting = false
+    private val retiringProfiles = mutableSetOf<Int>()
 
     /** Set of DataStore file names that were reset due to corruption during this session. */
     val corruptedFileNames: MutableSet<String> = ConcurrentHashMap.newKeySet()
@@ -79,57 +103,96 @@ class ProfileDataStoreFactory @Inject constructor(
     fun get(profileId: Int, featureName: String): DataStore<Preferences> {
         val fileName = if (profileId == 1) featureName else "${featureName}_p$profileId"
         synchronized(lock) {
-            cache[fileName]?.let { return it.store }
+            if (profileId in deletedProfileIds || profileId in retiringProfiles) {
+                throw CancellationException("Profile store unavailable during retirement")
+            }
+            cache[fileName]?.let {
+                if (resetting && it.store is ProfileStoreLifetime) throw CancellationException("Profile store reset in progress")
+                return it.store
+            }
+            if (resetting) throw CancellationException("Profile store reset in progress")
             return createAndCache(fileName).store
         }
     }
 
     suspend fun clearProfile(profileId: Int) {
         if (profileId == 1) return
-        deletedProfileIds.add(profileId)
-        val suffix = "_p$profileId"
-        val keysToRemove = synchronized(lock) {
-            cache.keys.filter { it.endsWith(suffix) }
-        }
-        for (key in keysToRemove) {
-            val scoped = synchronized(lock) { cache.remove(key) } ?: continue
-            runCatching { scoped.store.edit { it.clear() } }
-            // Cancel the scope so DataStore releases the file from its active-files
-            // registry. Wait for completion before any subsequent get() can create
-            // a fresh DataStore for the same path.
-            scoped.job.cancel()
-            scoped.job.join()
-        }
-    }
-
-    suspend fun clearProfileScopedData() = withContext(Dispatchers.IO) {
-        val cachedStores = synchronized(lock) { cache.toMap() }
-        cachedStores.values.forEach { scoped ->
-            runCatching { scoped.store.edit { it.clear() } }
-        }
-        deletedProfileIds.clear()
-        corruptedFileNames.clear()
-
-        val cachedFileNames = cachedStores.keys.mapTo(mutableSetOf()) { "$it.preferences_pb" }
-        val dataStoreDir = File(context.filesDir, "datastore")
-        if (!dataStoreDir.exists()) return@withContext
-        dataStoreDir.listFiles()?.forEach { file ->
-            if (file.name !in cachedFileNames && isProfileScopedDataStoreFile(file.name)) {
-                file.delete()
+        withContext(Dispatchers.IO + NonCancellable) {
+            lifecycleMutex.withLock {
+                val stores = synchronized(lock) {
+                    deletedProfileIds.add(profileId)
+                    retiringProfiles.add(profileId)
+                    cache.filterKeys { it.endsWith("_p$profileId") }
+                }
+                try {
+                    retireStores(stores)
+                    File(context.filesDir, "datastore").listFiles()?.forEach { file ->
+                        if (file.name.removeSuffix(SHADOW_PART_SUFFIX).removeSuffix(".bak").endsWith("_p$profileId.preferences_pb")) file.delete()
+                    }
+                } finally {
+                    synchronized(lock) { retiringProfiles.remove(profileId); historyGenerations.value++ }
+                }
             }
         }
     }
 
-    fun isProfileDeleted(profileId: Int): Boolean = profileId in deletedProfileIds
-
-    fun markProfileCreated(profileId: Int) {
-        deletedProfileIds.remove(profileId)
+    suspend fun clearProfileScopedData() = withContext(Dispatchers.IO + NonCancellable) {
+        lifecycleMutex.withLock {
+            val stores = synchronized(lock) {
+                resetting = true
+                cache.toMap()
+            }
+            try {
+                val owned = stores.filterValues { it.store is ProfileStoreLifetime }
+                retireStores(owned)
+                // Other settings stores intentionally remain live across sign-out.
+                stores.filterValues { it.store !is ProfileStoreLifetime }.values.forEach { scoped ->
+                    scoped.store.edit { it.clear() }
+                }
+                val retainedFiles = synchronized(lock) { cache.keys.mapTo(mutableSetOf()) { "$it.preferences_pb" } }
+                val dataStoreDir = File(context.filesDir, "datastore")
+                synchronized(shadowLock) {
+                    shadowGeneration++
+                    dataStoreDir.listFiles()?.forEach { file ->
+                        val baseName = file.name.removeSuffix(SHADOW_PART_SUFFIX).removeSuffix(".bak")
+                        val isShadowCopy = baseName != file.name
+                        if (isProfileScopedDataStoreFile(baseName) && (isShadowCopy || baseName !in retainedFiles)) file.delete()
+                    }
+                }
+                deletedProfileIds.clear()
+                corruptedFileNames.clear()
+            } finally {
+                synchronized(lock) { resetting = false; historyGenerations.value++ }
+            }
+        }
     }
 
-    private fun isProfileScopedDataStoreFile(fileName: String): Boolean {
-        if (!fileName.endsWith(".preferences_pb")) return false
-        val dataStoreName = fileName.removeSuffix(".preferences_pb")
-        return dataStoreName !in retainedStandaloneDataStoreNames
+    private suspend fun retireStores(stores: Map<String, ScopedDataStore>) {
+        var failure: Exception? = null
+        for ((name, scoped) in stores) {
+            try {
+                val lifetime = scoped.store as? ProfileStoreLifetime
+                if (lifetime != null) lifetime.retire() else scoped.store.edit { it.clear() }
+            } catch (error: Exception) {
+                if (failure == null) failure = error else if (failure !== error) failure.addSuppressed(error)
+            } finally {
+                // Keep the entry unavailable until cancellation releases DataStore's
+                // active-file registration. Never permit overlapping file owners.
+                scoped.job.cancel()
+                scoped.job.join()
+                synchronized(lock) { cache.remove(name, scoped) }
+            }
+        }
+        failure?.let { throw it }
+    }
+
+    fun isProfileDeleted(profileId: Int): Boolean = profileId in deletedProfileIds
+
+    fun markProfileCreated(profileId: Int) = synchronized(lock) {
+        check(!resetting && profileId !in retiringProfiles) { "Profile retirement still in progress" }
+        deletedProfileIds.remove(profileId)
+        historyGenerations.value++
+        Unit
     }
 
     private fun createAndCache(fileName: String): ScopedDataStore {
@@ -176,17 +239,38 @@ class ProfileDataStoreFactory @Inject constructor(
         // ensuring a consistent backup exists before any corruption can occur.
         val wrappedStore = ShadowCopyDataStore(store, fileName, scope, this)
 
-        val scoped = ScopedDataStore(wrappedStore, scope, job)
+        val owned = generationOwnedFeatures.any { feature -> fileName == feature || fileName.startsWith("${feature}_p") }
+        val scoped = ScopedDataStore(if (owned) ProfileStoreLifetime(wrappedStore, historyGenerations) else wrappedStore, scope, job)
         cache[fileName] = scoped
         return scoped
     }
 
-    internal fun writeShadowCopy(fileName: String, preferences: Preferences) {
-        val sourceFile = File(File(context.filesDir, "datastore"), "$fileName.preferences_pb")
-        val backupFile = File(File(context.filesDir, "datastore"), "$fileName.preferences_pb.bak")
+    internal fun currentShadowGeneration(): Long = shadowGeneration
+
+    /** Writes [preferences] to the shadow copy without opening the live store file, which DataStore renames over. */
+    internal suspend fun writeShadowCopy(fileName: String, preferences: Preferences, generation: Long) {
+        val dataStoreDir = File(context.filesDir, "datastore")
+        val backupFile = File(dataStoreDir, "$fileName.preferences_pb.bak")
+        val partFile = File(dataStoreDir, "$fileName.preferences_pb.bak$SHADOW_PART_SUFFIX")
         try {
-            if (sourceFile.exists() && sourceFile.length() > 0) {
-                sourceFile.copyTo(backupFile, overwrite = true)
+            val bytes = if (preferences.asMap().isEmpty()) {
+                null
+            } else {
+                okio.Buffer().also {
+                    androidx.datastore.preferences.core.PreferencesSerializer.writeTo(preferences, it)
+                }.readByteArray()
+            }
+            synchronized(shadowLock) {
+                if (generation != shadowGeneration) return
+                if (bytes == null) {
+                    backupFile.delete()
+                    return
+                }
+                partFile.writeBytes(bytes)
+                if (!partFile.renameTo(backupFile)) {
+                    backupFile.delete()
+                    if (!partFile.renameTo(backupFile)) partFile.delete()
+                }
             }
         } catch (e: Exception) {
             Log.w("ProfileDataStoreFactory", "Failed to write shadow copy for $fileName: ${e.message}")
@@ -227,30 +311,29 @@ private class ShadowCopyDataStore(
 
     @Volatile
     private var shadowWritten = false
+    private val shadowMutex = Mutex()
 
     override val data: kotlinx.coroutines.flow.Flow<Preferences>
         get() = delegate.data.also {
-            if (!shadowWritten) {
-                scope.launch(Dispatchers.IO) {
-                    try {
-                        val prefs = delegate.data.first()
-                        if (prefs != emptyPreferences()) {
-                            factory.writeShadowCopy(fileName, prefs)
-                            shadowWritten = true
-                        }
-                    } catch (_: Exception) { }
-                }
-            }
+            if (!shadowWritten) launchShadowCopy()
         }
 
     override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences {
         val result = delegate.updateData(transform)
+        launchShadowCopy()
+        return result
+    }
+
+    // Each copy reads the newest data under the mutex, so a late copy never overwrites a newer one.
+    private fun launchShadowCopy() {
         scope.launch(Dispatchers.IO) {
             try {
-                factory.writeShadowCopy(fileName, result)
-                shadowWritten = true
+                shadowMutex.withLock {
+                    val generation = factory.currentShadowGeneration()
+                    factory.writeShadowCopy(fileName, delegate.data.first(), generation)
+                    shadowWritten = true
+                }
             } catch (_: Exception) { }
         }
-        return result
     }
 }

@@ -1,7 +1,9 @@
-package com.nuvio.tv.ui.screens.player
+﻿package com.nuvio.tv.ui.screens.player
 
 import android.os.SystemClock
 import android.util.Log
+import com.nuvio.tv.core.logging.isSecretPathSegment
+import com.nuvio.tv.core.logging.redactLinksForLog
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
@@ -24,7 +26,8 @@ class LoggingDataSource(
 
     override fun open(dataSpec: DataSpec): Long {
         val t0 = SystemClock.elapsedRealtime()
-        val uriName = dataSpec.uri.path?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "stream"
+        val uriName = dataSpec.uri.path?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+            ?.let { if (it.isSecretPathSegment()) "REDACTED" else it } ?: "stream"
         return try {
             val len = upstream.open(dataSpec)
             val elapsed = (SystemClock.elapsedRealtime() - t0).coerceAtLeast(0L)
@@ -34,7 +37,7 @@ class LoggingDataSource(
             len
         } catch (e: Exception) {
             val elapsed = (SystemClock.elapsedRealtime() - t0).coerceAtLeast(0L)
-            val line = "[$site] file=$uriName pos=${dataSpec.position} FAILED ${e.javaClass.simpleName}: ${e.message} ms=$elapsed"
+            val line = "[$site] file=$uriName pos=${dataSpec.position} FAILED ${e.javaClass.simpleName}: ${e.message?.redactLinksForLog()} ms=$elapsed"
             Log.w("DS_OPEN", line)
             recordEvent(line)
             throw e

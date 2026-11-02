@@ -29,9 +29,11 @@ import com.nuvio.tv.domain.model.DEFAULT_CARD_DEPTH_SHEEN_STRENGTH
 import com.nuvio.tv.domain.model.DiscoverLocation
 import com.nuvio.tv.domain.model.EpisodeOptionsOverlayStyle
 import com.nuvio.tv.domain.model.FocusedPosterTrailerPlaybackTarget
+import com.nuvio.tv.domain.model.LandscapePosterScope
 import com.nuvio.tv.domain.model.DetailImdbRatingsVisibility
 import com.nuvio.tv.domain.model.HomeLayout
 import com.nuvio.tv.domain.model.HomeImdbRatingsVisibility
+import com.nuvio.tv.domain.model.WatchedTitlesMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -80,6 +82,7 @@ class LayoutPreferenceDataStore @Inject constructor(
     private val legacyModernSidebarEnabledKey = booleanPreferencesKey("glass_sidepanel_enabled")
     private val modernSidebarBlurEnabledKey = booleanPreferencesKey("modern_sidebar_blur_enabled")
     private val modernLandscapePostersEnabledKey = booleanPreferencesKey("modern_landscape_posters_enabled")
+    private val landscapePosterScopeKey = stringPreferencesKey("landscape_poster_scope")
     private val heroSectionEnabledKey = booleanPreferencesKey("hero_section_enabled")
     private val posterLabelsEnabledKey = booleanPreferencesKey("poster_labels_enabled")
     private val catalogAddonNameEnabledKey = booleanPreferencesKey("catalog_addon_name_enabled")
@@ -89,6 +92,7 @@ class LayoutPreferenceDataStore @Inject constructor(
     private val focusedPosterBackdropExpandDelaySecondsKey = intPreferencesKey("focused_poster_backdrop_expand_delay_seconds")
     private val focusedPosterBackdropTrailerEnabledKey = booleanPreferencesKey("focused_poster_backdrop_trailer_enabled")
     private val focusedPosterBackdropTrailerMutedKey = booleanPreferencesKey("focused_poster_backdrop_trailer_muted")
+    private val focusedPosterBackdropTrailerLogoKey = booleanPreferencesKey("focused_poster_backdrop_trailer_logo")
     private val focusedPosterBackdropTrailerPlaybackTargetKey =
         stringPreferencesKey("focused_poster_backdrop_trailer_playback_target")
     private val posterCardWidthDpKey = intPreferencesKey("poster_card_width_dp")
@@ -107,7 +111,9 @@ class LayoutPreferenceDataStore @Inject constructor(
     private val randomEpisodeEnabledKey = booleanPreferencesKey("random_episode_enabled")
     private val startupSplashEnabledKey = booleanPreferencesKey("startup_splash_enabled")
     private val alwaysShowLandscapeClearlogoKey = booleanPreferencesKey("always_show_landscape_clearlogo")
+    private val addonLandscapeBackdropLogoKey = booleanPreferencesKey("addon_landscape_backdrop_logo")
     private val episodeOptionsOverlayStyleKey = stringPreferencesKey("episode_options_overlay_style")
+    private val episodeSynopsisUnderRowKey = booleanPreferencesKey("episode_synopsis_under_row")
     private val homeImdbRatingsVisibilityKey = stringPreferencesKey("home_imdb_ratings_visibility")
     private val detailImdbRatingsVisibilityKey = stringPreferencesKey("detail_imdb_ratings_visibility")
     private val useEpisodeThumbnailsInCwKey = booleanPreferencesKey("use_episode_thumbnails_in_cw")
@@ -121,10 +127,12 @@ class LayoutPreferenceDataStore @Inject constructor(
     private val preferExternalMetaAddonDetailKey = booleanPreferencesKey("prefer_external_meta_addon_detail")
     private val modernHeroFullScreenBackdropKey = booleanPreferencesKey("modern_hero_full_screen_backdrop")
     private val hideUnreleasedContentKey = booleanPreferencesKey("hide_unreleased_content")
+    private val watchedTitlesModeKey = stringPreferencesKey("watched_titles_mode")
     private val showFullReleaseDateKey = booleanPreferencesKey("show_full_release_date")
     private val memoryOnlyVerticalScrollKey = booleanPreferencesKey("memory_only_vertical_scroll")
     private val smoothBringIntoViewEnabledKey = booleanPreferencesKey("smooth_bring_into_view_enabled")
     private val fastHorizontalNavigationEnabledKey = booleanPreferencesKey("fast_horizontal_navigation_enabled")
+    private val addonHealthEnabledKey = booleanPreferencesKey("addon_health_enabled")
     private val followAddonsOrderKey = booleanPreferencesKey("follow_addons_order")
     private val composeHighlighterEnabledKey = booleanPreferencesKey("compose_highlighter_enabled")
 
@@ -155,14 +163,11 @@ class LayoutPreferenceDataStore @Inject constructor(
     private fun positiveOrDefault(value: Int?, defaultValue: Int): Int =
         value?.takeIf { it > 0 } ?: defaultValue
 
-    val selectedLayout: Flow<HomeLayout> = profileFlow { prefs ->
-        val layoutName = prefs[layoutKey] ?: HomeLayout.MODERN.name
-        try {
-            HomeLayout.valueOf(layoutName)
-        } catch (e: IllegalArgumentException) {
-            HomeLayout.MODERN
-        }
-    }
+    // The fork uses the Modern layout exclusively. Forced read-side so
+    // stored or sync-imported CLASSIC/GRID values are neutralised: "selected_layout"
+    // rides in the synced layout_settings blob, so a write-side migration alone could
+    // be undone by a remote import. setLayout still records the has-chosen flag.
+    val selectedLayout: Flow<HomeLayout> = profileFlow { HomeLayout.MODERN }
 
     val continueWatchingEnabled: Flow<Boolean> = profileFlow { prefs ->
         prefs[continueWatchingEnabledKey] ?: true
@@ -237,6 +242,10 @@ class LayoutPreferenceDataStore @Inject constructor(
         prefs[modernSidebarBlurEnabledKey] ?: false
     }
 
+    val landscapePosterScope: Flow<LandscapePosterScope> = profileFlow { prefs ->
+        LandscapePosterScope.resolve(prefs[landscapePosterScopeKey], prefs[modernLandscapePostersEnabledKey])
+    }
+
     val modernLandscapePostersEnabled: Flow<Boolean> = profileFlow { prefs ->
         prefs[modernLandscapePostersEnabledKey] ?: false
     }
@@ -292,11 +301,15 @@ class LayoutPreferenceDataStore @Inject constructor(
     }
 
     val focusedPosterBackdropTrailerEnabled: Flow<Boolean> = profileFlow { prefs ->
-        prefs[focusedPosterBackdropTrailerEnabledKey] ?: false
+        prefs[focusedPosterBackdropTrailerEnabledKey] ?: true
     }
 
     val focusedPosterBackdropTrailerMuted: Flow<Boolean> = profileFlow { prefs ->
-        prefs[focusedPosterBackdropTrailerMutedKey] ?: true
+        prefs[focusedPosterBackdropTrailerMutedKey] ?: false
+    }
+
+    val focusedPosterBackdropTrailerLogoEnabled: Flow<Boolean> = profileFlow { prefs ->
+        prefs[focusedPosterBackdropTrailerLogoKey] ?: true
     }
 
     val focusedPosterBackdropTrailerPlaybackTarget: Flow<FocusedPosterTrailerPlaybackTarget> =
@@ -355,10 +368,18 @@ class LayoutPreferenceDataStore @Inject constructor(
         prefs[alwaysShowLandscapeClearlogoKey] ?: false
     }
 
+    val addonLandscapeBackdropLogo: Flow<Boolean> = profileFlow { prefs ->
+        prefs[addonLandscapeBackdropLogoKey] ?: false
+    }
+
     val episodeOptionsOverlayStyle: Flow<EpisodeOptionsOverlayStyle> = profileFlow { prefs ->
         val stored = prefs[episodeOptionsOverlayStyleKey] ?: EpisodeOptionsOverlayStyle.BLUR.name
         runCatching { EpisodeOptionsOverlayStyle.valueOf(stored) }
             .getOrDefault(EpisodeOptionsOverlayStyle.BLUR)
+    }
+
+    val episodeSynopsisUnderRow: Flow<Boolean> = profileFlow { prefs ->
+        prefs[episodeSynopsisUnderRowKey] ?: true
     }
 
     val homeImdbRatingsVisibility: Flow<HomeImdbRatingsVisibility> = profileFlow { prefs ->
@@ -408,6 +429,10 @@ class LayoutPreferenceDataStore @Inject constructor(
         prefs[hideUnreleasedContentKey] ?: false
     }
 
+    val watchedTitlesMode: Flow<WatchedTitlesMode> = profileFlow { prefs ->
+        WatchedTitlesMode.fromStored(prefs[watchedTitlesModeKey])
+    }
+
     val showFullReleaseDate: Flow<Boolean> = profileFlow { prefs ->
         prefs[showFullReleaseDateKey] ?: true
     }
@@ -422,6 +447,10 @@ class LayoutPreferenceDataStore @Inject constructor(
 
     val fastHorizontalNavigationEnabled: Flow<Boolean> = profileFlow { prefs ->
         prefs[fastHorizontalNavigationEnabledKey] ?: false
+    }
+
+    val addonHealthEnabled: Flow<Boolean> = profileFlow { prefs ->
+        prefs[addonHealthEnabledKey] ?: true
     }
 
     val followAddonsOrder: Flow<Boolean> = profileFlow { prefs ->
@@ -456,6 +485,12 @@ class LayoutPreferenceDataStore @Inject constructor(
     suspend fun setFastHorizontalNavigationEnabled(enabled: Boolean) {
         store().edit { prefs ->
             prefs[fastHorizontalNavigationEnabledKey] = enabled
+        }
+    }
+
+    suspend fun setAddonHealthEnabled(enabled: Boolean) {
+        store().edit { prefs ->
+            prefs[addonHealthEnabledKey] = enabled
         }
     }
 
@@ -573,9 +608,10 @@ class LayoutPreferenceDataStore @Inject constructor(
         }
     }
 
-    suspend fun setModernLandscapePostersEnabled(enabled: Boolean) {
+    suspend fun setLandscapePosterScope(scope: LandscapePosterScope) {
         store().edit { prefs ->
-            prefs[modernLandscapePostersEnabledKey] = enabled
+            prefs[landscapePosterScopeKey] = scope.name
+            prefs[modernLandscapePostersEnabledKey] = scope.onHome
         }
     }
 
@@ -654,6 +690,12 @@ class LayoutPreferenceDataStore @Inject constructor(
     suspend fun setFocusedPosterBackdropTrailerMuted(muted: Boolean) {
         store().edit { prefs ->
             prefs[focusedPosterBackdropTrailerMutedKey] = muted
+        }
+    }
+
+    suspend fun setFocusedPosterBackdropTrailerLogoEnabled(enabled: Boolean) {
+        store().edit { prefs ->
+            prefs[focusedPosterBackdropTrailerLogoKey] = enabled
         }
     }
 
@@ -758,9 +800,21 @@ class LayoutPreferenceDataStore @Inject constructor(
         }
     }
 
+    suspend fun setAddonLandscapeBackdropLogo(enabled: Boolean) {
+        store().edit { prefs ->
+            prefs[addonLandscapeBackdropLogoKey] = enabled
+        }
+    }
+
     suspend fun setEpisodeOptionsOverlayStyle(style: EpisodeOptionsOverlayStyle) {
         store().edit { prefs ->
             prefs[episodeOptionsOverlayStyleKey] = style.name
+        }
+    }
+
+    suspend fun setEpisodeSynopsisUnderRow(enabled: Boolean) {
+        store().edit { prefs ->
+            prefs[episodeSynopsisUnderRowKey] = enabled
         }
     }
 
@@ -833,6 +887,12 @@ class LayoutPreferenceDataStore @Inject constructor(
     suspend fun setHideUnreleasedContent(enabled: Boolean) {
         store().edit { prefs ->
             prefs[hideUnreleasedContentKey] = enabled
+        }
+    }
+
+    suspend fun setWatchedTitlesMode(mode: WatchedTitlesMode) {
+        store().edit { prefs ->
+            prefs[watchedTitlesModeKey] = mode.name
         }
     }
 
@@ -919,6 +979,7 @@ class LayoutPreferenceDataStore @Inject constructor(
             val disabledKeys = remoteDisabledKeys + local.disabledKeys.filter(ServerCatalog::isServerKey)
             val titles = remoteTitles + local.customTitles.filterKeys(ServerCatalog::isServerKey)
             prefs[hideUnreleasedContentKey] = payload.hideUnreleasedContent
+            prefs[watchedTitlesModeKey] = WatchedTitlesMode.fromStored(payload.watchedTitlesMode).name
             if (orderKeys.isNotEmpty()) {
                 prefs[homeCatalogOrderKeysKey] = gson.toJson(orderKeys)
             } else {
@@ -942,7 +1003,8 @@ class LayoutPreferenceDataStore @Inject constructor(
             orderKeys = parseCatalogKeys(prefs.getStringOrMigrateSet(homeCatalogOrderKeysKey)),
             disabledKeys = parseCatalogKeys(prefs.getStringOrMigrateSet(disabledHomeCatalogKeysKey)).toSet(),
             customTitles = parseCustomTitles(prefs.getStringOrMigrateSet(customCatalogTitlesKey)),
-            hideUnreleasedContent = prefs[hideUnreleasedContentKey] ?: false
+            hideUnreleasedContent = prefs[hideUnreleasedContentKey] ?: false,
+            watchedTitlesMode = WatchedTitlesMode.fromStored(prefs[watchedTitlesModeKey])
         )
     }
 }

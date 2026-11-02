@@ -1,6 +1,9 @@
 package com.nuvio.tv.ui.screens.player
 
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.v2.appearance.LocalV2Appearance
+import com.nuvio.tv.ui.v2.components.GlassRole
+import com.nuvio.tv.ui.v2.components.nuvioGlass
 
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
@@ -202,7 +205,7 @@ fun PlaybackStatsOverlay(
     modifier: Modifier = Modifier,
     compact: Boolean = false
 ) {
-    val isV2 = false
+    val isV2 = LocalV2Appearance.current != null
     AnimatedVisibility(
         visible = visible && sample != null,
         enter = fadeIn(),
@@ -211,7 +214,7 @@ fun PlaybackStatsOverlay(
     ) {
         Column(
             modifier = Modifier
-                .then(Modifier.background(
+                .then(if (isV2) Modifier.nuvioGlass(GlassRole.HUD) else Modifier.background(
                     color = Color.Black.copy(alpha = 0.7f),
                     shape = RoundedCornerShape(NuvioTheme.radii.sm)
                 ))

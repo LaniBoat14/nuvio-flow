@@ -26,6 +26,9 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.R
 import com.nuvio.tv.core.player.BufferAhead
+import com.nuvio.tv.core.player.thumbnail.SeekThumbMode
+import com.nuvio.tv.core.player.thumbnail.SeekThumbnailPreferences
+import com.nuvio.tv.core.player.thumbnail.SeekThumbnails
 import com.nuvio.tv.data.local.PlayerSettings
 import com.nuvio.tv.data.local.VodCacheSizeMode
 import com.nuvio.tv.ui.screens.player.NuvioExoPlayerPerformanceHelper
@@ -497,7 +500,13 @@ internal fun PlaybackMemoryUsageCard(settings: PlayerSettings) {
             deepPathActive = settings.nuvioPerformanceModeEnabled
         )
     }
-    val seekThumbsMb = 0 // Flow does not allocate seek thumbnails.
+    val seekThumbsMode by SeekThumbnailPreferences.modeFlow(context)
+        .collectAsStateWithLifecycle(initialValue = SeekThumbMode.OFF)
+    val seekThumbsMb = if (seekThumbsMode != SeekThumbMode.OFF) {
+        remember(seekThumbsMode) { SeekThumbnails.displayMemoryChargeMb(context, seekThumbsMode) }
+    } else {
+        0
+    }
     val totalUsageMb = effectiveBufferMb + downloadsMb + seekThumbsMb
     val totalRamBytes = NuvioExoPlayerPerformanceHelper.getDevicePhysicalRamBytes(context)
     val ramKnown = totalRamBytes > 0L

@@ -1,38 +1,43 @@
 package com.nuvio.tv.core.party
 
-import kotlin.time.TimeMark
-import kotlin.time.TimeSource
+/** Estimates how far the host's clock is from ours. The sample with the shortest round trip wins. */
+class PartyClock {
+    private class Sample(val offsetMs: Long, val roundTripMs: Long)
 
-internal class PartyClock(
-    private val timeSource: TimeSource = TimeSource.Monotonic,
-    private val wallClockMs: () -> Long = { System.currentTimeMillis() },
-) {
-    private var anchorServerMs: Long? = null
-    private var anchorMark: TimeMark? = null
-    private var bestRoundTripMs = Long.MAX_VALUE
+    private val samples = ArrayDeque<Sample>()
+    private var roughOffsetMs: Long? = null
 
-    val isSynced: Boolean
-        get() = anchorServerMs != null
+    val hasMeasurement: Boolean get() = samples.isNotEmpty()
 
-    fun mark(): TimeMark = timeSource.markNow()
+    val offsetMs: Long?
+        get() = samples.minByOrNull { it.roundTripMs }?.offsetMs ?: roughOffsetMs
 
-    fun nowMs(): Long {
-        val server = anchorServerMs ?: return wallClockMs()
-        val mark = anchorMark ?: return wallClockMs()
-        return server + mark.elapsedNow().inWholeMilliseconds
+    val roundTripMs: Long?
+        get() = samples.minByOrNull { it.roundTripMs }?.roundTripMs
+
+    fun addSample(sentAtLocal: Long, hostClock: Long, receivedAtLocal: Long) {
+        val roundTrip = receivedAtLocal - sentAtLocal
+        if (roundTrip < 0 || roundTrip > MAX_ROUND_TRIP_MS) return
+        samples.addLast(Sample(hostClock - (sentAtLocal + roundTrip / 2), roundTrip))
+        while (samples.size > TRACKED) samples.removeFirst()
     }
 
-    fun addSample(serverMs: Long, sentAt: TimeMark) {
-        val roundTripMs = sentAt.elapsedNow().inWholeMilliseconds.coerceAtLeast(0L)
-        if (roundTripMs > bestRoundTripMs) return
-        bestRoundTripMs = roundTripMs
-        anchorServerMs = serverMs + roundTripMs / 2
-        anchorMark = timeSource.markNow()
+    /** A host message that arrived before any ping came back: assumes no transit time, replaced by the first sample. */
+    fun addRoughHint(hostClock: Long, receivedAtLocal: Long) {
+        val candidate = hostClock - receivedAtLocal
+        val current = roughOffsetMs
+        if (current == null || candidate > current) roughOffsetMs = candidate
     }
+
+    fun hostNow(localNow: Long): Long? = offsetMs?.let { localNow + it }
 
     fun reset() {
-        anchorServerMs = null
-        anchorMark = null
-        bestRoundTripMs = Long.MAX_VALUE
+        samples.clear()
+        roughOffsetMs = null
+    }
+
+    private companion object {
+        const val TRACKED = 8
+        const val MAX_ROUND_TRIP_MS = 5_000L
     }
 }

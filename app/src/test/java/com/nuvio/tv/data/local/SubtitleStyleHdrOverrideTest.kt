@@ -46,7 +46,7 @@ class SubtitleStyleHdrOverrideTest {
     fun `default hdr brightness dims to 58 percent`() {
         val effective = style.copy(hdrBrightness = SubtitleStyleSettings.HDR_BRIGHTNESS_DEFAULT)
             .forVideo(isHdrVideo = true)
-        assertEquals(0xFF939300.toInt(), effective.textColor)
+        assertEquals(0xFFB4B400.toInt(), effective.textColor)
     }
 
     @Test

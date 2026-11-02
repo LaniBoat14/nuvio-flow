@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="player_chapters">Chương</string>
+    <string name="player_chapter_number">Chương %1$d</string>
+    <string name="player_chapter_named">Chương %1$d: %2$s</string>
+    <string name="player_chapter_now_playing">Đang phát</string>
+    <string name="playback_chapters">Chương trong trình phát</string>
+    <string name="playback_chapters_sub">Với phim có chương: nút Chương, dấu trên thanh thời gian và tên chương</string>
+</resources>

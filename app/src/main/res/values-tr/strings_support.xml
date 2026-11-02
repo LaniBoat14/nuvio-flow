@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="support_nuvio_button">Nuvio ekibini destekle</string>
+    <string name="support_nuvio_title">Nuvio ekibini destekle</string>
+    <string name="support_nuvio_subtitle">Nuvio Arc, resmi Nuvio uygulaması üzerine kuruludur. Üyelik Nuvio ekibine gider, sunucu ve geliştirme masraflarına yardım eder ve temel uygulamayı herkes için ücretsiz tutar.</string>
+    <string name="support_nuvio_perk_themes">Gradyan temalar</string>
+    <string name="support_nuvio_perk_themes_desc">Ek gradyan temalar ya da kendi temanızı oluşturun.</string>
+    <string name="support_nuvio_perk_backgrounds">Profil arka planları</string>
+    <string name="support_nuvio_perk_backgrounds_desc">Destekçi koleksiyonundan ya da kendi resminiz.</string>
+    <string name="support_nuvio_perk_avatars">Üye avatarları</string>
+    <string name="support_nuvio_perk_avatars_desc">Profilleriniz için ek avatar setleri.</string>
+    <string name="support_nuvio_perk_badge">Destekçi rozeti</string>
+    <string name="support_nuvio_perk_badge_desc">Hesabınızda ve profillerinizde küçük bir rozet.</string>
+    <string name="support_nuvio_perk_discord">Discord rolü</string>
+    <string name="support_nuvio_perk_discord_desc">Rol için web sitesinde Discord\'u bağlayın.</string>
+    <string name="support_nuvio_perk_votes">Uygulama kararlarında oy hakkı</string>
+    <string name="support_nuvio_perk_votes_desc">Yalnızca Destekçi Plus.</string>
+    <string name="support_nuvio_perk_votes_chip">Oy hakkı (Destekçi Plus)</string>
+    <string name="support_nuvio_plus_tag">Plus</string>
+    <string name="support_nuvio_on_tag">Açık</string>
+    <string name="support_nuvio_already_title">Zaten destekçi misiniz?</string>
+    <string name="support_nuvio_already_body">Bu TV\'de aynı Nuvio hesabıyla giriş yapın. Avantajlarınız otomatik olarak açılır.</string>
+    <string name="support_nuvio_scan_title">nuvio.tv/support adresini açmak için taratın</string>
+    <string name="support_nuvio_scan_body">Telefonunuzda açılır. Bu TV\'de hiçbir ödeme yapılmaz.</string>
+    <string name="support_nuvio_patreon_manage">Patreon\'da değiştirmek veya iptal etmek için taratın</string>
+    <string name="support_nuvio_pass_until">Erişiminiz %1$s tarihine kadar geçerli.</string>
+    <string name="support_nuvio_sign_in">Bu TV\'de giriş yap</string>
+    <string name="support_nuvio_close">Kapat</string>
+    <string name="support_nuvio_checking">Üyeliğiniz kontrol ediliyor…</string>
+    <string name="support_nuvio_thanks_title">Nuvio ekibini desteklediğiniz için teşekkürler</string>
+    <string name="support_nuvio_thanks_subtitle">Avantajlarınız Nuvio hesabınıza bağlıdır, bu yüzden hem burada Nuvio Arc\'ta hem de resmi uygulamada çalışır.</string>
+    <string name="support_nuvio_gentle_eyebrow">Nuvio Destekçisi</string>
+    <string name="support_nuvio_gentle_title">Nuvio Arc\'taki her şey üyelik olmadan çalışır</string>
+    <string name="support_nuvio_gentle_body">Bu hesabın Nuvio Destekçi Üyeliği yok ve bu tamamen normal. Bir gün Nuvio ekibine yardım etmek isterseniz, üyelik birkaç ekstra sunar:</string>
+    <string name="support_nuvio_gentle_unavailable">Üyeliğiniz şu anda kontrol edilemedi. Nuvio Arc\'taki her şey üyelik olmadan çalışır. Nuvio ekibine yardım etmek isterseniz, üyelik birkaç ekstra sunar:</string>
+    <string name="support_nuvio_gentle_scan">Seçenekleri telefonunuzda görün</string>
+    <string name="support_nuvio_paid_check_again">Az önce mi ödediniz? Tekrar kontrol et</string>
+    <string name="support_nuvio_no_thanks">Hayır, teşekkürler</string>
+    <string name="support_nuvio_no_thanks_hint">Hayır, teşekkürler seçeneği bu TV\'de Destek düğmesini ve kilitli destekçi temalarını gizler. Ayarlar › Hakkında bölümünden geri getirebilirsiniz.</string>
+    <string name="support_nuvio_thanks_note_title">%1$s avantajları açık</string>
+    <string name="support_nuvio_thanks_note_body">Nuvio ekibini desteklediğiniz için teşekkürler.</string>
+    <string name="support_nuvio_theme_locked">Destekçi</string>
+    <string name="support_nuvio_suggestions_setting">Nuvio ekibini destekleme önerileri</string>
+    <string name="support_nuvio_suggestions_setting_subtitle">Nuvio ekibini destekle düğmesini ve kilitli destekçi temalarını göster.</string>
+    <string name="cd_support_nuvio_qr">nuvio.tv/support için QR kodu</string>
+</resources>

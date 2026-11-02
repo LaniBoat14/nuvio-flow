@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.screens.player
 
+import com.nuvio.tv.domain.model.SubtitleFont
+import com.nuvio.tv.data.local.SubtitleEdgeStyle
 import androidx.media3.common.C
 import androidx.media3.common.TrackGroup
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -81,16 +83,21 @@ data class PlayerUiState(
     val showControls: Boolean = true,
     val showSeekOverlay: Boolean = false,
     val pendingPreviewSeekPosition: Long? = null,
+    val previewThumbPositionMs: Long? = null,
+    // Counts the pauses made at the remote; each one puts focus on the timeline.
+    val pauseFocusRequest: Int = 0,
     val playbackSpeed: Float = 1f,
     val loadingOverlayEnabled: Boolean = true,
     val showPlayerLoadingStatus: Boolean = false,
+    // Keep source details hidden until the saved profile setting has arrived.
+    val showPlayerLoadingSource: Boolean = false,
     val playbackIssueReportsEnabled: Boolean = false,
     val showLoadingOverlay: Boolean = true,
     val loadingMessage: String? = null,
     val loadingProgress: Float? = null,
     val loadingIssueReportVisible: Boolean = false,
     val loadingIssueElapsedMs: Long = 0L,
-    val pauseOverlayEnabled: Boolean = true,
+    val pauseOverlayEnabled: Boolean = false,
     val osdClockEnabled: Boolean = true,
     val transparentLetterbox: Boolean = false,
     val playerStatsHudEnabled: Boolean = false,
@@ -103,11 +110,11 @@ data class PlayerUiState(
     val subtitleTracks: List<TrackInfo> = emptyList(),
     val selectedAudioTrackIndex: Int = -1,
     val selectedSubtitleTrackIndex: Int = -1,
-    /** The file's chapters, sorted; empty when it has fewer than two. */
-    val chapters: List<PlayerChapter> = emptyList(),
-    val showChaptersPanel: Boolean = false,
     val audioDelayMs: Int = 0,
     val audioAmplificationDb: Int = 0,
+    val nightMode: com.nuvio.tv.data.local.NightModeLevel = com.nuvio.tv.data.local.NightModeLevel.OFF,
+    val nightModeLastOn: com.nuvio.tv.data.local.NightModeLevel = com.nuvio.tv.data.local.NightModeLevel.DEFAULT_ON,
+    val dialogueBoostState: DialogueBoostState = DialogueBoostState.STEREO_TRACK,
     val isAudioAmplificationAvailable: Boolean = false,
     val persistAudioAmplification: Boolean = false,
     val centerMixLevelDb: Int = 0,
@@ -126,10 +133,10 @@ data class PlayerUiState(
     val subtitleAutoSyncLoadedTrackKey: String? = null,
     val showSpeedDialog: Boolean = false,
     val showMoreDialog: Boolean = false,
+    val dimHdrOverlays: Boolean = false,
+    val isHdrVideo: Boolean = false,
     // Subtitle style settings
     val subtitleStyle: SubtitleStyleSettings = SubtitleStyleSettings(),
-    // Current video is HDR10/HDR10+/HLG/Dolby Vision; selects the HDR subtitle style when enabled
-    val isHdrVideo: Boolean = false,
     // Addon subtitles
     val addonSubtitles: List<Subtitle> = emptyList(),
     val isLoadingAddonSubtitles: Boolean = false,
@@ -138,6 +145,8 @@ data class PlayerUiState(
     val installedSubtitleAddonOrder: List<String> = emptyList(),
     // Episodes/streams side panel (for series)
     val showEpisodesPanel: Boolean = false,
+    val showChaptersPanel: Boolean = false,
+    val chapters: List<PlayerChapter> = emptyList(),
     val isLoadingEpisodes: Boolean = false,
     val episodesError: String? = null,
     val episodesAll: List<Video> = emptyList(),
@@ -164,14 +173,13 @@ data class PlayerUiState(
     val episodeStreamsSeason: Int? = null,
     val episodeStreamsEpisode: Int? = null,
     val episodeStreamsTitle: String? = null,
-    val showPartyPanel: Boolean = false,
-    val partyBehind: Boolean = false,
-    val partyBehindMs: Long? = null,
     // Stream sources side panel (for switching streams during playback)
     val showSourcesPanel: Boolean = false,
     val isLoadingSourceStreams: Boolean = false,
     val sourceStreamsError: String? = null,
     val sourceAllStreams: List<Stream> = emptyList(),
+    // URLs proven dead this session (non-media body / 404 / 410); greyed in the panel.
+    val deadSourceStreamUrls: Set<String> = emptySet(),
     val sourceSelectedAddonFilter: String? = null, // null means "All"
     val sourceFilteredStreams: List<Stream> = emptyList(),
     val sourceAvailableAddons: List<String> = emptyList(),
@@ -180,6 +188,7 @@ data class PlayerUiState(
     val showAddonLogo: Boolean = true,
     val streamBadgePlacement: StreamBadgePlacement = StreamBadgePlacement.BOTTOM,
     val playerBadgeFilters: List<CompiledStreamBadgeFilter> = emptyList(),
+    val showPlayerBadges: Boolean = false,
     val error: String? = null,
     val showSwitchToMpvErrorAction: Boolean = false,
     val playbackIssueReportStatus: PlaybackIssueReportStatus = PlaybackIssueReportStatus.Idle,
@@ -228,7 +237,10 @@ data class PlayerUiState(
     val aspectRatioIndicatorText: String = "",
     // Stream info overlay
     val showStreamInfoOverlay: Boolean = false,
+    val showPartyPanel: Boolean = false,
     val streamInfoData: StreamInfoData? = null,
+    // Live playback stats overlay
+    val showPlaybackStatsOverlay: Boolean = false,
     // Torrent streaming state
     val isTorrentStream: Boolean = false,
     val torrentDownloadSpeed: Long = 0L,
@@ -244,6 +256,7 @@ data class PlayerUiState(
     // When true, suppress all torrent stats text (buffer, seeds, peers, speed)
     // from loading overlay, rebuffering indicator, and corner overlay.
     val hideTorrentStats: Boolean = true,
+    val controlLayout: com.nuvio.tv.data.local.PlayerControlLayout? = null,
     val isLive: Boolean = false
 ) {
     /** Subtitle style to render with, after applying the HDR override for the current video. */
@@ -269,6 +282,7 @@ internal fun PlayerUiState.clearFrameRateDetection(): PlayerUiState = copy(
 )
 
 data class PlaybackTimelineState(
+    /** Display/seek-preview position used by the timers. */
     val currentPosition: Long = 0L,
     val duration: Long = 0L,
     /** Position (ms) up to which the player has buffered ahead of the playhead. */
@@ -276,8 +290,16 @@ data class PlaybackTimelineState(
     /** True for live windows (Live TV / live HLS), not VOD HLS. */
     val isLive: Boolean = false,
     /** Wall-clock time spent playing the current live stream. */
-    val watchedDurationMs: Long = 0L
-)
+    val watchedDurationMs: Long = 0L,
+    /** Actual playback position; preview-only input must not move it. */
+    val playbackPosition: Long = currentPosition
+) {
+    /** Omitted positions preserve the preview and playhead independently. */
+    internal fun withPositions(preview: Long? = null, actual: Long? = preview) = copy(
+        currentPosition = (preview ?: currentPosition).coerceAtLeast(0L),
+        playbackPosition = (actual ?: playbackPosition).coerceAtLeast(0L)
+    )
+}
 
 data class TrackInfo(
     val index: Int,
@@ -288,8 +310,13 @@ data class TrackInfo(
     val channelCount: Int? = null,
     val isForced: Boolean = false,
     val isSelected: Boolean = false,
-    val sampleRate: Int? = null
+    val sampleRate: Int? = null,
+    /** The track's own name from the file, as written there. */
+    val title: String? = null,
+    val role: TrackRole? = null
 )
+
+enum class TrackRole { COMMENTARY, AUDIO_DESCRIPTION, HEARING_IMPAIRED, ORIGINAL }
 
 data class NextEpisodeInfo(
     val videoId: String,
@@ -317,20 +344,21 @@ sealed class PlayerEvent {
     data object OnSeekBackward : PlayerEvent()
     data class OnSeekBy(val deltaMs: Long) : PlayerEvent()
     data class OnPreviewSeekBy(val deltaMs: Long) : PlayerEvent()
+    /** A seek key repeat: the key is held, so the cursor glides until the commit. */
+    data class OnScrubHold(val forward: Boolean, val downTime: Long, val eventTime: Long) : PlayerEvent()
     data object OnCommitPreviewSeek : PlayerEvent()
-    data class OnSeekTo(val position: Long) : PlayerEvent()
-    data class OnSkipChapter(val forward: Boolean) : PlayerEvent()
-    data object OnShowChaptersPanel : PlayerEvent()
-    data object OnDismissChaptersPanel : PlayerEvent()
-    data class OnSelectChapter(val index: Int) : PlayerEvent()
+    /** [exact] lands on the frame itself instead of the nearest keyframe (chapter jumps). */
+    data class OnSeekTo(val position: Long, val exact: Boolean = false) : PlayerEvent()
     data class OnSelectAudioTrack(val index: Int) : PlayerEvent()
     data class OnSetAudioDelayMs(val delayMs: Int) : PlayerEvent()
     data class OnSetAudioAmplificationDb(val db: Int) : PlayerEvent()
     data class OnSetPersistAudioAmplification(val enabled: Boolean) : PlayerEvent()
     data class OnSetCenterMixLevelDb(val db: Int) : PlayerEvent()
-    data class OnSelectSubtitleTrack(val index: Int) : PlayerEvent()
+    data class OnSetNightMode(val level: com.nuvio.tv.data.local.NightModeLevel) : PlayerEvent()
+    data class OnSelectSubtitleTrack(val index: Int, val openPanel: Boolean = true) : PlayerEvent()
     data object OnDisableSubtitles : PlayerEvent()
-    data class OnSelectAddonSubtitle(val subtitle: Subtitle) : PlayerEvent()
+    data object OnDisableSubtitlesQuietly : PlayerEvent()
+    data class OnSelectAddonSubtitle(val subtitle: Subtitle, val openPanel: Boolean = true) : PlayerEvent()
     data class OnSetPlaybackSpeed(val speed: Float) : PlayerEvent()
     data object OnToggleControls : PlayerEvent()
     data object OnShowAudioOverlay : PlayerEvent()
@@ -351,6 +379,11 @@ sealed class PlayerEvent {
     data object OnDismissMoreDialog : PlayerEvent()
     data object OnShowEpisodesPanel : PlayerEvent()
     data object OnDismissEpisodesPanel : PlayerEvent()
+    data object OnShowChaptersPanel : PlayerEvent()
+    data object OnDismissChaptersPanel : PlayerEvent()
+    data class OnSelectChapter(val startMs: Long) : PlayerEvent()
+    data object OnNextChapter : PlayerEvent()
+    data object OnPreviousChapter : PlayerEvent()
     data object OnBackFromEpisodeStreams : PlayerEvent()
     data class OnEpisodeSeasonSelected(val season: Int) : PlayerEvent()
     data class OnEpisodeSelected(val video: Video, val manualSelection: Boolean = false) : PlayerEvent()
@@ -359,8 +392,6 @@ sealed class PlayerEvent {
     data class OnEpisodeStreamSelected(val stream: Stream) : PlayerEvent()
     data object OnShowSourcesPanel : PlayerEvent()
     data object OnDismissSourcesPanel : PlayerEvent()
-    data object OnShowPartyPanel : PlayerEvent()
-    data object OnDismissPartyPanel : PlayerEvent()
     data object OnReloadSourceStreams : PlayerEvent()
     data class OnSourceAddonFilterSelected(val addonName: String?) : PlayerEvent()
     data class OnSourceStreamSelected(val stream: Stream) : PlayerEvent()
@@ -371,6 +402,8 @@ sealed class PlayerEvent {
     data class OnShowDisplayModeInfo(val info: DisplayModeInfo) : PlayerEvent()
     data object OnHideDisplayModeInfo : PlayerEvent()
     data object OnDismissPauseOverlay : PlayerEvent()
+    data object OnToggleDetails : PlayerEvent()
+    data object OnCloseDetails : PlayerEvent()
     data object OnSkipIntro : PlayerEvent()
     data object OnDismissSkipIntro : PlayerEvent()
     data object OnPlayNextEpisode : PlayerEvent()
@@ -379,10 +412,13 @@ sealed class PlayerEvent {
     data object OnDismissStillWatchingPrompt : PlayerEvent()
 
     // Subtitle style events (for in-player style tab)
+    data class OnSetSubtitleBitmapSize(val size: Int) : PlayerEvent()
     data class OnSetSubtitleSize(val size: Int) : PlayerEvent()
     data class OnSetSubtitleHdrBrightness(val brightness: Int) : PlayerEvent()
     data class OnSetSubtitleTextColor(val color: Int) : PlayerEvent()
     data class OnSetSubtitleBold(val bold: Boolean) : PlayerEvent()
+    data class OnSetSubtitleFont(val font: SubtitleFont?) : PlayerEvent()
+    data class OnSetSubtitleEdgeStyle(val style: SubtitleEdgeStyle) : PlayerEvent()
     data class OnSetSubtitleOutlineEnabled(val enabled: Boolean) : PlayerEvent()
     data class OnSetSubtitleOutlineColor(val color: Int) : PlayerEvent()
     data class OnSetSubtitleVerticalOffset(val offset: Int) : PlayerEvent()
@@ -392,8 +428,11 @@ sealed class PlayerEvent {
     data object OnSwitchToMpvPlayer : PlayerEvent()
     data object OnShowStreamInfo : PlayerEvent()
     data object OnDismissStreamInfo : PlayerEvent()
+    data object OnShowPartyPanel : PlayerEvent()
+    data object OnDismissPartyPanel : PlayerEvent()
     data object OnTogglePlayerStatsHud : PlayerEvent()
     data object OnToggleTorrentStats : PlayerEvent()
+    data object OnTogglePlaybackStats : PlayerEvent()
 }
 
 data class ParentalWarning(

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="support_nuvio_button">תמיכה בצוות Nuvio</string>
+    <string name="support_nuvio_title">תמיכה בצוות Nuvio</string>
+    <string name="support_nuvio_subtitle">Nuvio Arc מבוססת על אפליקציית Nuvio הרשמית. המנוי עובר לצוות Nuvio, עוזר לממן שרתים ופיתוח ושומר על האפליקציה הבסיסית חינמית לכולם.</string>
+    <string name="support_nuvio_perk_themes">ערכות נושא במעבר צבעים</string>
+    <string name="support_nuvio_perk_themes_desc">ערכות נושא נוספות במעבר צבעים, או ערכה משלך.</string>
+    <string name="support_nuvio_perk_backgrounds">רקעי פרופיל</string>
+    <string name="support_nuvio_perk_backgrounds_desc">מאוסף התומכים, או תמונה משלך.</string>
+    <string name="support_nuvio_perk_avatars">אווטארים למנויים</string>
+    <string name="support_nuvio_perk_avatars_desc">ערכות אווטאר נוספות לפרופילים שלך.</string>
+    <string name="support_nuvio_perk_badge">תג תומך</string>
+    <string name="support_nuvio_perk_badge_desc">תג קטן בחשבון ובפרופילים שלך.</string>
+    <string name="support_nuvio_perk_discord">תפקיד ב-Discord</string>
+    <string name="support_nuvio_perk_discord_desc">יש לחבר את Discord באתר כדי לקבל את התפקיד.</string>
+    <string name="support_nuvio_perk_votes">הצבעה על החלטות באפליקציה</string>
+    <string name="support_nuvio_perk_votes_desc">לתומך פלוס בלבד.</string>
+    <string name="support_nuvio_perk_votes_chip">הצבעות (תומך פלוס)</string>
+    <string name="support_nuvio_plus_tag">פלוס</string>
+    <string name="support_nuvio_on_tag">פעיל</string>
+    <string name="support_nuvio_already_title">כבר יש לך מנוי תומך?</string>
+    <string name="support_nuvio_already_body">יש להתחבר בטלוויזיה הזו עם אותו חשבון Nuvio. ההטבות יופעלו אוטומטית.</string>
+    <string name="support_nuvio_scan_title">סריקה לפתיחת nuvio.tv/support</string>
+    <string name="support_nuvio_scan_body">נפתח בטלפון. שום תשלום לא מתבצע בטלוויזיה הזו.</string>
+    <string name="support_nuvio_patreon_manage">סריקה לשינוי או ביטול ב-Patreon</string>
+    <string name="support_nuvio_pass_until">המנוי שלך בתוקף עד %1$s.</string>
+    <string name="support_nuvio_sign_in">התחברות בטלוויזיה הזו</string>
+    <string name="support_nuvio_close">סגירה</string>
+    <string name="support_nuvio_checking">בדיקת המנוי…</string>
+    <string name="support_nuvio_thanks_title">תודה על התמיכה בצוות Nuvio</string>
+    <string name="support_nuvio_thanks_subtitle">ההטבות צמודות לחשבון ה-Nuvio שלך, כך שהן פועלות כאן ב-Nuvio Arc וגם באפליקציה הרשמית.</string>
+    <string name="support_nuvio_gentle_eyebrow">תומכי Nuvio</string>
+    <string name="support_nuvio_gentle_title">הכול ב-Nuvio Arc עובד גם בלי מנוי</string>
+    <string name="support_nuvio_gentle_body">לחשבון הזה אין מנוי תומכי Nuvio, וזה בסדר גמור. למי שירצה לעזור לצוות Nuvio, מנוי מוסיף כמה הטבות:</string>
+    <string name="support_nuvio_gentle_unavailable">לא ניתן לבדוק את המנוי כרגע. הכול ב-Nuvio Arc עובד גם בלי מנוי. למי שרוצה לעזור לצוות Nuvio, מנוי מוסיף כמה הטבות:</string>
+    <string name="support_nuvio_gentle_scan">הצגת האפשרויות בטלפון</string>
+    <string name="support_nuvio_paid_check_again">שילמת הרגע? בדיקה חוזרת</string>
+    <string name="support_nuvio_no_thanks">לא תודה</string>
+    <string name="support_nuvio_no_thanks_hint">האפשרות \"לא תודה\" מסתירה את כפתור התמיכה ואת ערכות הנושא הנעולות לתומכים בטלוויזיה הזו. אפשר להחזיר אותם בהגדרות › אודות.</string>
+    <string name="support_nuvio_thanks_note_title">הטבות %1$s פעילות</string>
+    <string name="support_nuvio_thanks_note_body">תודה על התמיכה בצוות Nuvio.</string>
+    <string name="support_nuvio_theme_locked">תומך</string>
+    <string name="support_nuvio_suggestions_setting">הצעות לתמיכה בצוות Nuvio</string>
+    <string name="support_nuvio_suggestions_setting_subtitle">הצגת כפתור התמיכה בצוות Nuvio וערכות הנושא הנעולות לתומכים.</string>
+    <string name="cd_support_nuvio_qr">קוד QR עבור nuvio.tv/support</string>
+</resources>

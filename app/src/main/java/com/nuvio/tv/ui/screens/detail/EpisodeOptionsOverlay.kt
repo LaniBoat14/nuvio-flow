@@ -16,8 +16,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,20 +34,21 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -57,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.tv.material3.Border
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -70,21 +74,62 @@ import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.EpisodeOptionsOverlayStyle
 import com.nuvio.tv.domain.model.Video
 import com.nuvio.tv.ui.components.ImdbRatingSourceLabel
-import com.nuvio.tv.ui.theme.NuvioPrimitives
+import com.nuvio.tv.ui.screens.ambient.AmbientDialogEffect
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.util.BlurTransformation
 import com.nuvio.tv.ui.util.contentTextDirection
 import com.nuvio.tv.ui.util.localizeEpisodeTitle
 import com.nuvio.tv.ui.util.toAbsoluteAlignment
+import com.nuvio.tv.ui.v2.appearance.LocalV2Appearance
+import com.nuvio.tv.ui.v2.components.NuvioActionPill
 import kotlinx.coroutines.launch
 import java.util.Locale
-import com.nuvio.tv.ui.screens.ambient.AmbientDialogEffect
 
 private data class EpisodeOverlayAction(
     val label: String,
     val enabled: Boolean = true,
     val onClick: () -> Unit
 )
+
+internal enum class EpisodeOverlayActionKind {
+    TOGGLE_WATCHED,
+    TOGGLE_SEASON_WATCHED,
+    MARK_PREVIOUS_WATCHED,
+    PLAY,
+    OPEN_COMMENTS,
+    PLAY_MANUALLY,
+    START_FROM_BEGINNING
+}
+
+internal fun episodeOverlayActionKinds(
+    hasPreviousEpisodes: Boolean,
+    showOpenEpisodeComments: Boolean,
+    showPlayManually: Boolean,
+    hasProgress: Boolean,
+    isPlayEnabled: Boolean,
+    showWatchedActions: Boolean = true
+): List<EpisodeOverlayActionKind> = buildList {
+    if (showWatchedActions) {
+        add(EpisodeOverlayActionKind.TOGGLE_WATCHED)
+        add(EpisodeOverlayActionKind.TOGGLE_SEASON_WATCHED)
+        if (hasPreviousEpisodes) add(EpisodeOverlayActionKind.MARK_PREVIOUS_WATCHED)
+    }
+    add(EpisodeOverlayActionKind.PLAY)
+    if (showOpenEpisodeComments) add(EpisodeOverlayActionKind.OPEN_COMMENTS)
+    if (showPlayManually && isPlayEnabled) add(EpisodeOverlayActionKind.PLAY_MANUALLY)
+    if (hasProgress && isPlayEnabled) add(EpisodeOverlayActionKind.START_FROM_BEGINNING)
+}
+
+internal fun isEpisodeOverlayActionEnabled(
+    kind: EpisodeOverlayActionKind,
+    isPending: Boolean,
+    isPlayEnabled: Boolean,
+    isCurrentlyPlaying: Boolean = false
+): Boolean = when (kind) {
+    EpisodeOverlayActionKind.TOGGLE_WATCHED -> !isPending
+    EpisodeOverlayActionKind.PLAY -> isPlayEnabled && !isCurrentlyPlaying
+    else -> true
+}
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -115,9 +160,15 @@ internal fun EpisodeOptionsOverlay(
     onNavigateEpisode: ((Int) -> Unit)? = null
 ) {
     val context = LocalContext.current
-    val density = LocalDensity.current
-    val configuration = LocalConfiguration.current
-    val overlayColor = Color(0xFF050505)
+    val activityDensity = LocalDensity.current
+    val displayMetrics = LocalResources.current.displayMetrics
+    val windowSize = LocalWindowInfo.current.containerSize
+    val windowWidthPx = windowSize.width.takeIf { it > 0 } ?: displayMetrics.widthPixels
+    val windowHeightPx = windowSize.height.takeIf { it > 0 } ?: displayMetrics.heightPixels
+    val overlayColor = NuvioTheme.colors.Background
+    val elevatedColor = NuvioTheme.colors.BackgroundElevated
+    val textColor = NuvioTheme.colors.TextPrimary
+    val mutedTextColor = textColor.copy(alpha = 0.72f)
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val primaryFocusRequester = remember { FocusRequester() }
     val detailsFocusRequester = remember { FocusRequester() }
@@ -128,7 +179,9 @@ internal fun EpisodeOptionsOverlay(
     val titleStyle = episodeOverlayTitleStyle(title.length)
     val descriptionStyle = episodeOverlayDescriptionStyle(description.length)
     val isNoneStyle = !shouldShowEpisodeOverlayBackdrop(style)
-    val isCompactLayout = configuration.screenWidthDp < 1200 || configuration.screenHeightDp < 700
+    val isCompactLayout = with(activityDensity) {
+        windowWidthPx.toDp() < 1200.dp || windowHeightPx.toDp() < 700.dp
+    }
     val horizontalPadding = if (isNoneStyle || !isCompactLayout) 64.dp else 32.dp
     val verticalPadding = if (isNoneStyle || !isCompactLayout) 48.dp else 24.dp
     val contentSpacing = if (isNoneStyle || !isCompactLayout) 72.dp else 40.dp
@@ -145,12 +198,8 @@ internal fun EpisodeOptionsOverlay(
             else -> episodeOverlayBackdropUrl(episode.thumbnail)
         }
     }
-    val backdropWidthPx = remember(configuration, density) {
-        with(density) { configuration.screenWidthDp.dp.roundToPx() }
-    }
-    val backdropHeightPx = remember(configuration, density) {
-        with(density) { configuration.screenHeightDp.dp.roundToPx() }
-    }
+    val backdropWidthPx = windowWidthPx
+    val backdropHeightPx = windowHeightPx
     val thumbnailRequest = remember(
         context,
         thumbnailUrl,
@@ -168,12 +217,12 @@ internal fun EpisodeOptionsOverlay(
             )
         }
     }
-    val noneBackgroundBrush = remember {
+    val noneBackgroundBrush = remember(overlayColor, elevatedColor) {
         Brush.horizontalGradient(
             colors = listOf(
-                Color(0xFF050505),
-                Color(0xFF090909),
-                NuvioPrimitives.neutral925
+                overlayColor,
+                lerp(overlayColor, elevatedColor, 0.3f),
+                lerp(overlayColor, elevatedColor, 0.6f)
             )
         )
     }
@@ -189,75 +238,28 @@ internal fun EpisodeOptionsOverlay(
         }
         else -> stringResource(R.string.episodes_dialog_subtitle)
     }
-    val actions = buildList {
-        if (showWatchedActions) {
-            add(
-                EpisodeOverlayAction(
-                    label = if (isWatched) {
-                        stringResource(R.string.episodes_mark_unwatched)
-                    } else {
-                        stringResource(R.string.episodes_mark_watched)
-                    },
-                    enabled = !isPending,
-                    onClick = onToggleWatched
-                )
-            )
-            add(
-                EpisodeOverlayAction(
-                    label = if (isSeasonFullyWatched) {
-                        stringResource(R.string.episodes_mark_season_unwatched)
-                    } else {
-                        stringResource(R.string.episodes_mark_season_watched)
-                    },
-                    onClick = if (isSeasonFullyWatched) onMarkSeasonUnwatched else onMarkSeasonWatched
-                )
-            )
-        }
-        if (showWatchedActions && hasPreviousEpisodes) {
-            add(
-                EpisodeOverlayAction(
-                    label = stringResource(R.string.episodes_mark_previous_watched),
-                    onClick = onMarkPreviousEpisodesWatched
-                )
-            )
-        }
-        add(
-            EpisodeOverlayAction(
-                label = stringResource(
-                    when {
-                        isCurrentlyPlaying -> R.string.sources_playing
-                        isPlayEnabled -> R.string.episodes_play
-                        else -> R.string.playback_unavailable
-                    }
-                ),
-                enabled = isPlayEnabled && !isCurrentlyPlaying,
-                onClick = onPlay
-            )
+    val actions = episodeOverlayActionKinds(
+        hasPreviousEpisodes = hasPreviousEpisodes,
+        showOpenEpisodeComments = showOpenEpisodeComments,
+        showPlayManually = showPlayManually,
+        hasProgress = hasProgress,
+        isPlayEnabled = isPlayEnabled,
+        showWatchedActions = showWatchedActions
+    ).map { kind ->
+        EpisodeOverlayAction(
+            label = episodeOverlayActionLabel(kind, isWatched, isSeasonFullyWatched, isPlayEnabled, isCurrentlyPlaying),
+            enabled = isEpisodeOverlayActionEnabled(kind, isPending, isPlayEnabled, isCurrentlyPlaying),
+            onClick = when (kind) {
+                EpisodeOverlayActionKind.TOGGLE_WATCHED -> onToggleWatched
+                EpisodeOverlayActionKind.TOGGLE_SEASON_WATCHED ->
+                    if (isSeasonFullyWatched) onMarkSeasonUnwatched else onMarkSeasonWatched
+                EpisodeOverlayActionKind.MARK_PREVIOUS_WATCHED -> onMarkPreviousEpisodesWatched
+                EpisodeOverlayActionKind.PLAY -> onPlay
+                EpisodeOverlayActionKind.OPEN_COMMENTS -> onOpenEpisodeComments
+                EpisodeOverlayActionKind.PLAY_MANUALLY -> onPlayManually
+                EpisodeOverlayActionKind.START_FROM_BEGINNING -> onStartFromBeginning
+            }
         )
-        if (showOpenEpisodeComments) {
-            add(
-                EpisodeOverlayAction(
-                    label = stringResource(R.string.episodes_open_comments),
-                    onClick = onOpenEpisodeComments
-                )
-            )
-        }
-        if (showPlayManually && isPlayEnabled) {
-            add(
-                EpisodeOverlayAction(
-                    label = stringResource(R.string.play_manually),
-                    onClick = onPlayManually
-                )
-            )
-        }
-        if (hasProgress && isPlayEnabled) {
-            add(
-                EpisodeOverlayAction(
-                    label = stringResource(R.string.cw_action_start_from_beginning),
-                    onClick = onStartFromBeginning
-                )
-            )
-        }
     }
     val initialActionIndex = actions.indexOfFirst { it.enabled }.coerceAtLeast(0)
     var acceptsSelectKey by remember { mutableStateOf(false) }
@@ -282,243 +284,303 @@ internal fun EpisodeOptionsOverlay(
         )
     ) {
         AmbientDialogEffect(onDismiss)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(
-                    if (isNoneStyle) {
-                        Modifier.background(noneBackgroundBrush)
-                    } else {
-                        Modifier.background(Color(0xFF050505))
-                    }
-                )
-                .onPreviewKeyEvent { event ->
-                    val native = event.nativeKeyEvent
-                    if (isSelectKey(native.keyCode)) {
-                        if (native.action == AndroidKeyEvent.ACTION_DOWN && native.repeatCount == 0) {
-                            acceptsSelectKey = true
-                        }
-                        if (!acceptsSelectKey) {
-                            return@onPreviewKeyEvent true
-                        }
-                    }
-                    false
-                }
-        ) {
-            if (thumbnailRequest != null) {
-                AsyncImage(
-                    model = thumbnailRequest,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
-                    contentScale = ContentScale.Crop,
-                    alignment = Alignment.Center,
-                    filterQuality = FilterQuality.High
-                )
-            }
-            if (!isNoneStyle) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .drawWithCache {
-                            val brush = Brush.horizontalGradient(
-                                colorStops = arrayOf(
-                                    0.00f to overlayColor,
-                                    0.10f to overlayColor.copy(alpha = 0.97f),
-                                    0.20f to overlayColor.copy(alpha = 0.93f),
-                                    0.30f to overlayColor.copy(alpha = 0.87f),
-                                    0.40f to overlayColor.copy(alpha = 0.78f),
-                                    0.50f to overlayColor.copy(alpha = 0.67f),
-                                    0.60f to overlayColor.copy(alpha = 0.55f),
-                                    0.70f to overlayColor.copy(alpha = 0.45f),
-                                    0.80f to overlayColor.copy(alpha = 0.38f),
-                                    0.90f to overlayColor.copy(alpha = 0.34f),
-                                    1.00f to overlayColor.copy(alpha = 0.30f)
-                                ),
-                                startX = if (isRtl) size.width else 0f,
-                                endX = if (isRtl) 0f else size.width
-                            )
-                            onDrawBehind {
-                                drawRect(brush = brush)
-                            }
-                        }
-                )
-            }
-            Row(
+        CompositionLocalProvider(LocalDensity provides activityDensity) {
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = horizontalPadding, vertical = verticalPadding),
-                horizontalArrangement = Arrangement.spacedBy(contentSpacing),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .then(
-                            if (isNoneStyle) {
-                                Modifier.padding(end = 24.dp)
-                            } else {
-                                Modifier
-                                    .fillMaxHeight()
-                                    .verticalScroll(detailsScrollState)
-                                    .focusRequester(detailsFocusRequester)
-                                    .focusProperties {
-                                        if (isRtl) {
-                                            left = primaryFocusRequester
-                                        } else {
-                                            right = primaryFocusRequester
-                                        }
-                                    }
-                                    .focusable()
-                                    .onFocusChanged { descriptionFocused = it.isFocused }
-                                    .semantics { contentDescription = title }
-                                    .onPreviewKeyEvent { event ->
-                                        val step = episodeStepForKey(event.nativeKeyEvent.keyCode, isRtl)
-                                        when {
-                                            event.type != KeyEventType.KeyDown -> false
-                                            onNavigateEpisode != null && (step == -1 || (step == 1 && !hasEnabledAction)) -> {
-                                                onNavigateEpisode(step)
-                                                true
-                                            }
-                                            event.key == Key.DirectionDown && detailsScrollState.value < detailsScrollState.maxValue -> {
-                                                coroutineScope.launch {
-                                                    detailsScrollState.animateScrollTo(
-                                                        (detailsScrollState.value + 260)
-                                                            .coerceAtMost(detailsScrollState.maxValue)
-                                                    )
-                                                }
-                                                true
-                                            }
-                                            event.key == Key.DirectionUp && detailsScrollState.value > 0 -> {
-                                                coroutineScope.launch {
-                                                    detailsScrollState.animateScrollTo(
-                                                        (detailsScrollState.value - 260).coerceAtLeast(0)
-                                                    )
-                                                }
-                                                true
-                                            }
-                                            else -> false
-                                        }
-                                    }
+                    .then(
+                        if (isNoneStyle) {
+                            Modifier.background(noneBackgroundBrush)
+                        } else {
+                            Modifier.background(overlayColor)
+                        }
+                    )
+                    .onPreviewKeyEvent { event ->
+                        val native = event.nativeKeyEvent
+                        if (isSelectKey(native.keyCode) || native.keyCode == AndroidKeyEvent.KEYCODE_MENU) {
+                            if (native.action == AndroidKeyEvent.ACTION_DOWN && native.repeatCount == 0) {
+                                acceptsSelectKey = true
                             }
-                        ),
-                    verticalArrangement = if (isNoneStyle) {
-                        Arrangement.spacedBy(NuvioTheme.spacing.lg)
-                    } else {
-                        Arrangement.spacedBy(NuvioTheme.spacing.lg, Alignment.CenterVertically)
-                    }
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xl),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = episodeLabel,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = NuvioTheme.colors.Primary
-                        )
-
-                        ratingLabel?.let { rating ->
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                ImdbRatingSourceLabel(
-                                    logoModifier = Modifier.size(30.dp),
-                                    textStyle = MaterialTheme.typography.titleMedium,
-                                    textColor = Color.White.copy(alpha = 0.72f)
-                                )
-                                Text(
-                                    text = rating,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = Color.White.copy(alpha = 0.72f)
-                                )
+                            if (!acceptsSelectKey) {
+                                return@onPreviewKeyEvent true
                             }
                         }
+                        false
                     }
-
-                    Text(
-                        text = title,
-                        modifier = Modifier.align(title.contentTextDirection().toAbsoluteAlignment()),
-                        style = if (isNoneStyle) MaterialTheme.typography.displayLarge else titleStyle,
-                        color = Color.White,
-                        maxLines = if (isNoneStyle) 3 else Int.MAX_VALUE,
-                        overflow = TextOverflow.Ellipsis
+            ) {
+                if (thumbnailRequest != null) {
+                    AsyncImage(
+                        model = thumbnailRequest,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
+                        contentScale = ContentScale.Crop,
+                        alignment = Alignment.Center,
+                        filterQuality = FilterQuality.High
                     )
+                }
+                if (!isNoneStyle) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                            .drawWithCache {
+                                val brush = Brush.horizontalGradient(
+                                    colorStops = arrayOf(
+                                        0.00f to overlayColor,
+                                        0.10f to overlayColor.copy(alpha = 0.97f),
+                                        0.20f to overlayColor.copy(alpha = 0.93f),
+                                        0.30f to overlayColor.copy(alpha = 0.87f),
+                                        0.40f to overlayColor.copy(alpha = 0.78f),
+                                        0.50f to overlayColor.copy(alpha = 0.67f),
+                                        0.60f to overlayColor.copy(alpha = 0.55f),
+                                        0.70f to overlayColor.copy(alpha = 0.45f),
+                                        0.80f to overlayColor.copy(alpha = 0.38f),
+                                        0.90f to overlayColor.copy(alpha = 0.34f),
+                                        1.00f to overlayColor.copy(alpha = 0.30f)
+                                    ),
+                                    startX = if (isRtl) size.width else 0f,
+                                    endX = if (isRtl) 0f else size.width
+                                )
+                                onDrawBehind {
+                                    drawRect(brush = brush)
+                                }
+                            }
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+                    horizontalArrangement = Arrangement.spacedBy(contentSpacing),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .then(
+                                if (isNoneStyle) {
+                                    Modifier.padding(end = 24.dp)
+                                } else {
+                                    Modifier
+                                        .fillMaxHeight()
+                                        .verticalScroll(detailsScrollState)
+                                        .focusRequester(detailsFocusRequester)
+                                        .focusProperties {
+                                            if (isRtl) {
+                                                left = primaryFocusRequester
+                                            } else {
+                                                right = primaryFocusRequester
+                                            }
+                                        }
+                                        .focusable()
+                                        .onFocusChanged { descriptionFocused = it.isFocused }
+                                        .semantics { contentDescription = title }
+                                        .onPreviewKeyEvent { event ->
+                                            val step = episodeStepForKey(event.nativeKeyEvent.keyCode, isRtl)
+                                            when {
+                                                event.type != KeyEventType.KeyDown -> false
+                                                onNavigateEpisode != null && (step == -1 || (step == 1 && !hasEnabledAction)) -> {
+                                                    onNavigateEpisode(step)
+                                                    true
+                                                }
+                                                event.key == Key.DirectionDown && detailsScrollState.value < detailsScrollState.maxValue -> {
+                                                    coroutineScope.launch {
+                                                        detailsScrollState.animateScrollTo(
+                                                            (detailsScrollState.value + 260)
+                                                                .coerceAtMost(detailsScrollState.maxValue)
+                                                        )
+                                                    }
+                                                    true
+                                                }
+                                                event.key == Key.DirectionUp && detailsScrollState.value > 0 -> {
+                                                    coroutineScope.launch {
+                                                        detailsScrollState.animateScrollTo(
+                                                            (detailsScrollState.value - 260).coerceAtLeast(0)
+                                                        )
+                                                    }
+                                                    true
+                                                }
+                                                else -> false
+                                            }
+                                        }
+                                }
+                            ),
+                        verticalArrangement = if (isNoneStyle) {
+                            Arrangement.spacedBy(NuvioTheme.spacing.lg)
+                        } else {
+                            Arrangement.spacedBy(NuvioTheme.spacing.lg, Alignment.CenterVertically)
+                        }
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xl),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = episodeLabel,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = NuvioTheme.colors.Primary
+                            )
 
-                    if (description.isNotBlank()) {
+                            ratingLabel?.let { rating ->
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    ImdbRatingSourceLabel(
+                                        logoModifier = Modifier.size(30.dp),
+                                        textStyle = MaterialTheme.typography.titleMedium,
+                                        textColor = mutedTextColor
+                                    )
+                                    Text(
+                                        text = rating,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = mutedTextColor
+                                    )
+                                }
+                            }
+                        }
+
                         Text(
-                            text = description,
-                            style = (if (isNoneStyle) {
-                                MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Normal)
-                            } else {
-                                descriptionStyle
-                            }).copy(textDirection = description.contentTextDirection()),
-                            color = Color.White.copy(alpha = 0.72f),
-                            maxLines = if (isNoneStyle) 8 else Int.MAX_VALUE,
+                            text = title,
+                            modifier = Modifier.align(title.contentTextDirection().toAbsoluteAlignment()),
+                            style = if (isNoneStyle) MaterialTheme.typography.displayLarge else titleStyle,
+                            color = textColor,
+                            maxLines = if (isNoneStyle) 3 else Int.MAX_VALUE,
                             overflow = TextOverflow.Ellipsis
                         )
-                    }
-                }
 
-                Column(
-                    modifier = Modifier
-                        .width(actionsWidth)
-                        .onPreviewKeyEvent { event ->
-                            if (event.type != KeyEventType.KeyDown || onNavigateEpisode == null) {
-                                return@onPreviewKeyEvent false
-                            }
-                            val step = episodeStepForKey(event.nativeKeyEvent.keyCode, isRtl)
-                            if (step == 1 || (step == -1 && isNoneStyle)) {
-                                onNavigateEpisode(step)
-                                true
-                            } else {
-                                false
-                            }
+                        if (description.isNotBlank()) {
+                            Text(
+                                text = description,
+                                style = (if (isNoneStyle) {
+                                    MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Normal)
+                                } else {
+                                    descriptionStyle
+                                }).copy(textDirection = description.contentTextDirection()),
+                                color = mutedTextColor,
+                                maxLines = if (isNoneStyle) 8 else Int.MAX_VALUE,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
-                        .focusGroup(),
-                    verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
-                ) {
-                    actions.forEachIndexed { index, action ->
-                        Button(
-                            onClick = action.onClick,
-                            enabled = action.enabled,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .then(
-                                    if (isNoneStyle) {
-                                        Modifier
-                                    } else {
-                                        Modifier.focusProperties {
-                                            if (isRtl) {
-                                                right = detailsFocusRequester
-                                            } else {
-                                                left = detailsFocusRequester
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .width(actionsWidth)
+                            .onPreviewKeyEvent { event ->
+                                if (event.type != KeyEventType.KeyDown || onNavigateEpisode == null) {
+                                    return@onPreviewKeyEvent false
+                                }
+                                val step = episodeStepForKey(event.nativeKeyEvent.keyCode, isRtl)
+                                if (step == 1 || (step == -1 && isNoneStyle)) {
+                                    onNavigateEpisode(step)
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            .focusGroup(),
+                        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
+                    ) {
+                        actions.forEachIndexed { index, action ->
+                            EpisodeOverlayActionButton(
+                                action = action,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(
+                                        if (isNoneStyle) {
+                                            Modifier
+                                        } else {
+                                            Modifier.focusProperties {
+                                                if (isRtl) {
+                                                    right = detailsFocusRequester
+                                                } else {
+                                                    left = detailsFocusRequester
+                                                }
                                             }
                                         }
-                                    }
-                                )
-                                .then(
-                                    if (index == initialActionIndex) {
-                                        Modifier.focusRequester(primaryFocusRequester)
-                                    } else {
-                                        Modifier
-                                    }
-                                ),
-                            colors = ButtonDefaults.colors(
-                                containerColor = NuvioTheme.colors.BackgroundCard,
-                                contentColor = NuvioTheme.colors.TextPrimary
+                                    )
+                                    .then(
+                                        if (index == initialActionIndex) {
+                                            Modifier.focusRequester(primaryFocusRequester)
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
                             )
-                        ) {
-                            Text(action.label)
                         }
                     }
                 }
             }
         }
     }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun EpisodeOverlayActionButton(
+    action: EpisodeOverlayAction,
+    modifier: Modifier = Modifier
+) {
+    if (LocalV2Appearance.current != null) {
+        NuvioActionPill(
+            onClick = action.onClick,
+            modifier = modifier,
+            enabled = action.enabled,
+            neutralBackdrop = true
+        ) {
+            Text(action.label)
+        }
+        return
+    }
+    Button(
+        onClick = action.onClick,
+        enabled = action.enabled,
+        modifier = modifier,
+        colors = ButtonDefaults.colors(
+            containerColor = NuvioTheme.colors.BackgroundCard,
+            contentColor = NuvioTheme.colors.TextPrimary,
+            focusedContainerColor = NuvioTheme.colors.Secondary,
+            focusedContentColor = NuvioTheme.colors.OnSecondary
+        ),
+        border = ButtonDefaults.border(
+            focusedBorder = Border(
+                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                shape = CircleShape
+            )
+        )
+    ) {
+        Text(action.label)
+    }
+}
+
+@Composable
+private fun episodeOverlayActionLabel(
+    kind: EpisodeOverlayActionKind,
+    isWatched: Boolean,
+    isSeasonFullyWatched: Boolean,
+    isPlayEnabled: Boolean,
+    isCurrentlyPlaying: Boolean
+): String = when (kind) {
+    EpisodeOverlayActionKind.TOGGLE_WATCHED -> stringResource(
+        if (isWatched) R.string.episodes_mark_unwatched else R.string.episodes_mark_watched
+    )
+    EpisodeOverlayActionKind.TOGGLE_SEASON_WATCHED -> stringResource(
+        if (isSeasonFullyWatched) R.string.episodes_mark_season_unwatched else R.string.episodes_mark_season_watched
+    )
+    EpisodeOverlayActionKind.MARK_PREVIOUS_WATCHED -> stringResource(R.string.episodes_mark_previous_watched)
+    EpisodeOverlayActionKind.PLAY -> stringResource(
+        when {
+            isCurrentlyPlaying -> R.string.sources_playing
+            isPlayEnabled -> R.string.episodes_play
+            else -> R.string.playback_unavailable
+        }
+    )
+    EpisodeOverlayActionKind.OPEN_COMMENTS -> stringResource(R.string.episodes_open_comments)
+    EpisodeOverlayActionKind.PLAY_MANUALLY -> stringResource(R.string.play_manually)
+    EpisodeOverlayActionKind.START_FROM_BEGINNING -> stringResource(R.string.cw_action_start_from_beginning)
 }
 
 @Composable

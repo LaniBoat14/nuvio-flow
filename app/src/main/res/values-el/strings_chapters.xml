@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="player_chapters">Κεφάλαια</string>
+    <string name="player_chapter_number">Κεφάλαιο %1$d</string>
+    <string name="player_chapter_named">Κεφάλαιο %1$d: %2$s</string>
+    <string name="player_chapter_now_playing">Παίζει τώρα</string>
+    <string name="playback_chapters">Κεφάλαια στον player</string>
+    <string name="playback_chapters_sub">Για ταινίες με κεφάλαια: κουμπί Κεφάλαια, σημάδια στη γραμμή χρόνου και το όνομα του κεφαλαίου</string>
+</resources>

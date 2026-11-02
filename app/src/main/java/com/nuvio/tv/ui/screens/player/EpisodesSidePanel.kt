@@ -89,6 +89,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.launch as coroutineLaunch
 import androidx.compose.ui.res.stringResource
+import com.nuvio.tv.ui.v2.appearance.LocalV2Appearance
+import com.nuvio.tv.ui.v2.player.v2PlayerPanel
+import com.nuvio.tv.ui.v2.components.nuvioControlSurface
 import com.nuvio.tv.R
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -125,7 +128,7 @@ internal fun EpisodesSidePanel(
             .fillMaxHeight()
             .width(520.dp)
             .clip(RoundedCornerShape(topStart = NuvioTheme.spacing.lg, bottomStart = NuvioTheme.spacing.lg))
-            .background(NuvioTheme.colors.BackgroundElevated)
+            .then(if (LocalV2Appearance.current != null) Modifier.v2PlayerPanel() else Modifier.background(NuvioTheme.colors.BackgroundElevated))
     ) {
         Column(modifier = Modifier.padding(NuvioTheme.spacing.xl)) {
                 Row(
@@ -734,22 +737,19 @@ private fun EpisodesSeasonTabs(
                         isFocused = it.isFocused
                         if (it.isFocused && season != selectedSeason) pendingSeason = season
                     }
-                    .semantics {
-                        role = Role.Tab
-                        this.selected = isSelected
-                    },
-                shape = CardDefaults.shape(shape = RoundedCornerShape(NuvioTheme.spacing.xl)),
+                    .nuvioControlSurface(RoundedCornerShape(12.dp)),
+                shape = CardDefaults.shape(shape = RoundedCornerShape(if (LocalV2Appearance.current != null) 12.dp else NuvioTheme.spacing.xl)),
                 colors = CardDefaults.colors(
-                    containerColor = if (isSelected) NuvioPrimitives.neutral100 else NuvioTheme.colors.BackgroundCard,
-                    focusedContainerColor = if (isSelected) Color.White else NuvioTheme.colors.Secondary
+                    containerColor = if (LocalV2Appearance.current != null) { if (isSelected) NuvioTheme.colors.Secondary.copy(alpha = .12f) else Color.Transparent } else if (isSelected) NuvioPrimitives.neutral100 else NuvioTheme.colors.BackgroundCard,
+                    focusedContainerColor = if (LocalV2Appearance.current != null) Color.Transparent else Color.White
                 ),
-                border = CardDefaults.border(
+                border = if (LocalV2Appearance.current != null) CardDefaults.border(border = Border.None, focusedBorder = Border.None) else CardDefaults.border(
                     border = Border(
                         border = BorderStroke(NuvioTheme.spacing.hairline, if (isSelected) Color.Transparent else NuvioTheme.colors.Border),
                         shape = RoundedCornerShape(NuvioTheme.spacing.xl)
                     ),
                     focusedBorder = Border(
-                        border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                        border = BorderStroke(NuvioTheme.spacing.xxs, Color.White),
                         shape = RoundedCornerShape(NuvioTheme.spacing.xl)
                     )
                 ),
@@ -759,8 +759,9 @@ private fun EpisodesSeasonTabs(
                     text = if (season == 0) stringResource(R.string.episodes_specials) else stringResource(R.string.episodes_season, season),
                     style = MaterialTheme.typography.labelLarge,
                     color = when {
+                        LocalV2Appearance.current != null -> Color.White
                         isSelected -> Color.Black
-                        isFocused -> NuvioTheme.colors.OnSecondary
+                        isFocused -> Color.Black
                         else -> NuvioTheme.extendedColors.textSecondary
                     },
                     modifier = Modifier.padding(vertical = 10.dp, horizontal = 20.dp)
@@ -808,6 +809,7 @@ private fun EpisodeItem(
         onLongClick = onLongClick,
         modifier = Modifier
             .fillMaxWidth()
+            .nuvioControlSurface(RoundedCornerShape(NuvioTheme.radii.xl))
             .then(if (requestInitialFocus) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { isFocused = it.isFocused }
             .onPreviewKeyEvent { keyEvent ->
@@ -851,16 +853,16 @@ private fun EpisodeItem(
                 false
             },
         colors = CardDefaults.colors(
-            containerColor = NuvioTheme.colors.BackgroundCard,
-            focusedContainerColor = NuvioTheme.colors.FocusBackground
+            containerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.BackgroundCard,
+            focusedContainerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.FocusBackground
         ),
-        border = CardDefaults.border(
+        border = if (LocalV2Appearance.current != null) CardDefaults.border(border = Border.None, focusedBorder = Border.None) else CardDefaults.border(
             focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                border = BorderStroke(NuvioTheme.spacing.xxs, Color.White),
                 shape = RoundedCornerShape(NuvioTheme.radii.xl)
             )
         ),
-        scale = CardDefaults.scale(focusedScale = 1.01f),
+        scale = CardDefaults.scale(focusedScale = if (LocalV2Appearance.current != null) 1f else 1.01f),
         shape = CardDefaults.shape(shape = RoundedCornerShape(NuvioTheme.radii.xl))
     ) {
         Row(
@@ -923,7 +925,7 @@ private fun EpisodeItem(
                         Icon(
                             imageVector = Icons.Default.Visibility,
                             contentDescription = stringResource(R.string.cd_current),
-                            tint = NuvioTheme.colors.Primary,
+                            tint = NuvioTheme.colors.Secondary,
                             modifier = Modifier.size(14.dp)
                         )
                     }
@@ -940,7 +942,7 @@ private fun EpisodeItem(
                         Icon(
                             imageVector = Icons.Default.Check,
                             contentDescription = null,
-                            tint = NuvioTheme.colors.Primary,
+                            tint = NuvioTheme.colors.Secondary,
                             modifier = Modifier.size(14.dp)
                         )
                     }

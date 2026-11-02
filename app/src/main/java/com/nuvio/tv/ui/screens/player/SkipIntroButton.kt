@@ -6,8 +6,6 @@ import com.nuvio.tv.ui.theme.NuvioPrimitives
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -29,6 +27,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -87,7 +86,7 @@ fun SkipIntroButton(
     val internalFocusRequester = remember { FocusRequester() }
     val activeFocusRequester = focusRequester ?: internalFocusRequester
     var isFocused by remember { mutableStateOf(false) }
-    val progress = remember { Animatable(1f) }
+    var progress by remember { mutableFloatStateOf(0f) }
 
     // Reset auto-hide and progress when interval category changes (opening/ending/recap),
     // but not when the same category switches provider (e.g. op[aniskip] -> intro[chapters]).
@@ -95,14 +94,14 @@ fun SkipIntroButton(
     LaunchedEffect(intervalCategory) {
         autoHidden = false
         manuallyDismissed = false
-        progress.snapTo(0f)
+        progress = 0f
     }
 
     LaunchedEffect(dismissed) {
         if (!dismissed) {
             if (!manuallyDismissed) {
                 autoHidden = false
-                progress.snapTo(0f)
+                progress = 0f
             }
         } else {
             manuallyDismissed = true
@@ -112,10 +111,7 @@ fun SkipIntroButton(
     // Auto-hide after 10 seconds — pause countdown while controls are visible
     LaunchedEffect(shouldShow, autoHidden, controlsVisible) {
         if (shouldShow && !autoHidden && !controlsVisible) {
-            progress.animateTo(1f, animationSpec = tween(
-                durationMillis = skipIntroAutoHideRemainingMs(progress.value),
-                easing = LinearEasing
-            ))
+            runSkipIntroAutoHide(progress) { progress = it }
             autoHidden = true
         }
     }
@@ -198,7 +194,7 @@ fun SkipIntroButton(
                 },
             colors = CardDefaults.colors(
                 containerColor = NuvioPrimitives.neutral875.copy(alpha = 0.85f),
-                focusedContainerColor = NuvioTheme.colors.Secondary
+                focusedContainerColor = Color.White
             ),
             shape = CardDefaults.shape(shape = RoundedCornerShape(NuvioTheme.radii.md))
         ) {
@@ -212,12 +208,12 @@ fun SkipIntroButton(
                     Icon(
                         imageVector = Icons.Default.SkipNext,
                         contentDescription = null,
-                        tint = if (isFocused) NuvioTheme.colors.OnSecondary else Color.White,
+                        tint = if (isFocused) Color(0xFF16161A) else Color.White,
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
                         text = getSkipLabel(lastType, targetsPostCredits),
-                        color = if (isFocused) NuvioTheme.colors.OnSecondary else Color.White,
+                        color = if (isFocused) Color(0xFF16161A) else Color.White,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(start = NuvioTheme.spacing.sm)
                     )
@@ -231,7 +227,7 @@ fun SkipIntroButton(
                 ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(progress.value)
+                            .fillMaxWidth(progress)
                             .height(NuvioTheme.spacing.xs)
                             .background(NuvioPrimitives.neutral875.copy(alpha = if (controlsVisible || autoHidden || dismissed) 0f else 0.85f))
                     )

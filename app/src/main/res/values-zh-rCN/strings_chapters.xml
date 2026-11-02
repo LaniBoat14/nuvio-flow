@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="player_chapters">章节</string>
+    <string name="player_chapter_number">第 %1$d 章</string>
+    <string name="player_chapter_named">第 %1$d 章：%2$s</string>
+    <string name="player_chapter_now_playing">正在播放</string>
+    <string name="playback_chapters">播放器中的章节</string>
+    <string name="playback_chapters_sub">适用于带章节的影片：章节按钮、时间轴上的标记和章节名称</string>
+</resources>

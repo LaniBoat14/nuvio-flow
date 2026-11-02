@@ -2,15 +2,19 @@ package com.nuvio.tv.ui.screens.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nuvio.tv.core.build.AppFeaturePolicy
+import com.nuvio.tv.data.local.SupportNuvioDataStore
 import com.nuvio.tv.data.local.ThemeDataStore
 import com.nuvio.tv.data.repository.MemberAccessRepository
 import com.nuvio.tv.domain.model.AppFont
-import com.nuvio.tv.domain.model.AppIconOption
+import com.nuvio.tv.domain.model.AppIconChoice
 import com.nuvio.tv.domain.model.AppTheme
 import com.nuvio.tv.domain.model.CosmeticEntitlements
 import com.nuvio.tv.domain.model.CustomThemeColors
 import com.nuvio.tv.domain.model.SettingsUiStyle
+import com.nuvio.tv.domain.model.canUseAppIcon
 import com.nuvio.tv.domain.model.availableAppThemes
+import com.nuvio.tv.domain.model.lockedSupporterThemes
 import com.nuvio.tv.domain.model.resolveAppTheme
 import com.nuvio.tv.domain.model.resolveCustomThemeColors
 import com.nuvio.tv.launcher.AppIconManager
@@ -27,16 +31,20 @@ import javax.inject.Inject
 
 data class ThemeSettingsUiState(
     val themesLoaded: Boolean = false,
-    val selectedTheme: AppTheme = AppTheme.WHITE,
+    val selectedTheme: AppTheme = AppTheme.GLASS,
     val customThemeColors: CustomThemeColors = CustomThemeColors.solid(CustomThemeColors.Default.second),
     val customThemeGradientEnabled: Boolean = false,
     val availableThemes: List<AppTheme> = availableAppThemes(CosmeticEntitlements.None),
+    val lockedThemes: List<AppTheme> = emptyList(),
     val selectedFont: AppFont = AppFont.INTER,
     val availableFonts: List<AppFont> = AppFont.entries.toList(),
     val amoledMode: Boolean = false,
     val amoledSurfacesMode: Boolean = false,
     val settingsUiStyle: SettingsUiStyle = SettingsUiStyle.CLASSIC,
-    val availableSettingsUiStyles: List<SettingsUiStyle> = SettingsUiStyle.entries.toList()
+    val availableSettingsUiStyles: List<SettingsUiStyle> = SettingsUiStyle.entries.toList(),
+    val screensaverEnabled: Boolean = true,
+    val screensaverTimeoutMinutes: Int = ThemeDataStore.DEFAULT_SCREENSAVER_TIMEOUT_MINUTES,
+    val screensaverDimPercent: Int = ThemeDataStore.DEFAULT_SCREENSAVER_DIM_PERCENT
 )
 
 sealed class ThemeSettingsEvent {
@@ -46,6 +54,9 @@ sealed class ThemeSettingsEvent {
     data class ToggleAmoledMode(val enabled: Boolean) : ThemeSettingsEvent()
     data class ToggleAmoledSurfacesMode(val enabled: Boolean) : ThemeSettingsEvent()
     data class SelectSettingsUiStyle(val style: SettingsUiStyle) : ThemeSettingsEvent()
+    data class ToggleScreensaver(val enabled: Boolean) : ThemeSettingsEvent()
+    data class SelectScreensaverTimeout(val minutes: Int) : ThemeSettingsEvent()
+    data class SelectScreensaverDim(val percent: Int) : ThemeSettingsEvent()
     data object DismissAppIconFailure : ThemeSettingsEvent()
 }
 
@@ -53,7 +64,8 @@ sealed class ThemeSettingsEvent {
 class ThemeSettingsViewModel @Inject constructor(
     private val themeDataStore: ThemeDataStore,
     private val memberAccessRepository: MemberAccessRepository,
-    private val appIconManager: AppIconManager
+    private val appIconManager: AppIconManager,
+    private val supportNuvioDataStore: SupportNuvioDataStore
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ThemeSettingsUiState())
@@ -89,11 +101,26 @@ class ThemeSettingsViewModel @Inject constructor(
                     _uiState.update { state ->
                         state.copy(
                             themesLoaded = true,
-                            selectedTheme = selection.theme ?: AppTheme.WHITE,
+                            selectedTheme = selection.theme ?: AppTheme.GLASS,
                             customThemeColors = selection.customColors,
                             customThemeGradientEnabled = gradientEnabled,
                             availableThemes = availableThemes
                         )
+                    }
+                }
+        }
+        viewModelScope.launch {
+            combine(
+                memberAccessRepository.access,
+                supportNuvioDataStore.suggestionsHidden
+            ) { memberAccess, hidden ->
+                if (hidden || memberAccess.tier != null || !AppFeaturePolicy.supportNuvioEnabled) emptyList()
+                else lockedSupporterThemes(memberAccess.entitlements)
+            }
+                .distinctUntilChanged()
+                .collectLatest { locked ->
+                    _uiState.update { state ->
+                        if (state.lockedThemes == locked) state else state.copy(lockedThemes = locked)
                     }
                 }
         }
@@ -133,6 +160,33 @@ class ThemeSettingsViewModel @Inject constructor(
                     }
                 }
         }
+        viewModelScope.launch {
+            themeDataStore.screensaverEnabled
+                .distinctUntilChanged()
+                .collectLatest { enabled ->
+                    _uiState.update { state ->
+                        if (state.screensaverEnabled == enabled) state else state.copy(screensaverEnabled = enabled)
+                    }
+                }
+        }
+        viewModelScope.launch {
+            themeDataStore.screensaverTimeoutMinutes
+                .distinctUntilChanged()
+                .collectLatest { minutes ->
+                    _uiState.update { state ->
+                        if (state.screensaverTimeoutMinutes == minutes) state else state.copy(screensaverTimeoutMinutes = minutes)
+                    }
+                }
+        }
+        viewModelScope.launch {
+            themeDataStore.screensaverDimPercent
+                .distinctUntilChanged()
+                .collectLatest { percent ->
+                    _uiState.update { state ->
+                        if (state.screensaverDimPercent == percent) state else state.copy(screensaverDimPercent = percent)
+                    }
+                }
+        }
     }
 
     private fun currentTheme(): AppTheme {
@@ -147,11 +201,18 @@ class ThemeSettingsViewModel @Inject constructor(
             is ThemeSettingsEvent.ToggleAmoledMode -> setAmoledMode(event.enabled)
             is ThemeSettingsEvent.ToggleAmoledSurfacesMode -> setAmoledSurfacesMode(event.enabled)
             is ThemeSettingsEvent.SelectSettingsUiStyle -> selectSettingsUiStyle(event.style)
+            is ThemeSettingsEvent.ToggleScreensaver -> setScreensaverEnabled(event.enabled)
+            is ThemeSettingsEvent.SelectScreensaverTimeout -> setScreensaverTimeout(event.minutes)
+            is ThemeSettingsEvent.SelectScreensaverDim -> setScreensaverDim(event.percent)
             ThemeSettingsEvent.DismissAppIconFailure -> appIconManager.clearFailure()
         }
     }
 
-    fun selectAppIcon(option: AppIconOption): Boolean = appIconManager.select(option)
+    fun selectAppIcon(choice: AppIconChoice): Boolean {
+        val entitlements = memberAccessRepository.access.value.entitlements
+        if (!canUseAppIcon(entitlements, choice, appIconManager.state.value.selected)) return false
+        return appIconManager.select(choice)
+    }
 
     private fun selectTheme(theme: AppTheme) {
         if (currentTheme() == theme) return
@@ -195,6 +256,27 @@ class ThemeSettingsViewModel @Inject constructor(
         restoreStyleFocus = true
         viewModelScope.launch {
             themeDataStore.setSettingsUiStyle(style)
+        }
+    }
+
+    private fun setScreensaverEnabled(enabled: Boolean) {
+        if (_uiState.value.screensaverEnabled == enabled) return
+        viewModelScope.launch {
+            themeDataStore.setScreensaverEnabled(enabled)
+        }
+    }
+
+    private fun setScreensaverTimeout(minutes: Int) {
+        if (_uiState.value.screensaverTimeoutMinutes == minutes) return
+        viewModelScope.launch {
+            themeDataStore.setScreensaverTimeoutMinutes(minutes)
+        }
+    }
+
+    private fun setScreensaverDim(percent: Int) {
+        if (_uiState.value.screensaverDimPercent == percent) return
+        viewModelScope.launch {
+            themeDataStore.setScreensaverDimPercent(percent)
         }
     }
 }

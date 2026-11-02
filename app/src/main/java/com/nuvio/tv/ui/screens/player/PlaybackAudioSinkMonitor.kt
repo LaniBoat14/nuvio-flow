@@ -9,6 +9,7 @@ import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import com.nuvio.tv.ui.screens.player.iec.IecPassthroughAudioSink
 import java.lang.reflect.Field
 import kotlin.math.abs
 
@@ -41,6 +42,7 @@ internal data class AudioRouteSnapshot(val deviceLabel: String, val changeCount:
  */
 internal class PlaybackAudioSinkMonitor(
     private val platformSink: DefaultAudioSink?,
+    private val iecSink: IecPassthroughAudioSink?,
     private val reducedStartThresholdFrames: Int
 ) {
 
@@ -195,6 +197,7 @@ internal class PlaybackAudioSinkMonitor(
     fun maybeApplyStartThreshold() {
         if (reducedStartThresholdFrames <= 0 || startThresholdAppliedThisTrack) return
         if (Build.VERSION.SDK_INT < 31) return
+        if (iecSink?.isIecActive == true) return
         try {
             val track = platformAudioTrack() ?: return
             val bufferFrames = track.bufferSizeInFrames
@@ -216,6 +219,7 @@ internal class PlaybackAudioSinkMonitor(
 
     /** The output track's own underrun count, or null when no track can be read. */
     fun nativeAudioTrackUnderrunCount(): Int? {
+        if (iecSink?.isIecActive == true) return iecSink.iecUnderrunCount()
         return try {
             platformAudioTrack()?.underrunCount
         } catch (t: Throwable) {
@@ -230,6 +234,7 @@ internal class PlaybackAudioSinkMonitor(
      * IEC track plays or the output gives no timestamp.
      */
     fun platformOutputTimestamp(): AudioOutputTimestamp? {
+        if (iecSink?.isIecActive == true) return null
         return try {
             val track = platformAudioTrack() ?: return null
             val sampleRate = track.sampleRate
@@ -246,9 +251,14 @@ internal class PlaybackAudioSinkMonitor(
         return try {
             val identity: Int
             val device: AudioDeviceInfo?
-            val track = platformAudioTrack() ?: return null
-            identity = System.identityHashCode(track)
-            device = track.routedDevice
+            if (iecSink?.isIecActive == true) {
+                identity = iecSink.iecTrackIdentity() ?: return null
+                device = iecSink.iecRoutedDevice()
+            } else {
+                val track = platformAudioTrack() ?: return null
+                identity = System.identityHashCode(track)
+                device = track.routedDevice
+            }
             val deviceId = device?.id ?: -1
             when {
                 identity != routeLastTrackIdentity -> {

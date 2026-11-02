@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="player_chapters">Kapitoly</string>
+    <string name="player_chapter_number">Kapitola %1$d</string>
+    <string name="player_chapter_named">Kapitola %1$d: %2$s</string>
+    <string name="player_chapter_now_playing">Přehrává se</string>
+    <string name="playback_chapters">Kapitoly v přehrávači</string>
+    <string name="playback_chapters_sub">U filmů s kapitolami: tlačítko Kapitoly, značky na časové ose a název kapitoly</string>
+</resources>

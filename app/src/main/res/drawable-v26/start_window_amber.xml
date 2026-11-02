@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/start_window_stage_fill" />
+    <item>
+        <inset
+            android:drawable="@drawable/arc_launcher_foreground_amber"
+            android:insetLeft="27.872%"
+            android:insetTop="1.395%"
+            android:insetRight="27.776%"
+            android:insetBottom="19.757%" />
+    </item>
+</layer-list>

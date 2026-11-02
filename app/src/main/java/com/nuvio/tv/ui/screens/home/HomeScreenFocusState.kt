@@ -47,6 +47,8 @@ data class HomeScreenFocusState(
     val catalogRowScrollStates: Map<String, Int> = emptyMap(),
     /** Key of the card each row's window started on: an index goes stale once a row gains items in front. */
     val catalogRowScrollAnchors: Map<String, String> = emptyMap(),
+    /** How far each row's first visible card was scrolled past its start, in pixels. */
+    val catalogRowScrollOffsets: Map<String, Int> = emptyMap(),
 
     /**
      * Optional stable key for the currently focused card in grid-style layouts.

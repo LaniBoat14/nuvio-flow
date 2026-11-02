@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <version>1</version>
+    <category title="Card" />
+    <item drawable="arc_card_clear_original" />
+    <item drawable="arc_card_clear_emerald" />
+    <item drawable="arc_card_clear_copper" />
+    <item drawable="arc_card_clear_glass" />
+    <item drawable="arc_card_clear_crimson" />
+    <item drawable="arc_card_clear_ocean" />
+    <item drawable="arc_card_clear_violet" />
+    <item drawable="arc_card_clear_emerald_green" />
+    <item drawable="arc_card_clear_amber" />
+    <item drawable="arc_card_clear_rose" />
+    <item drawable="arc_card_clear_white" />
+    <category title="Card lettering" />
+    <item drawable="arc_lettering_clear_original" />
+    <item drawable="arc_lettering_clear_emerald" />
+    <item drawable="arc_lettering_clear_copper" />
+    <item drawable="arc_lettering_clear_glass" />
+    <item drawable="arc_lettering_clear_crimson" />
+    <item drawable="arc_lettering_clear_ocean" />
+    <item drawable="arc_lettering_clear_violet" />
+    <item drawable="arc_lettering_clear_emerald_green" />
+    <item drawable="arc_lettering_clear_amber" />
+    <item drawable="arc_lettering_clear_rose" />
+    <item drawable="arc_lettering_clear_white" />
+</resources>

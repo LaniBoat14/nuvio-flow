@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="player_chapters">Kapitler</string>
+    <string name="player_chapter_number">Kapittel %1$d</string>
+    <string name="player_chapter_named">Kapittel %1$d: %2$s</string>
+    <string name="player_chapter_now_playing">Spilles nå</string>
+    <string name="playback_chapters">Kapitler i spilleren</string>
+    <string name="playback_chapters_sub">For filmer med kapitler: en Kapitler-knapp, merker på tidslinjen og kapittelnavnet</string>
+</resources>

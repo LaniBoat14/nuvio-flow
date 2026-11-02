@@ -47,16 +47,6 @@ class BitrateAwareLoadControl(
     retainBackBufferFromKeyframe
 ), PlaybackBufferReserve, BufferBudgetControl, StartCushionControl {
 
-    // Compatibility for Flow's existing low-RAM DV7 first-frame adjustment.
-    @Volatile private var backBufferOverrideUs: Long = -1L
-    fun setBackBufferDurationOverrideMs(ms: Int) {
-        backBufferOverrideUs = if (ms < 0) -1L else ms.toLong() * 1000L
-    }
-    override fun getBackBufferDurationUs(playerId: PlayerId): Long {
-        val override = backBufferOverrideUs
-        return if (override >= 0L) override else super.getBackBufferDurationUs(playerId)
-    }
-
     override val bufferAllocator: DefaultAllocator = allocator
 
     override val stopTrim: AllocatorStopTrim = AllocatorStopTrim(allocator)

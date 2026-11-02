@@ -48,6 +48,9 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import com.nuvio.tv.ui.v2.appearance.LocalV2Appearance
+import com.nuvio.tv.ui.v2.components.nuvioGlass
+import com.nuvio.tv.ui.v2.components.GlassRole
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusProperties
@@ -244,7 +247,7 @@ fun CommentsSection(
             .padding(top = 20.dp, bottom = NuvioTheme.spacing.sm)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = NuvioTheme.spacing.xxxl),
+            modifier = Modifier.padding(start = detailStartInset, end = NuvioTheme.spacing.xxxl),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
         ) {
@@ -268,13 +271,13 @@ fun CommentsSection(
             text = subtitleText,
             style = MaterialTheme.typography.bodyMedium,
             color = NuvioTheme.colors.TextSecondary,
-            modifier = Modifier.padding(horizontal = NuvioTheme.spacing.xxxl)
+            modifier = Modifier.padding(start = detailStartInset, end = NuvioTheme.spacing.xxxl)
         )
         if (canToggleEpisodeComments) {
             Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
             Row(
                 modifier = Modifier
-                    .padding(horizontal = NuvioTheme.spacing.xxxl)
+                    .padding(start = detailStartInset, end = NuvioTheme.spacing.xxxl)
                     .focusRestorer(controlsFocusRequester),
                 horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
                 verticalAlignment = Alignment.CenterVertically
@@ -324,7 +327,7 @@ fun CommentsSection(
                         .then(
                             commentsTargetFocusRequester?.let { Modifier.focusRestorer(it) } ?: Modifier
                         ),
-                    contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.xxxl, vertical = 6.dp),
+                    contentPadding = PaddingValues(start = detailStartInset, end = NuvioTheme.spacing.xxxl, top = 6.dp, bottom = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
                 ) {
                     items(3) { index ->
@@ -354,7 +357,7 @@ fun CommentsSection(
 
             !error.isNullOrBlank() -> {
                 Column(
-                    modifier = Modifier.padding(horizontal = NuvioTheme.spacing.xxxl),
+                    modifier = Modifier.padding(start = detailStartInset, end = NuvioTheme.spacing.xxxl),
                     verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
                 ) {
                     Text(
@@ -392,7 +395,7 @@ fun CommentsSection(
                     text = stringResource(R.string.detail_comments_empty),
                     style = MaterialTheme.typography.bodyMedium,
                     color = NuvioTheme.colors.TextSecondary,
-                    modifier = Modifier.padding(horizontal = NuvioTheme.spacing.xxxl)
+                    modifier = Modifier.padding(start = detailStartInset, end = NuvioTheme.spacing.xxxl)
                 )
             }
 
@@ -419,7 +422,7 @@ fun CommentsSection(
                         }
                         .focusGroup(),
                     state = listState,
-                    contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.xxxl, vertical = 6.dp),
+                    contentPadding = PaddingValues(start = detailStartInset, end = NuvioTheme.spacing.xxxl, top = 6.dp, bottom = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
                 ) {
                     items(comments, key = { it.id }) { review ->
@@ -788,15 +791,11 @@ fun CommentOverlay(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(
-                            Color(0xFF070707),
-                            Color(0xFF101010),
-                            Color(0xFF151515)
-                        )
-                    )
-                )
+                .then(if (LocalV2Appearance.current != null) {
+                    Modifier.nuvioGlass(GlassRole.MODAL)
+                } else {
+                    Modifier.background(Brush.linearGradient(listOf(Color(0xFF070707), Color(0xFF101010), Color(0xFF151515))))
+                })
                 .onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) {
                         false

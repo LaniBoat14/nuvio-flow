@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="support_nuvio_button">Podpořit tým Nuvio</string>
+    <string name="support_nuvio_title">Podpořit tým Nuvio</string>
+    <string name="support_nuvio_subtitle">Nuvio Arc vychází z oficiální aplikace Nuvio. Členství jde týmu Nuvio, pomáhá platit servery a vývoj a udržuje základní aplikaci zdarma pro všechny.</string>
+    <string name="support_nuvio_perk_themes">Témata s přechodem</string>
+    <string name="support_nuvio_perk_themes_desc">Další témata s přechodem, nebo si vytvořte vlastní.</string>
+    <string name="support_nuvio_perk_backgrounds">Pozadí profilu</string>
+    <string name="support_nuvio_perk_backgrounds_desc">Z kolekce Supporter, nebo vlastní obrázek.</string>
+    <string name="support_nuvio_perk_avatars">Avatary pro členy</string>
+    <string name="support_nuvio_perk_avatars_desc">Další sady avatarů pro vaše profily.</string>
+    <string name="support_nuvio_perk_badge">Odznak Supporter</string>
+    <string name="support_nuvio_perk_badge_desc">Malý odznak na vašem účtu a profilech.</string>
+    <string name="support_nuvio_perk_discord">Role na Discordu</string>
+    <string name="support_nuvio_perk_discord_desc">Pro získání role propojte Discord na webu.</string>
+    <string name="support_nuvio_perk_votes">Hlasování o rozhodnutích</string>
+    <string name="support_nuvio_perk_votes_desc">Pouze Supporter Plus.</string>
+    <string name="support_nuvio_perk_votes_chip">Hlasování (Supporter Plus)</string>
+    <string name="support_nuvio_plus_tag">Plus</string>
+    <string name="support_nuvio_on_tag">Zapnuto</string>
+    <string name="support_nuvio_already_title">Už jste podporovatel?</string>
+    <string name="support_nuvio_already_body">Přihlaste se na této televizi stejným účtem Nuvio. Výhody se zapnou samy.</string>
+    <string name="support_nuvio_scan_title">Naskenujte a otevřete nuvio.tv/support</string>
+    <string name="support_nuvio_scan_body">Otevře se v telefonu. Na této televizi se nic neplatí.</string>
+    <string name="support_nuvio_patreon_manage">Naskenujte pro změnu nebo zrušení na Patreonu</string>
+    <string name="support_nuvio_pass_until">Vaše členství platí do %1$s.</string>
+    <string name="support_nuvio_sign_in">Přihlásit se na této televizi</string>
+    <string name="support_nuvio_close">Zavřít</string>
+    <string name="support_nuvio_checking">Ověřování členství…</string>
+    <string name="support_nuvio_thanks_title">Děkujeme za podporu týmu Nuvio</string>
+    <string name="support_nuvio_thanks_subtitle">Výhody jsou vázané na váš účet Nuvio, takže fungují tady v Nuvio Arc i v oficiální aplikaci.</string>
+    <string name="support_nuvio_gentle_eyebrow">Nuvio Supporter</string>
+    <string name="support_nuvio_gentle_title">Vše v Nuvio Arc funguje i bez členství</string>
+    <string name="support_nuvio_gentle_body">Tento účet nemá členství Nuvio Supporter a je to úplně v pořádku. Pokud budete někdy chtít pomoci týmu Nuvio, členství přidá pár bonusů:</string>
+    <string name="support_nuvio_gentle_unavailable">Členství teď nešlo ověřit. Vše v Nuvio Arc funguje i bez něj. Pokud chcete pomoci týmu Nuvio, členství přidá pár bonusů:</string>
+    <string name="support_nuvio_gentle_scan">Zobrazit možnosti v telefonu</string>
+    <string name="support_nuvio_paid_check_again">Právě zaplaceno? Zkontrolovat znovu</string>
+    <string name="support_nuvio_no_thanks">Ne, děkuji</string>
+    <string name="support_nuvio_no_thanks_hint">„Ne, děkuji“ skryje tlačítko podpory a zamčená témata pro podporovatele na této televizi. Vrátit je můžete v Nastavení › O aplikaci.</string>
+    <string name="support_nuvio_thanks_note_title">Výhody %1$s jsou zapnuté</string>
+    <string name="support_nuvio_thanks_note_body">Děkujeme za podporu týmu Nuvio.</string>
+    <string name="support_nuvio_theme_locked">Supporter</string>
+    <string name="support_nuvio_suggestions_setting">Návrhy na podporu týmu Nuvio</string>
+    <string name="support_nuvio_suggestions_setting_subtitle">Zobrazit tlačítko „Podpořit tým Nuvio“ a zamčená témata pro podporovatele.</string>
+    <string name="cd_support_nuvio_qr">QR kód pro nuvio.tv/support</string>
+</resources>

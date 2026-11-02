@@ -1,6 +1,8 @@
 package com.nuvio.tv.ui.components
 
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.v2.appearance.LocalV2Appearance
+import com.nuvio.tv.ui.v2.components.nuvioV2Focus
 
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.animation.core.tween
@@ -51,6 +53,8 @@ import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.nuvio.tv.core.poster.failedWithoutFallback
+import com.nuvio.tv.core.poster.posterFallbackUrl
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.PosterShape
 import com.nuvio.tv.domain.model.CardDepthSurface
@@ -80,6 +84,7 @@ fun GridContentCard(
     onLongPress: (() -> Unit)? = null,
     onFocused: () -> Unit = {}
 ) {
+    val isV2 = LocalV2Appearance.current != null
     val cardShape = remember(posterCardStyle.cornerRadius) { RoundedCornerShape(posterCardStyle.cornerRadius) }
     val cardDepthStyle = LocalCardDepthStyle.current
     val density = LocalDensity.current
@@ -129,6 +134,7 @@ fun GridContentCard(
                     if (globalLandscape) Modifier.fillMaxWidth().aspectRatio(PosterShape.LANDSCAPE.aspectRatio())
                     else Modifier.width(posterCardStyle.width).height(cardHeight)
                 )
+                .nuvioV2Focus(isFocused, cardShape, stationary = true)
                 .then(
                     if (focusRequester != null) Modifier.focusRequester(focusRequester)
                     else Modifier
@@ -186,12 +192,12 @@ fun GridContentCard(
                 focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent
             ),
             border = CardDefaults.border(
-                focusedBorder = Border(
+                focusedBorder = if (isV2) Border.None else Border(
                     border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
                     shape = cardShape
                 )
             ),
-            scale = CardDefaults.scale(focusedScale = posterCardStyle.focusedScale)
+            scale = CardDefaults.scale(focusedScale = if (isV2) 1f else posterCardStyle.focusedScale)
         ) {
             Box(
                 modifier = Modifier
@@ -213,8 +219,20 @@ fun GridContentCard(
                 } else {
                     item.poster
                 }
+                var landscapePosterFailed by remember(effectiveImageUrl) { mutableStateOf(false) }
+                var failedWithoutFallback by remember(effectiveImageUrl) { mutableStateOf(false) }
+                val lateFallbackUrl = if (failedWithoutFallback) {
+                    item.posterFallbackUrl(effectiveImageUrl, landscapeCard = globalLandscape)
+                } else {
+                    null
+                }
+                val portraitArtwork = rememberPortraitArtworkState(effectiveImageUrl)
+                val canFitPortraitArtwork = effectivePosterShape == PosterShape.LANDSCAPE
+                val fitPortraitArtwork = canFitPortraitArtwork && portraitArtwork.isPortrait
                 val revalidationKey = com.nuvio.tv.core.image.rememberImageRevalidationKey(effectiveImageUrl)
-                val imageModel = remember(effectiveImageUrl, requestWidthPx, requestHeightPx, revalidationKey) {
+                val imageModel = remember(
+                    effectiveImageUrl, requestWidthPx, requestHeightPx, revalidationKey, globalLandscape, lateFallbackUrl
+                ) {
                     val builder = ImageRequest.Builder(context)
                         .data(effectiveImageUrl)
                         .crossfade(imageCrossfade)
@@ -223,8 +241,8 @@ fun GridContentCard(
                     if (revalidationKey > 0) {
                         builder.placeholderMemoryCacheKey("${effectiveImageUrl}_${requestWidthPx}x${requestHeightPx}_v${revalidationKey - 1}")
                     }
-                    val fallbackUrl = item.rawPosterUrl
-                    if (!fallbackUrl.isNullOrBlank() && fallbackUrl != effectiveImageUrl) {
+                    val fallbackUrl = item.posterFallbackUrl(effectiveImageUrl, landscapeCard = globalLandscape)
+                    if (fallbackUrl != null) {
                         builder.memoryCacheKeyExtras(
                             mapOf(com.nuvio.tv.core.image.CustomPosterFallbackInterceptor.FALLBACK_URL_KEY to fallbackUrl)
                         )
@@ -234,20 +252,39 @@ fun GridContentCard(
                 if (effectiveImageUrl.isNullOrBlank()) {
                     MonochromePosterPlaceholder(contentDescription = item.name)
                 } else {
+                    val watchedDim = watchedPosterDim(isWatched, isFocused)
                     AsyncImage(
                         model = imageModel,
                         contentDescription = item.name,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().portraitArtworkBackdrop(fitPortraitArtwork).watchedPosterFade(watchedDim),
                         contentScale = ContentScale.Crop,
+                        colorFilter = portraitArtworkBackdropFilter(fitPortraitArtwork) ?: watchedPosterFilter(watchedDim.value),
                         placeholder = bgPainter,
                         error = bgPainter,
-                        fallback = bgPainter
+                        fallback = bgPainter,
+                        onSuccess = {
+                            landscapePosterFailed = it.result.request.data != effectiveImageUrl
+                            if (canFitPortraitArtwork) {
+                                portraitArtwork.onLoaded(it.result.image.width, it.result.image.height)
+                            }
+                        },
+                        onError = {
+                            landscapePosterFailed = true
+                            if (it.result.failedWithoutFallback(effectiveImageUrl)) failedWithoutFallback = true
+                            portraitArtwork.onFailed()
+                        }
+                    )
+                    if (fitPortraitArtwork) FittedPortraitArtwork(
+                        imageModel,
+                        contentDescription = null,
+                        modifier = Modifier.watchedPosterFade(watchedDim),
+                        colorFilter = watchedPosterFilter(watchedDim.value)
                     )
                 }
 
                 // Landscape clearlogo overlay on backdrop cards
-                val isLandscapeBackdropCard = globalLandscape &&
-                    effectiveLandscapePoster.isNullOrBlank()
+                val isLandscapeBackdropCard = globalLandscape && !fitPortraitArtwork &&
+                    (effectiveLandscapePoster.isNullOrBlank() || landscapePosterFailed)
                 val showLandscapeClearlogo = isLandscapeBackdropCard &&
                     !item.logo.isNullOrBlank()
                 if (showLandscapeClearlogo) {
@@ -312,7 +349,7 @@ fun GridContentCard(
                             .fillMaxWidth(0.62f)
                             .padding(start = 10.dp, end = 10.dp, bottom = NuvioTheme.spacing.md)
                     )
-                } else if (showLogo && !item.logo.isNullOrBlank()) {
+                } else if (showLogo && !fitPortraitArtwork && !item.logo.isNullOrBlank()) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
@@ -346,6 +383,14 @@ fun GridContentCard(
                     )
                 }
 
+                if (isWatched && LocalDimWatchedPosters.current) {
+                    WatchedPosterVeil(
+                        focused = isFocused,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(1.9f)
+                    )
+                }
                 if (isWatched) {
                     WatchedMarker(
                         modifier = Modifier

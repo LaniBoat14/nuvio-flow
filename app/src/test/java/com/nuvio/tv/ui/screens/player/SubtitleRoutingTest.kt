@@ -1,8 +1,17 @@
 package com.nuvio.tv.ui.screens.player
 
+import android.net.Uri
+import androidx.media3.common.ByteBufferDataReader
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
+import io.mockk.every
+import io.mockk.mockk
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
+import java.nio.ByteBuffer
 
 class SubtitleRoutingTest {
 
@@ -11,6 +20,24 @@ class SubtitleRoutingTest {
     private val markedUri = "https://subs.example.com/a.ass?token=a%20b&nuvio_type=subtitle"
     private val route = SubtitleRoute("https://subs.example.com/a.ass?token=a%20b", mapOf("X-Api-Key" to "own-key"))
     private val routes = mapOf(markedUri to route)
+
+    private interface BufferSource : DataSource, ByteBufferDataReader
+
+    @Test
+    fun `media keeps buffer reads through the subtitle router`() {
+        val media = mockk<BufferSource>(relaxed = true)
+        every { media.supportsByteBufferRead() } returns true
+        every { media.open(any()) } returns 10L
+        every { media.read(any<ByteBuffer>(), any()) } returns 10
+        val router = SubtitleRoutingDataSourceFactory(DataSource.Factory { media }, streamUrl, streamHeaders, routes)
+            .createDataSource()
+        assertFalse((router as ByteBufferDataReader).supportsByteBufferRead())
+        val streamUri = mockk<Uri>(relaxed = true)
+        every { streamUri.toString() } returns streamUrl
+        router.open(DataSpec(streamUri))
+        assertTrue(router.supportsByteBufferRead())
+        assertEquals(10, router.read(ByteBuffer.allocateDirect(16), 16))
+    }
 
     @Test
     fun `a configured http subtitle uri is routed and everything else goes to media`() {

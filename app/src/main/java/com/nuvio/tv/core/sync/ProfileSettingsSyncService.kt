@@ -1,5 +1,7 @@
 package com.nuvio.tv.core.sync
 
+import com.nuvio.tv.core.util.StartupLatencyTrace
+
 import android.os.SystemClock
 import android.util.Log
 import androidx.datastore.preferences.core.MutablePreferences
@@ -13,6 +15,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.nuvio.tv.core.auth.AuthManager
+import com.nuvio.tv.core.calendar.CalendarSettingsDataStore
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.data.local.ContinueWatchingEnrichmentCache
 import com.nuvio.tv.data.local.ExperienceModeDataStore
@@ -22,6 +25,7 @@ import com.nuvio.tv.data.local.StreamBadgeSettingsDataStore
 import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.data.remote.supabase.SupabaseProfileSetupCopyResult
 import com.nuvio.tv.data.remote.supabase.SupabaseProfileSettingsBlob
+import com.nuvio.tv.domain.model.AuthState
 import com.nuvio.tv.domain.model.DiscoverLocation
 import com.nuvio.tv.domain.repository.MetaRepository
 import io.github.jan.supabase.postgrest.Postgrest
@@ -38,6 +42,7 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -89,18 +94,35 @@ private val localOnlyPlayerProfileSettingsKeys = setOf(
     "maintain_original_audio_on_downmix",
     "downmix_normalization_enabled",
     "tunneling_enabled",
-    "force_optical_passthrough",
     "audio_amplification_db",
     "center_mix_level_db",
     "persist_audio_amplification",
+    "night_mode",
+    "night_mode_last_on",
     "remember_audio_delay_per_device",
+    "force_optical_passthrough",
+    "allow_ac3_passthrough",
+    "allow_eac3_passthrough",
+    "allow_truehd_passthrough",
+    "allow_dts_passthrough",
+    "allow_dtshd_passthrough",
+    "allow_dts_hd_passthrough",
+    "denied_codec_handling",
+    "mat_passthrough_enabled",
+    "use_system_passthrough",
+    "dts_hd_tv_passthrough",
+    "surround_format_mode",
+    "surround_channel_target",
+    "surround_tv_arc_soundbar",
+    "tunnel_dead_audio_classes",
+    "tunnel_dead_audio_signature",
+    "tunnel_dead_audio_saved_at_ms",
+    "tunnel_dead_audio_app_version",
     "experimental_dv5_to_dv81_enabled",
-    "experimental_dv7_to_dv81_preserve_mapping_enabled",
     "dv7_handling_mode",
     "map_dv7_to_hevc",
     "dv7_libdovi_mode_override",
     "strip_hdr10plus_sei",
-    "exo_chapters_enabled",
     "mpv_hardware_decode_mode",
     "frame_rate_matching",
     "frame_rate_matching_mode",
@@ -113,6 +135,7 @@ private val localOnlyPlayerProfileSettingsKeys = setOf(
     "use_parallel_connections",
     "buffer_engine_enabled",
     "parallel_network_enabled",
+    "auto_speedup_enabled",
     "allow_large_target_buffer",
     "buffer_budget_managed",
     "parallel_connection_count",
@@ -142,7 +165,13 @@ private val localOnlyPlayerProfileSettingsKeys = setOf(
     "migration_allow_large_target_buffer_off_done",
     "migration_buffer_budget_managed_exo_done",
     "migration_vod_cache_back_buffer_zeroed_done",
-    "nuvio_performance_mode_enabled"
+    "nuvio_performance_mode_enabled",
+    "assessment_revert_snapshot",
+    "audio_rejections_seen",
+    "audio_rejections_confirmed",
+    "audio_rejection_reset_token",
+    "migration_back_buffer_budget_done",
+    "inject_hdr10_metadata_on_strip"
 )
 
 // 4K trailers depend on the device's RAM, so a choice made on one device must not reach another.
@@ -184,7 +213,8 @@ class ProfileSettingsSyncService @Inject constructor(
     private val mediaServerSyncService: MediaServerSyncService,
     private val tmdbSettingsDataStore: TmdbSettingsDataStore,
     private val metaRepository: MetaRepository,
-    private val cwEnrichmentCache: ContinueWatchingEnrichmentCache
+    private val cwEnrichmentCache: ContinueWatchingEnrichmentCache,
+    private val syncStateStore: ProfileSettingsSyncStateStore
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val syncMutex = Mutex()
@@ -196,6 +226,8 @@ class ProfileSettingsSyncService @Inject constructor(
     private var skipNextPushSignature: String? = null
     private var foregroundPullJob: Job? = null
     private var lastForegroundPullAtMs: Long = 0L
+    private var pushRetryJob: Job? = null
+    private var pushRetryProfileId: Int? = null
 
     private val syncedFeatures = listOf(
         "theme_settings",
@@ -209,8 +241,8 @@ class ProfileSettingsSyncService @Inject constructor(
         "mdblist_settings",
         "trakt_settings",
         "debrid_settings",
-        "animeskip_settings",
-        "track_preference"
+        "track_preference",
+        CalendarSettingsDataStore.FEATURE
     )
 
     init {
@@ -232,7 +264,9 @@ class ProfileSettingsSyncService @Inject constructor(
     private suspend fun pushProfileSettingsToRemote(profileId: Int): Result<Unit> = withContext(Dispatchers.IO) {
         syncMutex.withLock {
             try {
+                val pushedSequence = syncStateStore.currentSequence(profileId)
                 pushProfileToRemote(profileId)
+                syncStateStore.clearPending(profileId, pushedSequence)
                 Log.d(TAG, "Pushed profile settings blob for profile $profileId")
                 Result.success(Unit)
             } catch (e: Exception) {
@@ -245,10 +279,31 @@ class ProfileSettingsSyncService @Inject constructor(
     suspend fun pullCurrentProfileFromRemote(): Result<Boolean> = withContext(Dispatchers.IO) {
         syncMutex.withLock {
             try {
+                StartupLatencyTrace.mark("settings_pull_start")
                 val profileId = profileManager.activeProfileId.value
                 val inheritedPluginSettingsApplied = pullInheritedPluginSettings(profileId)
+                val pending = syncStateStore.pending(profileId)
+                val currentUserId = currentUserIdOrNull()
+                if (pending != null && currentUserId != null) {
+                    if (shouldPushPendingInsteadOfApplyingRemote(pending, currentUserId)) {
+                        try {
+                            pushProfileToRemote(profileId)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            schedulePushRetry(profileId)
+                            throw e
+                        }
+                        syncStateStore.clearPending(profileId, pending.sequence)
+                        lastForegroundPullAtMs = SystemClock.elapsedRealtime()
+                        Log.d(TAG, "Pushed pending local settings for profile $profileId instead of applying the remote blob")
+                        return@withLock Result.success(inheritedPluginSettingsApplied)
+                    }
+                    syncStateStore.clearPending(profileId)
+                }
                 val blob = pullProfileFromRemote(profileId)
                 lastForegroundPullAtMs = SystemClock.elapsedRealtime()
+                StartupLatencyTrace.mark("settings_pull_response")
                 if (blob == null) {
                     Log.d(TAG, "No remote profile settings blob for profile $profileId; keeping local settings")
                     return@withLock Result.success(inheritedPluginSettingsApplied)
@@ -347,6 +402,9 @@ class ProfileSettingsSyncService @Inject constructor(
                         featuresJson = targetFeatures,
                         signature = buildSettingsSignature(targetFeatures)
                     )
+                    if (authManager.isAuthenticated) {
+                        syncStateStore.clearPending(targetProfileId)
+                    }
                     if (copyProviderCredentials) {
                         if (authManager.isAuthenticated) {
                             if (profileManager.activeProfileId.value == targetProfileId) {
@@ -420,9 +478,59 @@ class ProfileSettingsSyncService @Inject constructor(
         signature: String
     ) {
         val isActiveProfile = profileManager.activeProfileId.value == profileId
+        if (!isActiveProfile) {
+            importSettingsBlob(profileId, featuresJson)
+            return
+        }
+        val localSignatureBefore = buildSettingsSignature(profileId)
+        skipNextPushSignature = signature
         importSettingsBlob(profileId, featuresJson)
-        if (isActiveProfile) {
-            skipNextPushSignature = signature
+        if (buildSettingsSignature(profileId) == localSignatureBefore) {
+            skipNextPushSignature = null
+        }
+    }
+
+    private fun currentUserIdOrNull(): String? = authManager.currentUserId?.takeIf { it.isNotEmpty() }
+
+    private fun localEditOwnerUserId(): String? {
+        currentUserIdOrNull()?.let { userId ->
+            syncStateStore.lastUserId = userId
+            return userId
+        }
+        // A session still being restored at startup belongs to the account that was signed in last.
+        if (authManager.authState.value is AuthState.Loading) return syncStateStore.lastUserId
+        syncStateStore.lastUserId = null
+        return null
+    }
+
+    private fun markLocalEdit(profileId: Int) {
+        syncStateStore.markPending(profileId, localEditOwnerUserId())
+    }
+
+    private suspend fun pushLocalEdit(profileId: Int) {
+        if (pushProfileSettingsToRemote(profileId).isSuccess) {
+            if (pushRetryProfileId == profileId) {
+                pushRetryJob?.cancel()
+                pushRetryJob = null
+            }
+        } else {
+            schedulePushRetry(profileId)
+        }
+    }
+
+    private fun schedulePushRetry(profileId: Int) {
+        pushRetryJob?.cancel()
+        pushRetryProfileId = profileId
+        pushRetryJob = scope.launch {
+            var attempt = 0
+            while (true) {
+                val delayMs = profileSettingsPushRetryDelayMs(attempt++) ?: break
+                delay(delayMs)
+                if (profileManager.activeProfileId.value != profileId) break
+                val pending = syncStateStore.pending(profileId)
+                if (!shouldPushPendingInsteadOfApplyingRemote(pending, currentUserIdOrNull())) break
+                if (pushProfileSettingsToRemote(profileId).isSuccess) break
+            }
         }
     }
 
@@ -496,7 +604,8 @@ class ProfileSettingsSyncService @Inject constructor(
                     return@forEach
                 }
                 profileDataStoreFactory.get(profileId, feature).edit { mutablePrefs ->
-                    val preservedEntries = captureLocalOnlyPreferenceEntries(feature, mutablePrefs)
+                    val preservedEntries = captureLocalOnlyPreferenceEntries(feature, mutablePrefs) +
+                        captureMissingPresentationChoices(feature, mutablePrefs, featureJson.keys)
                     val priorDiscoverLocation = if (feature == "layout_settings") {
                         mutablePrefs[stringPreferencesKey("discover_location")]
                     } else null
@@ -580,23 +689,35 @@ class ProfileSettingsSyncService @Inject constructor(
                         // profile switch it can be older than the cloud copy that is about to be
                         // pulled, so pushing it would overwrite newer settings.
                         .drop(1)
+                        // Recorded before the debounce so an edit survives the app being closed right after it.
+                        .onEach { (profileId, _) ->
+                            if (
+                                !applyingRemoteBlob &&
+                                skipNextPushSignature == null &&
+                                profileDataStoreFactory.corruptedFileNames.isEmpty()
+                            ) {
+                                markLocalEdit(profileId)
+                            }
+                        }
                 }
                 .debounce(SETTINGS_PUSH_DEBOUNCE_MS)
                 .collect { (profileId, signature) ->
-                    if (!authManager.isAuthenticated) return@collect
                     if (applyingRemoteBlob) return@collect
                     if (profileDataStoreFactory.corruptedFileNames.isNotEmpty()) {
+                        if (!authManager.isAuthenticated) return@collect
                         Log.w(TAG, "DataStore corruption detected (${profileDataStoreFactory.corruptedFileNames}) — pulling from remote instead of pushing")
                         profileDataStoreFactory.corruptedFileNames.clear()
+                        syncStateStore.clearPending(profileId)
                         pullCurrentProfileFromRemote()
                         return@collect
                     }
-                    if (signature == skipNextPushSignature) {
-                        skipNextPushSignature = null
-                        return@collect
-                    }
+                    val expectedRemoteEcho = skipNextPushSignature
+                    skipNextPushSignature = null
+                    if (signature == expectedRemoteEcho) return@collect
+                    markLocalEdit(profileId)
+                    if (!authManager.isAuthenticated) return@collect
                     // A change debounced across a profile switch still belongs to the profile it was made on.
-                    pushProfileSettingsToRemote(profileId)
+                    pushLocalEdit(profileId)
                 }
         }
     }

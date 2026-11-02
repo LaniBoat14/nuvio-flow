@@ -1,5 +1,8 @@
 package com.nuvio.tv.ui.screens.home
 
+import com.nuvio.tv.data.mediaserver.ServerCatalog
+import com.nuvio.tv.ui.v2.components.sidebarPageContent
+
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 import androidx.activity.compose.BackHandler
@@ -93,6 +96,7 @@ import com.nuvio.tv.ui.components.LocalStartupSplashEnabled
 import com.nuvio.tv.ui.components.PosterCardDefaults
 import com.nuvio.tv.ui.components.PosterCardStyle
 import com.nuvio.tv.ui.components.collectionFolderCardImageUrl
+import com.nuvio.tv.ui.components.wideFolderCoverNeedsCrop
 import com.nuvio.tv.ui.components.nuvioCardDepth
 import com.nuvio.tv.ui.components.rememberArtworkBackedCardGlow
 
@@ -106,6 +110,8 @@ fun GridHomeContent(
     onContinueWatchingStartFromBeginning: (ContinueWatchingItem) -> Unit = {},
     onContinueWatchingPlayManually: (ContinueWatchingItem) -> Unit = {},
     showContinueWatchingManualPlayOption: Boolean = false,
+    /** CW card focus, indexed into uiState.continueWatchingItems. */
+    onContinueWatchingItemFocused: (Int) -> Unit = {},
     onNavigateToCatalogSeeAll: (String, String, String) -> Unit,
     onNavigateToFolderDetail: (String, String) -> Unit = { _, _ -> },
     onRemoveContinueWatching: (String, Int?, Int?, Boolean) -> Unit,
@@ -114,7 +120,7 @@ fun GridHomeContent(
     posterCardStyle: PosterCardStyle = PosterCardDefaults.Style,
     onItemFocus: (com.nuvio.tv.domain.model.MetaPreview) -> Unit = {},
     catalogSeeAllLabel: String? = null,
-    onSaveGridFocusState: (Int, Int, String?) -> Unit,
+    onSaveGridFocusState: (Int, Int, String?, GridFocusSlot?) -> Unit,
     onFocusedRowKeyChanged: (String?) -> Unit = {},
     scrollToTopTrigger: Int = 0
 ) {
@@ -136,24 +142,40 @@ fun GridHomeContent(
     val upcomingRowFocusRequester = remember { FocusRequester() }
     val cwListState = androidx.compose.foundation.lazy.rememberLazyListState()
     val upcomingListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val lastFocusedComingUpIndex = rememberSaveable { mutableIntStateOf(-1) }
+    val comingUpFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
+    val comingUpRowFocusRequester = remember { FocusRequester() }
+    val comingUpListState = androidx.compose.foundation.lazy.rememberLazyListState()
 
     // Improved Back navigation for CW/Upcoming rows: scroll to first item
     val contentHasFocus = remember { mutableStateOf(false) }
     val activeCwRowKey = remember { mutableStateOf<String?>(null) }
     val cwPendingScrollToStart = remember { mutableIntStateOf(0) }
     val upcomingPendingScrollToStart = remember { mutableIntStateOf(0) }
+    val comingUpPendingScrollToStart = remember { mutableIntStateOf(0) }
     BackHandler(enabled = contentHasFocus.value && run {
         val key = activeCwRowKey.value ?: return@run false
-        val idx = if (key == "continue_watching") lastFocusedCwIndex.intValue else lastFocusedUpcomingIndex.intValue
+        val idx = when (key) {
+            "continue_watching" -> lastFocusedCwIndex.intValue
+            MODERN_COMING_UP_ROW_KEY -> lastFocusedComingUpIndex.intValue
+            else -> lastFocusedUpcomingIndex.intValue
+        }
         idx > 0
     }) {
         val key = activeCwRowKey.value ?: return@BackHandler
-        if (key == "continue_watching") {
-            lastFocusedCwIndex.intValue = 0
-            cwPendingScrollToStart.intValue++
-        } else {
-            lastFocusedUpcomingIndex.intValue = 0
-            upcomingPendingScrollToStart.intValue++
+        when (key) {
+            "continue_watching" -> {
+                lastFocusedCwIndex.intValue = 0
+                cwPendingScrollToStart.intValue++
+            }
+            MODERN_COMING_UP_ROW_KEY -> {
+                lastFocusedComingUpIndex.intValue = 0
+                comingUpPendingScrollToStart.intValue++
+            }
+            else -> {
+                lastFocusedUpcomingIndex.intValue = 0
+                upcomingPendingScrollToStart.intValue++
+            }
         }
     }
 
@@ -164,13 +186,20 @@ fun GridHomeContent(
         }
     }
 
+    val gridItemsWithKeys = remember(uiState.gridItems) { gridItemsWithStableKeys(uiState.gridItems) }
+    val gridFocusSlotsState = androidx.compose.runtime.rememberUpdatedState(
+        remember(gridItemsWithKeys) { gridFocusSlots(gridItemsWithKeys) }
+    )
+
     // Save scroll state when leaving
     DisposableEffect(Unit) {
         onDispose {
+            val focusedKey = lastFocusedGridItemKey.value
             onSaveGridFocusState(
                 gridState.firstVisibleItemIndex,
                 gridState.firstVisibleItemScrollOffset,
-                lastFocusedGridItemKey.value
+                focusedKey,
+                focusedKey?.let { gridFocusSlotsState.value[it] }
             )
         }
     }
@@ -209,10 +238,17 @@ fun GridHomeContent(
     LaunchedEffect(gridItems, gridFocusState.hasSavedFocus, gridFocusState.focusedItemKey) {
         // Restore once per screen entry, not again when background catalog loads finish.
         if (restoredSavedGridFocus) return@LaunchedEffect
-        val targetKey = gridFocusState.focusedItemKey ?: return@LaunchedEffect
+        val savedKey = gridFocusState.focusedItemKey ?: return@LaunchedEffect
         if (!gridFocusState.hasSavedFocus) return@LaunchedEffect
-        val requester = focusRequesters[targetKey] ?: return@LaunchedEffect
+        val savedSlot = gridFocusState.focusedRowKey?.let { GridFocusSlot(it, gridFocusState.focusedItemIndex) }
+        val candidates = if (savedSlot == null || gridItemsWithKeys.any { it.second == savedKey }) {
+            listOf(savedKey)
+        } else {
+            gridReplacementFocusKeys(gridItemsWithKeys, savedSlot)
+        }
         repeat(2) { withFrameNanos { } }
+        val targetKey = candidates.firstOrNull { it in focusRequesters } ?: return@LaunchedEffect
+        val requester = focusRequesters.getValue(targetKey)
         if (runCatching { requester.requestFocus() }.getOrDefault(false)) {
             restoredSavedGridFocus = true
             lastFocusedGridItemKey.value = targetKey
@@ -317,26 +353,6 @@ fun GridHomeContent(
 
     // Throttle D-pad key repeats to prevent HWUI overload when a key is held down.
 
-    val gridItemsWithKeys = remember(gridItems) {
-        val occurrences = mutableMapOf<String, Int>()
-        gridItems.map { item ->
-            val key = when (item) {
-                is GridItem.Hero -> "hero"
-                is GridItem.SectionDivider -> "divider_${item.addonBaseUrl.hashCode()}_${item.catalogId}_${item.addonId}_${item.type}"
-                is GridItem.Content -> {
-                    val base = "content_${item.addonBaseUrl.hashCode()}_${item.catalogId}_${item.item.id}"
-                    val count = occurrences.getOrDefault(base, 0)
-                    occurrences[base] = count + 1
-                    "${base}_$count"
-                }
-                is GridItem.SeeAll -> "see_all_${item.addonBaseUrl.hashCode()}_${item.catalogId}_${item.addonId}_${item.type}"
-                is GridItem.CollectionHeader -> "col_header_${item.collectionId}"
-                is GridItem.CollectionFolder -> "col_folder_${item.collectionId}_${item.folder.id}"
-            }
-            item to key
-        }
-    }
-
     // Compute the split point: items before the first section divider/collection header
     // are "pre-section" items (e.g. Hero). Continue Watching goes between them and the rest.
     val firstSectionIndex = remember(gridItemsWithKeys) {
@@ -366,7 +382,7 @@ fun GridHomeContent(
         return
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(NuvioTheme.colors.Background)) {
+    Box(modifier = Modifier.sidebarPageContent().fillMaxSize().background(NuvioTheme.colors.Background)) {
         val contentFocusRequester = LocalContentFocusRequester.current
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val gridWidth = maxWidth
@@ -381,7 +397,7 @@ fun GridHomeContent(
             val cols = ((availableWidth + spacing) / (gridColumnMinSize + spacing)).toInt()
             cols.coerceAtLeast(1)
         }
-        val gridRowCount = if (posterCardStyle.width.value.toInt() <= 104) 2 else 3
+        val gridRowCount = if (uiState.posterCardWidthDp <= 104) 2 else 3
 
         // Trim content items per section so SeeAll never ends up alone on a new row.
         val trimmedPostItems = remember(postItems, actualColumnsPerRow, gridRowCount) {
@@ -446,6 +462,7 @@ fun GridHomeContent(
                     val fromCwRow = when (cwRow) {
                         "continue_watching" -> cwRowFocusRequester
                         "upcoming_section" -> upcomingRowFocusRequester
+                        MODERN_COMING_UP_ROW_KEY -> comingUpRowFocusRequester
                         else -> null
                     }
                     val lastKey = lastFocusedGridItemKey.value
@@ -546,7 +563,11 @@ fun GridHomeContent(
                         focusRequesters = cwFocusRequesters,
                         rowFocusRequester = cwRowFocusRequester,
                         listState = cwListState,
-                        onItemFocused = { lastFocusedCwIndex.intValue = it; activeCwRowKey.value = "continue_watching" },
+                        onItemFocused = {
+                            lastFocusedCwIndex.intValue = it
+                            activeCwRowKey.value = "continue_watching"
+                            onContinueWatchingItemFocused(it)
+                        },
                         onItemClick = onContinueWatchingClick,
                         onStartFromBeginning = onContinueWatchingStartFromBeginning,
                         showManualPlayOption = showContinueWatchingManualPlayOption,
@@ -591,7 +612,7 @@ fun GridHomeContent(
             }
 
             // Emit Upcoming section if SPLIT_UPCOMING mode has upcoming items
-            if (uiState.continueWatchingEnabled && uiState.upcomingItems.isNotEmpty()) {
+            if (uiState.continueWatchingEnabled && uiState.shownUpcomingItems.isNotEmpty()) {
                 item(
                     key = "upcoming_section",
                     span = { GridItemSpan(maxLineSpan) },
@@ -665,6 +686,44 @@ fun GridHomeContent(
                 }
             }
 
+            if (uiState.comingUpItems.isNotEmpty()) {
+                item(
+                    key = MODERN_COMING_UP_ROW_KEY,
+                    span = { GridItemSpan(maxLineSpan) },
+                    contentType = "upcoming_section"
+                ) {
+                    LaunchedEffect(comingUpPendingScrollToStart.intValue) {
+                        if (comingUpPendingScrollToStart.intValue > 0) {
+                            comingUpListState.scrollToItem(0, 0)
+                            runCatching { comingUpRowFocusRequester.requestFocus() }
+                            comingUpPendingScrollToStart.intValue = 0
+                        }
+                    }
+                    val openComingUp: (ContinueWatchingItem) -> Unit = { item ->
+                        (item as? ContinueWatchingItem.NextUp)?.info?.let { onNavigateToDetail(it.contentId, it.contentType, "") }
+                    }
+                    GridContinueWatchingSection(
+                        modifier = Modifier.fillMaxWidth(),
+                        fullWidth = gridWidth,
+                        items = uiState.comingUpItems,
+                        title = stringResource(R.string.calendar_coming_up_title),
+                        lastFocusedIndex = lastFocusedComingUpIndex,
+                        focusRequesters = comingUpFocusRequesters,
+                        rowFocusRequester = comingUpRowFocusRequester,
+                        listState = comingUpListState,
+                        onItemFocused = { lastFocusedComingUpIndex.intValue = it; activeCwRowKey.value = MODERN_COMING_UP_ROW_KEY },
+                        onItemClick = openComingUp,
+                        onLongPress = openComingUp,
+                        onRemoveItem = {},
+                        useEpisodeThumbnails = false,
+                        cardStyle = uiState.continueWatchingCardStyle,
+                        cornerRadius = posterCardStyle.cornerRadius,
+                        posterCardWidth = posterCardStyle.width,
+                        posterCardHeight = posterCardStyle.height
+                    )
+                }
+            }
+
             // Emit post-section items (SectionDividers, Content, SeeAll, Collections)
             if (trimmedPostItems.isNotEmpty()) {
                 items(
@@ -727,7 +786,11 @@ fun GridHomeContent(
                             "series" -> strTypeSeries
                             else -> gridItem.type.replaceFirstChar { it.uppercase() }
                         }
-                        val displayName = if (uiState.catalogTypeSuffixEnabled && typeLabel.isNotBlank()) {
+                        val displayName = if (
+                            uiState.catalogTypeSuffixEnabled &&
+                            typeLabel.isNotBlank() &&
+                            !ServerCatalog.isServerAddonId(gridItem.addonId)
+                        ) {
                             "${gridItem.catalogName.replaceFirstChar { it.uppercase() }} - $typeLabel"
                         } else {
                             gridItem.catalogName.replaceFirstChar { it.uppercase() }
@@ -1079,11 +1142,15 @@ private fun GridCollectionFolderCard(
         ) {
             val activeImageUrl = collectionFolderCardImageUrl(folder, isFocused)
             if (!activeImageUrl.isNullOrBlank()) {
+                var cropCover by remember(activeImageUrl, folder.tileShape) { mutableStateOf(false) }
                 AsyncImage(
                     model = activeImageUrl,
                     contentDescription = folder.title,
                     modifier = Modifier.fillMaxSize().clip(cardShape),
-                    contentScale = ContentScale.FillBounds
+                    contentScale = if (cropCover) ContentScale.Crop else ContentScale.FillBounds,
+                    onSuccess = {
+                        cropCover = wideFolderCoverNeedsCrop(folder.tileShape, it.result.image.width, it.result.image.height)
+                    }
                 )
             } else if (!folder.coverEmoji.isNullOrBlank()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

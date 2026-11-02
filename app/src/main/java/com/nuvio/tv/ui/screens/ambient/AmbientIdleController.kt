@@ -1,22 +1,26 @@
 package com.nuvio.tv.ui.screens.ambient
 
-import android.os.SystemClock
-import android.view.KeyEvent
+import com.nuvio.tv.core.player.ScreensaverController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class AmbientIdleController {
-    private val _lastInteractionAt = MutableStateFlow(SystemClock.uptimeMillis())
-    val lastInteractionAt: StateFlow<Long> = _lastInteractionAt.asStateFlow()
+/** With Ambient Mode and Dim when idle both on, Ambient Mode runs and the dimmer waits; false swaps them. */
+const val AMBIENT_BEFORE_OLED_DIM = true
+
+/**
+ * Show/dismiss state for Ambient Mode. The idle clock is the screensaver's, so Ambient Mode
+ * and the OLED dimmer count idle time from the same last input.
+ */
+class AmbientIdleController(private val idleClock: ScreensaverController) {
+    val lastInteractionAt: StateFlow<Long>
+        get() = idleClock.lastInteractionAt
 
     private val _isShowing = MutableStateFlow(false)
     val isShowing: StateFlow<Boolean> = _isShowing.asStateFlow()
 
-    private var swallowedKeyCode: Int? = null
-
     fun onInteraction() {
-        _lastInteractionAt.value = SystemClock.uptimeMillis()
+        idleClock.notifyInteraction()
     }
 
     fun show() {
@@ -26,22 +30,5 @@ class AmbientIdleController {
     fun dismiss() {
         _isShowing.value = false
         onInteraction()
-    }
-
-    fun consumeKeyEvent(event: KeyEvent): Boolean {
-        onInteraction()
-        val continuesSwallowedPress = event.keyCode == swallowedKeyCode &&
-            (event.action == KeyEvent.ACTION_UP || event.repeatCount > 0)
-        if (continuesSwallowedPress) {
-            if (event.action == KeyEvent.ACTION_UP) swallowedKeyCode = null
-            return true
-        }
-        swallowedKeyCode = null
-        if (_isShowing.value && event.action == KeyEvent.ACTION_DOWN) {
-            swallowedKeyCode = event.keyCode
-            dismiss()
-            return true
-        }
-        return false
     }
 }

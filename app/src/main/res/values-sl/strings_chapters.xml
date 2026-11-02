@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="player_chapters">Poglavja</string>
+    <string name="player_chapter_number">Poglavje %1$d</string>
+    <string name="player_chapter_named">Poglavje %1$d: %2$s</string>
+    <string name="player_chapter_now_playing">Zdaj se predvaja</string>
+    <string name="playback_chapters">Poglavja v predvajalniku</string>
+    <string name="playback_chapters_sub">Za filme s poglavji: gumb Poglavja, oznake na časovnici in ime poglavja</string>
+</resources>

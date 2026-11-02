@@ -1,6 +1,7 @@
 package com.nuvio.tv.core.debrid
 
 import android.util.Log
+import com.nuvio.tv.core.logging.redactLinksForLog
 import com.nuvio.tv.data.local.DebridSettingsDataStore
 import com.nuvio.tv.data.remote.api.TorboxApi
 import com.nuvio.tv.data.remote.dto.TorboxCreateTorrentDataDto
@@ -85,7 +86,7 @@ class TorboxDirectDebridResolver @Inject constructor(
             )
         } catch (error: Exception) {
             if (error is CancellationException) throw error
-            Log.w(TAG, "resolve: failed with ${error::class.simpleName}: ${error.message}")
+            Log.w(TAG, "resolve: failed with ${error::class.simpleName}: ${error.message?.redactLinksForLog()}")
             DirectDebridResolveResult.Error
         }
     }

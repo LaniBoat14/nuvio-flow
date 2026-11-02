@@ -3,7 +3,67 @@
 
     <style name="Theme.MyApplication.Launcher" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/splash_background</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/app_logo_mark</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/arc_launcher_foreground</item>
         <item name="postSplashScreenTheme">@style/Theme.MyApplication</item>
+    </style>
+
+    <style name="Theme.MyApplication.Launcher.ArcticBlue">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/arc_launcher_foreground_arctic_blue</item>
+    </style>
+
+    <style name="Theme.MyApplication.Launcher.Emerald">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/arc_launcher_foreground_emerald</item>
+    </style>
+
+    <style name="Theme.MyApplication.Launcher.RoseGold">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/arc_launcher_foreground_rose_gold</item>
+    </style>
+
+    <style name="Theme.MyApplication.Launcher.Copper">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/arc_launcher_foreground_copper</item>
+    </style>
+
+    <style name="Theme.MyApplication.Launcher.Graphite">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/arc_launcher_foreground_graphite</item>
+    </style>
+
+    <style name="Theme.MyApplication.Launcher.Gold">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/arc_launcher_foreground_gold</item>
+    </style>
+
+    <style name="Theme.MyApplication.Launcher.Jade">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/arc_launcher_foreground_jade</item>
+    </style>
+
+    <style name="Theme.MyApplication.Launcher.Glass">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/arc_launcher_foreground_glass</item>
+    </style>
+
+    <style name="Theme.MyApplication.Launcher.Crimson">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/arc_launcher_foreground_crimson</item>
+    </style>
+
+    <style name="Theme.MyApplication.Launcher.Ocean">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/arc_launcher_foreground_ocean</item>
+    </style>
+
+    <style name="Theme.MyApplication.Launcher.Violet">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/arc_launcher_foreground_violet</item>
+    </style>
+
+    <style name="Theme.MyApplication.Launcher.EmeraldGreen">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/arc_launcher_foreground_emerald_green</item>
+    </style>
+
+    <style name="Theme.MyApplication.Launcher.Amber">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/arc_launcher_foreground_amber</item>
+    </style>
+
+    <style name="Theme.MyApplication.Launcher.Rose">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/arc_launcher_foreground_rose</item>
+    </style>
+
+    <style name="Theme.MyApplication.Launcher.White">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/arc_launcher_foreground_white</item>
     </style>
 </resources>

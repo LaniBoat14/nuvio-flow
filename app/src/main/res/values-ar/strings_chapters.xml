@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="player_chapters">الفصول</string>
+    <string name="player_chapter_number">الفصل %1$d</string>
+    <string name="player_chapter_named">الفصل %1$d: %2$s</string>
+    <string name="player_chapter_now_playing">قيد التشغيل الآن</string>
+    <string name="playback_chapters">الفصول في المشغّل</string>
+    <string name="playback_chapters_sub">للأفلام التي تحتوي على فصول: زر الفصول وعلامات على شريط الوقت واسم الفصل</string>
+</resources>

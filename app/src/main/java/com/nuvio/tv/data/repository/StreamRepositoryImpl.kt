@@ -4,7 +4,8 @@ import android.content.Context
 import android.util.Log
 import com.nuvio.tv.R
 import com.nuvio.tv.core.network.NetworkResult
-import com.nuvio.tv.core.network.safeApiCall
+import com.nuvio.tv.core.network.safeAddonApiCall
+import com.nuvio.tv.core.logging.redactLinksForLog
 import com.nuvio.tv.core.debrid.DebridStreamPresentation
 import com.nuvio.tv.core.debrid.LocalDebridAvailabilityService
 import com.nuvio.tv.core.plugin.PluginManager
@@ -12,11 +13,17 @@ import com.nuvio.tv.core.plugin.resolvePluginSeasonEpisode
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.tmdb.TmdbService
 import com.nuvio.tv.data.local.DebridSettingsDataStore
+import com.nuvio.tv.data.local.PlayerSettings
+import com.nuvio.tv.data.local.PlayerSettingsDataStore
 import com.nuvio.tv.data.mapper.toDomain
+import com.nuvio.tv.data.mediaserver.ServerException
+import com.nuvio.tv.data.mediaserver.ServerFailure
 import com.nuvio.tv.data.mediaserver.ServerStreamSource
 import com.nuvio.tv.data.mediaserver.ServerStreams
 import com.nuvio.tv.data.mediaserver.messageRes
 import com.nuvio.tv.data.mediaserver.serverFailure
+import com.nuvio.tv.data.mediaserver.serverSourceLogLine
+import com.nuvio.tv.data.mediaserver.serverSourceOutcome
 import com.nuvio.tv.data.remote.api.AddonApi
 import com.nuvio.tv.domain.model.Addon
 import com.nuvio.tv.domain.model.AddonStreams
@@ -31,6 +38,9 @@ import com.nuvio.tv.core.streams.supportsStreamResource
 import com.nuvio.tv.domain.model.enabledAddons
 import com.nuvio.tv.domain.repository.AddonRepository
 import com.nuvio.tv.domain.repository.StreamRepository
+import com.nuvio.tv.core.health.AddonHealthStore
+import com.nuvio.tv.core.health.HealthOutcome
+import com.nuvio.tv.core.util.canonicalizeAddonUrl
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -41,13 +51,23 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import java.net.URLEncoder
 import java.security.MessageDigest
 import javax.inject.Inject
 
 private const val TAG = "StreamRepositoryImpl"
+
+/** Deadline for loading one media server's streams. */
+private const val SERVER_SOURCE_FETCH_TIMEOUT_MS = 15_000L
 
 class StreamRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -59,8 +79,57 @@ class StreamRepositoryImpl @Inject constructor(
     private val tmdbService: TmdbService,
     private val debridStreamPresentation: DebridStreamPresentation,
     private val localDebridAvailabilityService: LocalDebridAvailabilityService,
-    private val serverStreams: ServerStreams
+    private val healthStore: AddonHealthStore,
+    private val serverStreams: ServerStreams,
+    private val playerSettingsDataStore: PlayerSettingsDataStore
 ) : StreamRepository {
+
+    /**
+     * Per-addon deadline for a single stream fetch, from the Addon response timeout
+     * setting (60s by default). Without one each addon inherits only the shared
+     * client's connect(30s) + read(60s) budget. It must not be short: aggregators
+     * such as AIOStreams only answer once every source behind them has answered or
+     * hit its own timeout, so a short deadline throws away their whole result when
+     * one upstream service is slow or down. Results stream out as each addon lands,
+     * so a slow addon never holds back the others.
+     */
+    private suspend fun addonStreamTimeoutMs(): Long {
+        val seconds = try {
+            playerSettingsDataStore.playerSettings.first().addonStreamTimeoutSeconds
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            PlayerSettings.DEFAULT_ADDON_STREAM_TIMEOUT_SECONDS
+        }
+        return seconds * 1_000L
+    }
+
+    // Detached scope for passive health writes so recording a stream
+    // outcome never adds latency to the fetch or delays the channel close.
+    private val healthScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * Fire-and-forget a passive health sample for one addon stream fetch.
+     * Maps the ADDON_MS outcome vocabulary onto HealthOutcome; cancelled
+     * and any unknown outcome are dropped (an external cap-cancel is not
+     * the addon's fault). Keyed by canonical base URL, matching the store.
+     */
+    private fun recordAddonHealth(baseUrl: String, outcome: String, latencyMs: Long) {
+        val mapped = when (outcome) {
+            "ok", "ok_inline" -> HealthOutcome.SUCCESS
+            "empty" -> HealthOutcome.EMPTY
+            "timeout", "error" -> HealthOutcome.FAILURE
+            else -> return
+        }
+        healthScope.launch {
+            healthStore.record(
+                AddonHealthStore.addonKey(canonicalizeAddonUrl(baseUrl)),
+                mapped,
+                latencyMs
+            )
+        }
+    }
+
     private val streamSearchSessions = StreamSearchSessionCache()
     private val localPluginSearchPaused = MutableStateFlow(false)
 
@@ -119,6 +188,20 @@ class StreamRepositoryImpl @Inject constructor(
                 )
             }
         )
+    }
+
+    override fun getStreamsForPrefetch(
+        type: String, videoId: String, season: Int?, episode: Int?
+    ): Flow<NetworkResult<List<AddonStreams>>> = flow {
+        val config = captureSourceConfiguration()
+        val isNativeServerRequest = serverStreams.isNativeRequest(videoId)
+        emitAll(fetchStreamsFromAllSources(
+            type, videoId, season, episode,
+            if (isNativeServerRequest) emptyList() else config.addons,
+            config.debridSettings,
+            !isNativeServerRequest && config.pluginsEnabled && config.enabledScrapers.any { it.supportsType(type) },
+            serverStreams.sources(type, videoId, season, episode)
+        ))
     }
 
     override suspend fun getCachedStreamsFromAllAddons(
@@ -191,6 +274,11 @@ class StreamRepositoryImpl @Inject constructor(
         serverSources: List<ServerStreamSource>
     ): Flow<NetworkResult<List<AddonStreams>>> = flow {
         emit(NetworkResult.Loading)
+        // Timing: whole-scrape wall time. Grep anchor: SCRAPE_TOTAL.
+        val scrapeT0 = android.os.SystemClock.elapsedRealtime()
+        serverStreams.logSkippedSources(type, videoId, season, episode)
+
+        val addonTimeoutMs = addonStreamTimeoutMs()
 
         try {
             // Filter addons that support streams for this type and id
@@ -217,14 +305,24 @@ class StreamRepositoryImpl @Inject constructor(
                 // Launch addon jobs
                 streamAddons.forEach { addon ->
                     launch {
+                        // Timing: per-addon wall time, from job launch to
+                        // completion, timeout, error or cancellation. Grep anchor:
+                        // ADDON_MS. Logged in the finally so every exit path,
+                        // including the rethrown cancellation, produces a line.
+                        val addonT0 = android.os.SystemClock.elapsedRealtime()
+                        var addonOutcome = "cancelled"
+                        var addonStreamCount = 0
                         try {
-                            val streamsResult = getStreamsFromAddon(addon, type, videoId)
+                          withTimeout(addonTimeoutMs) {
+                            val streamsResult = fetchStreamsFromAddon(addon, type, videoId, addonTimeoutMs)
                             when (streamsResult) {
                                 is NetworkResult.Success -> {
                                     if (streamsResult.data.isNotEmpty()) {
                                         val namedStreams = streamsResult.data.map {
                                             it.copy(addonName = addon.displayName, addonLogo = addon.logo)
                                         }
+                                        addonOutcome = "ok"
+                                        addonStreamCount = namedStreams.size
                                         resultChannel.send(
                                             AddonStreams(
                                                 addonName = addon.displayName,
@@ -239,6 +337,8 @@ class StreamRepositoryImpl @Inject constructor(
                                             addon, type, videoId
                                         )
                                         if (inlineStreams.isNotEmpty()) {
+                                            addonOutcome = "ok_inline"
+                                            addonStreamCount = inlineStreams.size
                                             resultChannel.send(
                                                 AddonStreams(
                                                     addonName = addon.displayName,
@@ -247,24 +347,61 @@ class StreamRepositoryImpl @Inject constructor(
                                                 )
                                             )
                                         } else {
+                                            addonOutcome = "empty"
                                             attemptedFailures += buildMissingStreamFailure(addon)
                                         }
                                     }
                                 }
                                 is NetworkResult.Error -> {
+                                    addonOutcome = "error"
                                     attemptedFailures += buildAddonFailure(addon, streamsResult)
                                 }
                                 NetworkResult.Loading -> Unit
                             }
+                          }
+                        } catch (e: TimeoutCancellationException) {
+                            // MUST precede the broad catch below: TimeoutCancellationException
+                            // is a CancellationException, and rethrowing it would cancel the
+                            // enclosing coroutineScope and every sibling addon job with it.
+                            //
+                            // Distinguish this addon's OWN deadline from an EXTERNAL
+                            // cancellation. The prefetch cap wraps the collect in
+                            // withTimeoutOrNull, whose TimeoutCancellationException propagates
+                            // in here when the cap fires (e.g. at 3s). Without this check a 3s
+                            // cap-cancel reads as a timeout of this addon and a genuinely
+                            // dead addon looks the same as one that was
+                            // simply cut short. On a real own-timeout only the inner withTimeout
+                            // scope expired, so this coroutine is still active; on an external
+                            // cancel the coroutine itself is cancelled.
+                            if (!isActive) {
+                                addonOutcome = "cancelled"
+                                throw e
+                            }
+                            addonOutcome = "timeout"
+                            Log.w(TAG, "Addon ${addon.name} exceeded ${addonTimeoutMs}ms - abandoning")
+                            attemptedFailures += StreamAttemptFailure(
+                                addonName = addon.displayName,
+                                kind = StreamFailureKind.REQUEST_FAILED,
+                                detail = context.getString(com.nuvio.tv.R.string.stream_error_detail_addon_timeout)
+                            )
                         } catch (e: Exception) {
                             if (e is CancellationException) throw e
-                            Log.e(TAG, "Addon ${addon.name} failed: ${e.message}")
+                            addonOutcome = "error"
+                            Log.e(TAG, "Addon ${addon.name} failed: ${e.message?.redactLinksForLog()}")
                             attemptedFailures += StreamAttemptFailure(
                                 addonName = addon.displayName,
                                 kind = StreamFailureKind.REQUEST_FAILED,
                                 detail = e.message ?: context.getString(com.nuvio.tv.R.string.stream_error_detail_addon_request_failed)
                             )
                         } finally {
+                            val addonMs = android.os.SystemClock.elapsedRealtime() - addonT0
+                            Log.i(
+                                TAG,
+                                "ADDON_MS name=${addon.displayName} " +
+                                    "ms=$addonMs " +
+                                    "streams=$addonStreamCount outcome=$addonOutcome"
+                            )
+                            recordAddonHealth(addon.baseUrl, addonOutcome, addonMs)
                             if (completedJobs.incrementAndGet() >= totalJobs) {
                                 resultChannel.close()
                             }
@@ -274,8 +411,19 @@ class StreamRepositoryImpl @Inject constructor(
 
                 serverSources.forEach { source ->
                     launch {
+                        val serverT0 = android.os.SystemClock.elapsedRealtime()
+                        var finished = false
+                        var timedOut = false
+                        var streamCount = 0
+                        var failure: Throwable? = null
                         try {
-                            val streams = source.load()
+                            val streams = withTimeoutOrNull(SERVER_SOURCE_FETCH_TIMEOUT_MS) { source.load() }
+                                ?: run {
+                                    timedOut = true
+                                    throw ServerException(ServerFailure.UNREACHABLE)
+                                }
+                            streamCount = streams.size
+                            finished = true
                             if (streams.isNotEmpty()) {
                                 resultChannel.send(AddonStreams(addonName = source.name, addonLogo = null, streams = streams))
                             } else {
@@ -287,12 +435,29 @@ class StreamRepositoryImpl @Inject constructor(
                             }
                         } catch (e: Exception) {
                             if (e is CancellationException) throw e
+                            finished = true
+                            if (!timedOut) failure = e
                             attemptedFailures += StreamAttemptFailure(
                                 addonName = source.name,
                                 kind = StreamFailureKind.REQUEST_FAILED,
                                 detail = context.getString(e.serverFailure().messageRes())
                             )
                         } finally {
+                            val outcome = if (finished) {
+                                serverSourceOutcome(streamCount, source.matchedItems, failure, timedOut)
+                            } else {
+                                "cancelled"
+                            }
+                            Log.i(
+                                ServerStreams.TAG,
+                                serverSourceLogLine(
+                                    source.name,
+                                    android.os.SystemClock.elapsedRealtime() - serverT0,
+                                    streamCount,
+                                    outcome,
+                                    failure
+                                )
+                            )
                             if (completedJobs.incrementAndGet() >= totalJobs) {
                                 resultChannel.close()
                             }
@@ -301,6 +466,12 @@ class StreamRepositoryImpl @Inject constructor(
                 }
 
                 launch {
+                    // Timing: the plugin job shares the ADDON_MS anchor so
+                    // one grep captures every fan-out participant. streams is not
+                    // tracked at this layer (scrapers send individually); -1 marks
+                    // it as unmeasured rather than zero.
+                    val pluginT0 = android.os.SystemClock.elapsedRealtime()
+                    var pluginOutcome = "done"
                     try {
                         if (!hasCompatiblePlugins) return@launch
 
@@ -330,23 +501,62 @@ class StreamRepositoryImpl @Inject constructor(
                             .first()
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
+                        pluginOutcome = "error"
                         Log.e(TAG, "Plugin execution failed: ${e.message}")
                     } finally {
+                        Log.i(
+                            TAG,
+                            "ADDON_MS name=plugins " +
+                                "ms=${android.os.SystemClock.elapsedRealtime() - pluginT0} " +
+                                "streams=-1 outcome=$pluginOutcome"
+                        )
                         if (completedJobs.incrementAndGet() >= totalJobs) {
                             resultChannel.close()
                         }
                     }
                 }
 
-                // Emit results as they arrive
+                // Emit results as they arrive. Greedily drain
+                // whatever has already queued before annotating, so all groups
+                // that arrived while the previous batch's cache check was in
+                // flight share ONE checkCached call rather than one API call
+                // per addon group. tryReceive never blocks, so a lone
+                // arrival is annotated immediately, with no added latency.
                 for (result in resultChannel) {
-                    val checkingResult = localDebridAvailabilityService.markChecking(listOf(result)).firstOrNull() ?: result
-                    val checkedResult = localDebridAvailabilityService.annotateCachedAvailability(listOf(checkingResult)).firstOrNull() ?: checkingResult
-                    mergePresentedResult(accumulatedResults, checkedResult, debridSettings)
+                    val batch = mutableListOf(result)
+                    while (true) {
+                        val more = resultChannel.tryReceive().getOrNull() ?: break
+                        batch += more
+                    }
+                    // Timing: the debrid cache check sits between an
+                    // addon's arrival and its visibility to every consumer, so
+                    // its cost is inside every scrape figure. Grep anchor:
+                    // CACHECHECK_MS. Memoised hashes make repeat batches cheap;
+                    // this line shows the real cost per batch either way.
+                    val checkT0 = android.os.SystemClock.elapsedRealtime()
+                    val checkingBatch = localDebridAvailabilityService.markChecking(batch)
+                    val checkedBatch = localDebridAvailabilityService.annotateCachedAvailability(checkingBatch)
+                    Log.i(
+                        TAG,
+                        "CACHECHECK_MS ms=${android.os.SystemClock.elapsedRealtime() - checkT0} " +
+                            "batch_groups=${batch.size} " +
+                            "batch_streams=${batch.sumOf { it.streams.size }}"
+                    )
+                    val finalBatch = if (checkedBatch.size == batch.size) checkedBatch else batch
+                    finalBatch.forEach { checkedResult ->
+                        mergePresentedResult(accumulatedResults, checkedResult, debridSettings)
+                    }
                     emit(NetworkResult.Success(accumulatedResults.toList()))
-                    Log.d(TAG, "Emitted ${accumulatedResults.size} addon(s), latest: ${checkedResult.addonName} with ${checkedResult.streams.size} streams")
+                    Log.d(TAG, "Emitted ${accumulatedResults.size} addon(s), latest batch of ${finalBatch.size}: ${finalBatch.joinToString { "${it.addonName}(${it.streams.size})" }}")
                 }
             }
+
+            Log.i(
+                TAG,
+                "SCRAPE_TOTAL ms=${android.os.SystemClock.elapsedRealtime() - scrapeT0} " +
+                    "groups=${accumulatedResults.size} " +
+                    "streams=${accumulatedResults.sumOf { it.streams.size }}"
+            )
 
             // Emit final result (even if empty)
             if (accumulatedResults.isEmpty()) {
@@ -460,7 +670,7 @@ class StreamRepositoryImpl @Inject constructor(
         if (existingIndex >= 0) {
             val existing = accumulatedResults[existingIndex]
             val merged = existing.copy(
-                streams = mergeStreams(existing.streams, result.streams)
+                streams = mergeStreams(existing.streams + existing.thumbnailCopyStreams, result.streams)
             )
             accumulatedResults[existingIndex] = presentStreams(merged, debridSettings)
         } else {
@@ -479,8 +689,55 @@ class StreamRepositoryImpl @Inject constructor(
     private fun mergeStreams(existing: List<Stream>, incoming: List<Stream>): List<Stream> {
         val streamsByKey = LinkedHashMap<String, Stream>()
         existing.forEach { stream -> streamsByKey[stream.dedupKey()] = stream }
-        incoming.forEach { stream -> streamsByKey[stream.dedupKey()] = stream }
+        incoming.forEach { stream ->
+            val key = stream.dedupKey()
+            val prior = streamsByKey[key]
+            streamsByKey[key] = if (prior == null) stream else mergeDuplicateStreams(prior, stream)
+        }
         return streamsByKey.values.toList()
+    }
+
+    /**
+     * Last-write-wins would drop the richer duplicate: the same
+     * torrent arriving twice (e.g. via the meta-inline fallback) could lose an
+     * earlier copy's behaviorHints (filename, videoSize, bingeGroup) and its
+     * already-resolved debrid cache badge. Incoming stays authoritative;
+     * fields it lacks are backfilled from the prior copy.
+     */
+    private fun mergeDuplicateStreams(prior: Stream, incoming: Stream): Stream {
+        val mergedHints = when {
+            incoming.behaviorHints == null -> prior.behaviorHints
+            prior.behaviorHints == null -> incoming.behaviorHints
+            else -> incoming.behaviorHints.copy(
+                notWebReady = incoming.behaviorHints.notWebReady ?: prior.behaviorHints.notWebReady,
+                bingeGroup = incoming.behaviorHints.bingeGroup ?: prior.behaviorHints.bingeGroup,
+                countryWhitelist = incoming.behaviorHints.countryWhitelist ?: prior.behaviorHints.countryWhitelist,
+                proxyHeaders = incoming.behaviorHints.proxyHeaders ?: prior.behaviorHints.proxyHeaders,
+                videoHash = incoming.behaviorHints.videoHash ?: prior.behaviorHints.videoHash,
+                videoSize = incoming.behaviorHints.videoSize ?: prior.behaviorHints.videoSize,
+                filename = incoming.behaviorHints.filename ?: prior.behaviorHints.filename
+            )
+        }
+        // A resolved cache state beats an unresolved one regardless of arrival order.
+        val priorCacheResolved = prior.debridCacheStatus?.state in FINAL_DEBRID_STATES
+        val incomingCacheResolved = incoming.debridCacheStatus?.state in FINAL_DEBRID_STATES
+        val mergedCacheStatus = when {
+            incomingCacheResolved -> incoming.debridCacheStatus
+            priorCacheResolved -> prior.debridCacheStatus
+            else -> incoming.debridCacheStatus ?: prior.debridCacheStatus
+        }
+        return incoming.copy(
+            title = incoming.title ?: prior.title,
+            description = incoming.description ?: prior.description,
+            fileIdx = incoming.fileIdx ?: prior.fileIdx,
+            behaviorHints = mergedHints,
+            sources = incoming.sources ?: prior.sources,
+            quality = incoming.quality ?: prior.quality,
+            qualityValue = if (incoming.qualityValue >= 0) incoming.qualityValue else prior.qualityValue,
+            clientResolve = incoming.clientResolve ?: prior.clientResolve,
+            debridCacheStatus = mergedCacheStatus,
+            badges = incoming.badges.ifEmpty { prior.badges }
+        )
     }
 
     /**
@@ -635,6 +892,13 @@ class StreamRepositoryImpl @Inject constructor(
         addon: Addon,
         type: String,
         videoId: String
+    ): NetworkResult<List<Stream>> = fetchStreamsFromAddon(addon, type, videoId, addonStreamTimeoutMs())
+
+    private suspend fun fetchStreamsFromAddon(
+        addon: Addon,
+        type: String,
+        videoId: String,
+        timeoutMs: Long
     ): NetworkResult<List<Stream>> {
         val cleanBaseUrl = addon.baseUrl.trimEnd('/')
         val queryStart = cleanBaseUrl.indexOf('?')
@@ -643,27 +907,28 @@ class StreamRepositoryImpl @Inject constructor(
         val encodedType = encodePathSegment(type)
         val encodedVideoId = encodePathSegment(videoId)
         val streamUrl = "$basePath/stream/$encodedType/$encodedVideoId.json$baseQuery"
-        Log.d(TAG, "Fetching streams type=$type videoId=$videoId url=$streamUrl")
+        Log.d(TAG, "Fetching streams type=$type videoId=$videoId url=${streamUrl.redactLinksForLog()}")
 
         // Display info comes from the installed addon the caller already holds. Calling
         // addonRepository.fetchAddon() here caused an unconditional manifest GET ahead of every
         // queried addon's stream request: fetchAddon is the low-level fetch that does not consult
         // the cache, so this sidestepped the manifest-cache policy in AddonRepositoryImpl.
-        val addonName = addon.displayName
+        val resolvedAddonName = addon.displayName
         val addonLogo = addon.logo
 
-        return when (val result = safeApiCall(context) { api.getStreams(streamUrl) }) {
+        return when (val result = safeAddonApiCall(context, timeoutMs) { api.getStreams(streamUrl) }) {
             is NetworkResult.Success -> {
                 val streams = result.data.streams?.map { 
-                    it.toDomain(addonName, addonLogo) 
+                    it.toDomain(resolvedAddonName, addonLogo) 
                 } ?: emptyList()
-                Log.d(TAG, "Streams success addon=$addonName count=${streams.size} url=$streamUrl")
+                Log.d(TAG, "Streams success addon=$resolvedAddonName count=${streams.size} url=${streamUrl.redactLinksForLog()}")
                 NetworkResult.Success(streams)
             }
             is NetworkResult.Error -> {
                 Log.w(
                     TAG,
-                    "Streams failed addon=$addonName code=${result.code} message=${result.message} url=$streamUrl"
+                    "Streams failed addon=$resolvedAddonName code=${result.code} message=${result.message} url=$streamUrl"
+                        .redactLinksForLog()
                 )
                 result
             }
@@ -713,9 +978,9 @@ class StreamRepositoryImpl @Inject constructor(
         val encodedType = encodePathSegment(type)
         val encodedMetaId = encodePathSegment(metaId)
         val metaUrl = "$basePath/meta/$encodedType/$encodedMetaId.json$baseQuery"
-        Log.d(TAG, "Fetching inline streams via meta type=$type metaId=$metaId videoId=$videoId url=$metaUrl")
+        Log.d(TAG, "Fetching inline streams via meta type=$type metaId=$metaId videoId=$videoId url=${metaUrl.redactLinksForLog()}")
         return try {
-            when (val result = safeApiCall(context) { api.getMeta(metaUrl) }) {
+            when (val result = safeAddonApiCall(context) { api.getMeta(metaUrl) }) {
                 is NetworkResult.Success -> {
                     val metaDto = result.data.meta ?: return emptyList()
                     val matchingVideo = metaDto.videos?.firstOrNull { it.id == videoId }
@@ -729,7 +994,7 @@ class StreamRepositoryImpl @Inject constructor(
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.w(TAG, "Failed to fetch inline streams from meta for ${addon.displayName}: ${e.message}")
+            Log.w(TAG, "Failed to fetch inline streams from meta for ${addon.displayName}: ${e.message?.redactLinksForLog()}")
             emptyList()
         }
     }
@@ -802,3 +1067,8 @@ class StreamRepositoryImpl @Inject constructor(
         return URLEncoder.encode(value, "UTF-8").replace("+", "%20")
     }
 }
+
+private val FINAL_DEBRID_STATES = setOf(
+    com.nuvio.tv.domain.model.StreamDebridCacheState.CACHED,
+    com.nuvio.tv.domain.model.StreamDebridCacheState.NOT_CACHED
+)

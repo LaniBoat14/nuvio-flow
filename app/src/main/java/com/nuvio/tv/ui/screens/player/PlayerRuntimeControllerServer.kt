@@ -1,13 +1,18 @@
 package com.nuvio.tv.ui.screens.player
 
+import android.util.Log
 import android.widget.Toast
 import androidx.annotation.StringRes
+import androidx.media3.common.PlaybackException
 import com.nuvio.tv.R
+import com.nuvio.tv.data.mediaserver.ServerPlayMethod
 import com.nuvio.tv.data.mediaserver.ServerPlaybackSession
 import com.nuvio.tv.data.mediaserver.ServerTrack
 import com.nuvio.tv.data.mediaserver.labelRes
+import com.nuvio.tv.data.mediaserver.newerServerResume
 import com.nuvio.tv.data.mediaserver.readableTranscodeReason
 import com.nuvio.tv.data.mediaserver.serverPlaybackMessageRes
+import com.nuvio.tv.data.mediaserver.toSkipIntervals
 import com.nuvio.tv.domain.model.Addon
 import com.nuvio.tv.domain.model.ProxyHeaders
 import com.nuvio.tv.domain.model.Stream
@@ -15,10 +20,11 @@ import com.nuvio.tv.domain.model.StreamBehaviorHints
 import com.nuvio.tv.domain.model.WatchProgress
 import com.nuvio.tv.domain.model.enabledAddons
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 
 internal fun PlayerRuntimeController.reportServerPlayback() {
     val url = currentStreamUrl
@@ -26,15 +32,43 @@ internal fun PlayerRuntimeController.reportServerPlayback() {
         serverPlayback.stop(reportedServerUrl)
         reportedServerUrl = url.takeIf(serverPlayback::isServerSource)
         refreshServerTracks()
+        if (reportedServerUrl == null) clearServerSkipIntervals()
+        clearServerChapters()
     }
+    fetchServerSkipIntervals()
+    fetchServerChapters()
+    if (reportedServerUrl != null && isPlaceholderPlayback()) return
     val state = _uiState.value
     serverPlayback.onPlaybackSnapshot(
         url = reportedServerUrl,
-        positionMs = _playbackTimeline.value.currentPosition,
+        positionMs = _playbackTimeline.value.playbackPosition,
         isPlaying = state.isPlaying,
         isLoading = state.isBuffering,
         isEnded = state.playbackEnded
     )
+}
+
+internal fun PlayerRuntimeController.fetchServerSkipIntervals() {
+    if (!skipIntroEnabled) return
+    val url = reportedServerUrl ?: return
+    val session = serverPlayback.session(url) ?: return
+    val key = "${session.target.item.encode()}:${session.mediaSourceId}"
+    if (serverSkipFetchedKey == key) return
+    serverSkipFetchedKey = key
+    val isMovie = contentType.equals("movie", ignoreCase = true)
+    scope.launch {
+        val intervals = serverPlayback.segments(url).toSkipIntervals(isMovie)
+        if (!skipIntroEnabled || serverSkipFetchedKey != key) return@launch
+        serverSkipIntervals = intervals
+        recomputeMergedSkipIntervals()
+    }
+}
+
+internal fun PlayerRuntimeController.clearServerSkipIntervals() {
+    serverSkipFetchedKey = null
+    if (serverSkipIntervals.isEmpty()) return
+    serverSkipIntervals = emptyList()
+    recomputeMergedSkipIntervals()
 }
 
 internal fun PlayerRuntimeController.stopServerPlayback() {
@@ -55,22 +89,48 @@ internal fun PlayerRuntimeController.serverPlaybackSummary(): String? {
     return if (reasons.isEmpty()) method else "$method · $reasons"
 }
 
-internal suspend fun PlayerRuntimeController.newerServerProgress(saved: WatchProgress?): WatchProgress? {
-    if (!isServerStream) return saved
-    val state = try {
-        withTimeoutOrNull(SERVER_RESUME_TIMEOUT_MS) { serverPlayback.resumeState(currentStreamUrl) }
-    } catch (error: CancellationException) {
-        throw error
-    } catch (_: Exception) {
-        null
-    } ?: return saved
-    val lastPlayed = state.lastPlayedEpochMs
-        ?.takeIf { !state.played && state.positionMs > 0L && state.durationMs > 0L }
-        ?: return saved
-    if (saved != null && saved.lastWatched >= lastPlayed) return saved
-    val parentContentId = contentId ?: return saved
-    val base = saved ?: currentWatchProgress(parentContentId, contentType ?: "movie", 0L, 0L, 0L)
-    return base.copy(position = state.positionMs, duration = state.durationMs, lastWatched = lastPlayed, progressPercent = null)
+/** Provider row of the stats HUD for a server stream, for example "Jellyfin · Direct play". */
+internal fun PlayerRuntimeController.serverProviderLabel(): String? {
+    val session = serverPlayback.session(currentStreamUrl) ?: return null
+    val name = serverPlayback.providerName(currentStreamUrl) ?: return null
+    return "$name · ${context.getString(session.playMethod.labelRes())}"
+}
+
+/**
+ * Nuvio's saved progress for this start, or the server's own resume point when that one is newer. The server is
+ * asked while [saved] reads, and its short timeout keeps a slow server from holding up the start.
+ */
+internal suspend fun PlayerRuntimeController.savedOrServerProgress(saved: suspend () -> WatchProgress?): WatchProgress? {
+    val url = currentStreamUrl
+    if (!serverPlayback.isServerSource(url)) return saved()
+    return coroutineScope {
+        val state = async { serverPlayback.resumeState(url) }
+        val local = saved()
+        val progress = newerServerResume(local, state.await()) { blankServerProgress() }
+        if (progress !== local) {
+            Log.i(PlayerRuntimeController.TAG, "Resuming from the server position ${progress?.position}ms")
+        }
+        progress
+    }
+}
+
+private fun PlayerRuntimeController.blankServerProgress(): WatchProgress? {
+    val parentContentId = contentId?.takeIf { it.isNotEmpty() } ?: return null
+    return WatchProgress(
+        contentId = parentContentId,
+        contentType = contentType?.takeIf { it.isNotEmpty() } ?: "movie",
+        name = contentName ?: title,
+        poster = poster,
+        backdrop = backdrop,
+        logo = logo,
+        videoId = currentVideoId ?: parentContentId,
+        season = currentSeason,
+        episode = currentEpisode,
+        episodeTitle = currentEpisodeTitle,
+        position = 0L,
+        duration = 0L,
+        lastWatched = 0L
+    )
 }
 
 internal fun PlayerRuntimeController.serverImdbId(contentId: String): String? =
@@ -82,14 +142,21 @@ internal suspend fun PlayerRuntimeController.streamAddonsFor(videoId: String): L
 internal fun PlayerRuntimeController.serverSourceNames(type: String, videoId: String): List<String> =
     serverStreams.sources(type, videoId, season = null, episode = null).map { it.name }
 
-internal suspend fun PlayerRuntimeController.prepareServerStream(stream: Stream): Stream? {
+/** With [replacing], the current server stream may be closed first when its server allows no more streams. */
+internal suspend fun PlayerRuntimeController.prepareServerStream(
+    stream: Stream,
+    quiet: Boolean = false,
+    replacing: Boolean = false
+): Stream? {
     val target = stream.serverTarget ?: return stream
     val session = try {
-        serverPlayback.prepare(target)
+        serverPlayback.prepare(target, replacing = if (replacing) reportedServerUrl ?: currentStreamUrl else null)
     } catch (error: CancellationException) {
         throw error
     } catch (error: Exception) {
-        Toast.makeText(context, context.getString(error.serverPlaybackMessageRes()), Toast.LENGTH_SHORT).show()
+        if (!quiet) {
+            Toast.makeText(context, context.getString(error.serverPlaybackMessageRes()), Toast.LENGTH_SHORT).show()
+        }
         return null
     }
     val hints = stream.behaviorHints ?: StreamBehaviorHints(null, null, null, null)
@@ -100,26 +167,62 @@ internal suspend fun PlayerRuntimeController.prepareServerStream(stream: Stream)
     )
 }
 
-internal fun PlayerRuntimeController.tryServerFallback(): Boolean {
+/** A server source the failover moved to could not be opened: skip it, or show the playback error. */
+internal fun PlayerRuntimeController.skipUnavailableServerSource(stream: Stream) {
+    stream.deadSourceKey()?.let { deadSourceStreamUrls.add(it) }
+    deadSourceFailoverCount = (deadSourceFailoverCount - 1).coerceAtLeast(0)
+    val message = context.getString(R.string.player_error_play_stream_failed)
+    if (advanceToNextLiveSource(message)) return
+    _uiState.update {
+        it.copy(
+            error = message,
+            isBuffering = false,
+            showLoadingOverlay = false,
+            showPauseOverlay = false
+        )
+    }
+}
+
+internal val PlayerRuntimeController.isServerDirectPlay: Boolean
+    get() = serverPlayback.session(currentStreamUrl)?.playMethod == ServerPlayMethod.DIRECT_PLAY
+
+/**
+ * Asks the server for a transcode of a direct-play stream that has used up its reopen attempts,
+ * and only when the server offered one. A refused or unreachable transcode hands the error back
+ * to the normal failover.
+ */
+internal fun PlayerRuntimeController.tryServerFallback(error: PlaybackException): Boolean {
     val failedUrl = currentStreamUrl
     if (!serverPlayback.canFallback(failedUrl)) return false
-    val positionMs = _playbackTimeline.value.currentPosition
+    val positionMs = _exoPlayer?.currentPosition?.takeIf { it > 0L }
+        ?: _playbackTimeline.value.currentPosition.takeIf { it > 0L }
+        ?: _uiState.value.pendingSeekPosition
+        ?: 0L
     errorRetryJob?.cancel()
     errorRetryJob = scope.launch {
         showRecoveryOverlay()
         val session = serverPlayback.fallback(failedUrl)
-        if (session == null) {
+        if (currentStreamUrl != failedUrl) {
+            session?.let { serverPlayback.stop(it.url) }
+            return@launch
+        }
+        if (session != null) {
+            restartServerSession(session, positionMs)
+            return@launch
+        }
+        _uiState.update { it.copy(isBuffering = false) }
+        val listener = currentExoPlayerListener
+        if (listener != null) {
+            listener.onPlayerError(error)
+        } else {
             _uiState.update {
                 it.copy(
-                    error = context.getString(R.string.player_error_play_stream_failed),
-                    isBuffering = false,
+                    error = error.toDisplayMessage(context),
                     showLoadingOverlay = false,
                     showPauseOverlay = false
                 )
             }
-            return@launch
         }
-        restartServerSession(session, positionMs)
     }
     return true
 }
@@ -153,7 +256,7 @@ private fun PlayerRuntimeController.restartServerStream(
     restart: suspend (String) -> ServerPlaybackSession?
 ) {
     val url = currentStreamUrl
-    val positionMs = _playbackTimeline.value.currentPosition
+    val positionMs = _playbackTimeline.value.playbackPosition
     scope.launch {
         val session = restart(url)
         if (session == null) {
@@ -177,7 +280,12 @@ private fun PlayerRuntimeController.restartServerSession(session: ServerPlayback
         responseHeaders = emptyMap()
     )
     currentStreamResponseHeaders = emptyMap()
-    streamSubtitles = session.subtitles
+    streamSubtitles = session.subtitles + streamSubtitles.filterNot { it.id.startsWith("${session.mediaSourceId}:") }
+    hasRetriedCurrentStreamAfter416 = false
+    hasRetriedCurrentStreamAfterUnexpectedNpe = false
+    hasRetriedCurrentStreamAfterMediaPeriodHolderCrash = false
+    timeoutRecoveryAttempts = 0
+    resetErrorRetryState()
     _uiState.update { it.copy(currentStreamUrl = session.url) }
     scheduleDeferredPlayerReinitialize(fromPositionMs = positionMs)
 }
@@ -203,5 +311,3 @@ private fun PlayerRuntimeController.applyPreferredServerAudio(tracks: List<Track
     } ?: return
     if (!preferred.isSelected) switchServerAudio(preferred.index)
 }
-
-private const val SERVER_RESUME_TIMEOUT_MS = 2_000L

@@ -4,9 +4,9 @@ import android.content.Context
 import android.util.Log
 import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.core.network.NoDelaySocketFactory
-import com.nuvio.tv.data.remote.api.AddonApi
 import com.nuvio.tv.data.remote.api.AniSkipApi
 import com.nuvio.tv.data.remote.api.AnimeSkipApi
+import com.nuvio.tv.data.remote.api.AddonApi
 import com.nuvio.tv.data.remote.api.AuthDiagnosticReportApi
 import com.nuvio.tv.data.remote.api.GitHubReleaseApi
 import com.nuvio.tv.data.remote.api.SupportersApi
@@ -30,6 +30,7 @@ import com.nuvio.tv.data.simkl.SimklAuthError
 import com.nuvio.tv.data.simkl.SimklAuthStorage
 import com.nuvio.tv.data.simkl.defaultSimklApiConfiguration
 import com.nuvio.tv.LocaleCache
+import com.nuvio.tv.core.logging.redactLinksForLog
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.Module
@@ -43,7 +44,7 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import com.nuvio.tv.core.network.IPv4FirstDns
-import com.nuvio.tv.core.diagnostics.SentryNetworkBreadcrumbInterceptor
+import com.nuvio.tv.core.network.ServerTrust
 import java.io.File
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
@@ -88,6 +89,12 @@ private fun buildAcceptLanguageHeader(): String {
     }
 }
 
+/**
+ * Masks credentials in a line about to be logged (query keys such as MDBList `apikey`, addon
+ * configs and keys in the path), keeping the rest of the URL so logs stay useful.
+ */
+internal fun redactCredentialQueryParams(message: String): String = message.redactLinksForLog()
+
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
@@ -117,7 +124,26 @@ object NetworkModule {
                     .build()
                 chain.proceed(request)
             }
-            .addInterceptor(SentryNetworkBreadcrumbInterceptor())
+            // An application interceptor sees cache hits; a network interceptor
+            // never does. Logs whether the HTTP cache served each API call, one
+            // line per call.
+            .addInterceptor { chain ->
+                val response = chain.proceed(chain.request())
+                val served = when {
+                    response.cacheResponse != null && response.networkResponse != null -> "validated"
+                    response.cacheResponse != null -> "cache"
+                    else -> "network"
+                }
+                val cc = response.header("Cache-Control") ?: "none"
+                val age = response.header("Age") ?: "none"
+                val reqHost = chain.request().url.host
+                android.util.Log.i(
+                    "NuvioCache",
+                    "HTTP_CACHE served=$served code=${response.code} " +
+                        "cc=$cc age=$age host=$reqHost"
+                )
+                response
+            }
             // Prevent OkHttp from caching error responses (4xx/5xx).
             .addNetworkInterceptor { chain ->
                 val response = chain.proceed(chain.request())
@@ -129,10 +155,20 @@ object NetworkModule {
                     response
                 }
             }
-            .addInterceptor(HttpLoggingInterceptor().apply {
-                level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC
-                        else HttpLoggingInterceptor.Level.NONE
-            })
+            .addInterceptor(
+                HttpLoggingInterceptor(
+                    object : HttpLoggingInterceptor.Logger {
+                        override fun log(message: String) {
+                            HttpLoggingInterceptor.Logger.DEFAULT.log(
+                                redactCredentialQueryParams(message)
+                            )
+                        }
+                    }
+                ).apply {
+                    level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC
+                            else HttpLoggingInterceptor.Level.NONE
+                }
+            )
             .build()
     }
 
@@ -160,7 +196,7 @@ object NetworkModule {
         return okHttpClient.newBuilder()
             .cache(Cache(File(context.cacheDir, "addon_http_cache"), 50L * 1024 * 1024))
             .sslSocketFactory(sslContext.socketFactory, trustAllManager)
-            .hostnameVerifier { _, _ -> true }
+            .hostnameVerifier(ServerTrust.uncheckedClientVerifier)
             .build()
     }
 
@@ -203,7 +239,44 @@ object NetworkModule {
                     .build()
                 chain.proceed(request)
             }
-            .addInterceptor(SentryNetworkBreadcrumbInterceptor())
+            .build()
+
+    /**
+     * TLS-validating client for fixed commercial endpoints (TMDB, Trakt).
+     * The shared client above disables certificate/hostname validation as a
+     * compatibility measure for self-hosted addons and stale TV trust stores;
+     * api.themoviedb.org and api.trakt.tv have valid certs and no self-hosting
+     * variability, so they should not inherit that bypass -
+     * particularly Trakt, whose requests carry an OAuth token.
+     */
+    @Provides
+    @Singleton
+    @Named("validated")
+    fun provideValidatedOkHttpClient(@ApplicationContext context: Context): OkHttpClient =
+        OkHttpClient.Builder()
+            .dns(IPv4FirstDns())
+            .socketFactory(NoDelaySocketFactory)
+            .cache(Cache(File(context.cacheDir, "http_cache_validated"), 20L * 1024 * 1024))
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .addInterceptor { chain ->
+                val version = BuildConfig.VERSION_NAME.ifBlank { "dev" }
+                val request = chain.request().newBuilder()
+                    .header("User-Agent", "Nuvio/$version")
+                    .header("Accept-Language", buildAcceptLanguageHeader())
+                    .build()
+                chain.proceed(request)
+            }
+            .addNetworkInterceptor { chain ->
+                val response = chain.proceed(chain.request())
+                if (!response.isSuccessful) {
+                    response.newBuilder()
+                        .header("Cache-Control", "no-store")
+                        .build()
+                } else {
+                    response
+                }
+            }
             .build()
 
     @Provides
@@ -243,7 +316,7 @@ object NetworkModule {
     @Singleton
     @Named("trakt")
     fun provideTraktOkHttpClient(
-        okHttpClient: OkHttpClient
+        @Named("validated") okHttpClient: OkHttpClient
     ): OkHttpClient = okHttpClient.newBuilder()
         .addInterceptor { chain ->
             val request = chain.request()
@@ -315,7 +388,10 @@ object NetworkModule {
     @Provides
     @Singleton
     @Named("tmdb")
-    fun provideTmdbRetrofit(okHttpClient: OkHttpClient, moshi: Moshi): Retrofit =
+    fun provideTmdbRetrofit(
+        @Named("validated") okHttpClient: OkHttpClient,
+        moshi: Moshi
+    ): Retrofit =
         Retrofit.Builder()
             .baseUrl("https://api.themoviedb.org/3/")
             .client(okHttpClient)

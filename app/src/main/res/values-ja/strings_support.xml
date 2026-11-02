@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="support_nuvio_button">Nuvioチームを支援</string>
+    <string name="support_nuvio_title">Nuvioチームを支援</string>
+    <string name="support_nuvio_subtitle">Nuvio Arcは公式Nuvioアプリをベースにしています。メンバーシップはNuvioチームに届き、サーバーと開発の費用を支え、基本機能を誰でも無料で使えるようにしています。</string>
+    <string name="support_nuvio_perk_themes">グラデーションテーマ</string>
+    <string name="support_nuvio_perk_themes_desc">追加のグラデーションテーマ、または自分で作成。</string>
+    <string name="support_nuvio_perk_backgrounds">プロフィール背景</string>
+    <string name="support_nuvio_perk_backgrounds_desc">サポーターコレクションから、または自分の画像で。</string>
+    <string name="support_nuvio_perk_avatars">メンバー用アバター</string>
+    <string name="support_nuvio_perk_avatars_desc">プロフィール用の追加アバターセット。</string>
+    <string name="support_nuvio_perk_badge">サポーターバッジ</string>
+    <string name="support_nuvio_perk_badge_desc">アカウントとプロフィールに小さなバッジを表示。</string>
+    <string name="support_nuvio_perk_discord">Discordロール</string>
+    <string name="support_nuvio_perk_discord_desc">ウェブサイトでDiscordを連携するとロールを付与。</string>
+    <string name="support_nuvio_perk_votes">アプリの方針への投票</string>
+    <string name="support_nuvio_perk_votes_desc">Supporter Plusのみ。</string>
+    <string name="support_nuvio_perk_votes_chip">投票（Supporter Plus）</string>
+    <string name="support_nuvio_plus_tag">Plus</string>
+    <string name="support_nuvio_on_tag">オン</string>
+    <string name="support_nuvio_already_title">すでにサポーターですか？</string>
+    <string name="support_nuvio_already_body">このテレビで同じNuvioアカウントにサインインしてください。特典は自動でオンになります。</string>
+    <string name="support_nuvio_scan_title">スキャンしてnuvio.tv/supportを開く</string>
+    <string name="support_nuvio_scan_body">スマートフォンで開きます。このテレビで支払うことはありません。</string>
+    <string name="support_nuvio_patreon_manage">スキャンしてPatreonで変更・解約</string>
+    <string name="support_nuvio_pass_until">パスの有効期限は%1$sまでです。</string>
+    <string name="support_nuvio_sign_in">このテレビでサインイン</string>
+    <string name="support_nuvio_close">閉じる</string>
+    <string name="support_nuvio_checking">メンバーシップを確認中…</string>
+    <string name="support_nuvio_thanks_title">Nuvioチームへのご支援ありがとうございます</string>
+    <string name="support_nuvio_thanks_subtitle">特典はNuvioアカウントに紐づくため、このNuvio Arcでも公式アプリでも使えます。</string>
+    <string name="support_nuvio_gentle_eyebrow">Nuvioサポーター</string>
+    <string name="support_nuvio_gentle_title">Nuvio Arcはメンバーシップなしですべて使えます</string>
+    <string name="support_nuvio_gentle_body">このアカウントにはNuvioサポーターのメンバーシップがありませんが、まったく問題ありません。Nuvioチームを支援したくなったときは、メンバーシップでいくつかの特典が加わります：</string>
+    <string name="support_nuvio_gentle_unavailable">現在メンバーシップを確認できませんでした。Nuvio Arcはメンバーシップなしでもすべて使えます。Nuvioチームを支援したい場合は、メンバーシップでいくつかの特典が加わります：</string>
+    <string name="support_nuvio_gentle_scan">スマートフォンでプランを見る</string>
+    <string name="support_nuvio_paid_check_again">お支払い済みですか？再確認</string>
+    <string name="support_nuvio_no_thanks">いいえ、結構です</string>
+    <string name="support_nuvio_no_thanks_hint">「いいえ、結構です」を選ぶと、このテレビで支援ボタンとロック中のサポーターテーマが非表示になります。設定 › このアプリについて で再表示できます。</string>
+    <string name="support_nuvio_thanks_note_title">%1$sの特典がオンです</string>
+    <string name="support_nuvio_thanks_note_body">Nuvioチームへのご支援ありがとうございます。</string>
+    <string name="support_nuvio_theme_locked">サポーター</string>
+    <string name="support_nuvio_suggestions_setting">Nuvioチーム支援の案内</string>
+    <string name="support_nuvio_suggestions_setting_subtitle">「Nuvioチームを支援」ボタンとロック中のサポーターテーマを表示します。</string>
+    <string name="cd_support_nuvio_qr">nuvio.tv/supportのQRコード</string>
+</resources>

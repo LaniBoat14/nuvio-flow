@@ -3,6 +3,8 @@ package com.nuvio.tv.data.trailer
 import android.util.Log
 import com.nuvio.tv.core.tmdb.TmdbService
 import com.nuvio.tv.data.local.TmdbSettingsDataStore
+import com.nuvio.tv.data.local.TrailerSettings
+import com.nuvio.tv.data.local.TrailerSettingsDataStore
 import com.nuvio.tv.data.remote.api.TmdbApi
 import com.nuvio.tv.data.remote.api.TmdbVideoResult
 import com.nuvio.tv.data.remote.api.TmdbVideosResponse
@@ -29,11 +31,13 @@ import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import retrofit2.Response
+import java.time.Clock
 
 /**
  * When YouTube starts refusing requests, every extra request keeps the block going. These
- * tests pin down that a lookup backs off instead of working through every candidate, and
- * that a miss caused by the block isn't remembered as "this title has no trailer".
+ * tests pin down that a lookup backs off instead of working through every candidate, that a
+ * miss caused by the block isn't remembered as "this title has no trailer", and that one video
+ * asked for by several screens at once is extracted once.
  */
 class TrailerServiceRateLimitTest {
 
@@ -47,7 +51,12 @@ class TrailerServiceRateLimitTest {
         tmdbSettingsDataStore = mockk<TmdbSettingsDataStore> {
             every { settings } returns MutableStateFlow(TmdbSettings(language = "en", useTrailers = true))
         },
-        tmdbService = mockk<TmdbService> { every { apiKey() } returns "tmdb-key" }
+        tmdbService = mockk<TmdbService> { every { apiKey() } returns "tmdb-key" },
+        imdbTrailerResolver = mockk(relaxed = true),
+        trailerSettingsDataStore = mockk<TrailerSettingsDataStore> {
+            every { settings } returns MutableStateFlow(TrailerSettings())
+        },
+        clock = Clock.systemUTC()
     )
 
     @Before
@@ -63,6 +72,7 @@ class TrailerServiceRateLimitTest {
             TmdbVideosResponse(id = 123, results = (0 until 8).map { trailer(it) })
         )
         every { extractor.isRateLimited() } returns false
+        every { extractor.unplayableReason(any()) } returns null
     }
 
     @After
@@ -74,55 +84,44 @@ class TrailerServiceRateLimitTest {
     fun `stops trying candidates once youtube is rate limiting`() = runTest {
         var rateLimited = false
         every { extractor.isRateLimited() } answers { rateLimited }
-        coEvery { extractor.extractPlaybackSource(any(), any()) } answers {
+        coEvery { extractor.extractPlaybackSource(any()) } answers {
             rateLimited = true
             null
         }
 
         assertNull(lookup())
 
-        coVerify(exactly = 1) { extractor.extractPlaybackSource(any(), any()) }
+        coVerify(exactly = 1) { extractor.extractPlaybackSource(any()) }
     }
 
     @Test
     fun `tries only the best few candidates when they all fail`() = runTest {
-        coEvery { extractor.extractPlaybackSource(any(), any()) } returns null
+        coEvery { extractor.extractPlaybackSource(any()) } returns null
 
         assertNull(lookup())
 
-        coVerify(exactly = 3) { extractor.extractPlaybackSource(any(), any()) }
+        coVerify(exactly = 3) { extractor.extractPlaybackSource(any()) }
     }
 
     @Test
     fun `a miss while rate limited is not cached as no trailer`() = runTest {
         every { extractor.isRateLimited() } returns true
-        coEvery { extractor.extractPlaybackSource(any(), any()) } returns null
+        coEvery { extractor.extractPlaybackSource(any()) } returns null
         assertNull(lookup())
 
         // The pause is over and YouTube answers again.
         every { extractor.isRateLimited() } returns false
-        coEvery { extractor.extractPlaybackSource(any(), any()) } returns
+        coEvery { extractor.extractPlaybackSource(any()) } returns
             TrailerPlaybackSource(videoUrl = "https://cdn.example/trailer.mp4")
 
         assertEquals("https://cdn.example/trailer.mp4", lookup()?.videoUrl)
     }
 
     @Test
-    fun `a miss without rate limiting is still cached`() = runTest {
-        coEvery { extractor.extractPlaybackSource(any(), any()) } returns null
-        assertNull(lookup())
-        coEvery { extractor.extractPlaybackSource(any(), any()) } returns
-            TrailerPlaybackSource(videoUrl = "https://cdn.example/trailer.mp4")
-
-        assertNull(lookup())
-        coVerify(exactly = 3) { extractor.extractPlaybackSource(any(), any()) }
-    }
-
-    @Test
     fun `concurrent requests for the same video extract it once`() = runTest {
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
-        coEvery { extractor.extractPlaybackSource(any(), any()) } coAnswers {
+        coEvery { extractor.extractPlaybackSource(any()) } coAnswers {
             started.complete(Unit)
             release.await()
             TrailerPlaybackSource(videoUrl = "https://cdn.example/trailer.mp4")
@@ -136,14 +135,14 @@ class TrailerServiceRateLimitTest {
 
         assertEquals("https://cdn.example/trailer.mp4", first.await()?.videoUrl)
         assertEquals("https://cdn.example/trailer.mp4", second.await()?.videoUrl)
-        coVerify(exactly = 1) { extractor.extractPlaybackSource(any(), any()) }
+        coVerify(exactly = 1) { extractor.extractPlaybackSource(any()) }
     }
 
     @Test
     fun `a waiting caller takes over when the extracting caller is cancelled`() = runTest {
         val firstStarted = CompletableDeferred<Unit>()
         var calls = 0
-        coEvery { extractor.extractPlaybackSource(any(), any()) } coAnswers {
+        coEvery { extractor.extractPlaybackSource(any()) } coAnswers {
             calls++
             if (calls == 1) {
                 firstStarted.complete(Unit)

@@ -9,8 +9,4 @@ sealed interface AppDeepLink {
     data class AddonInstall(
         val manifestUrl: String
     ) : AppDeepLink
-
-    data class Party(
-        val code: String
-    ) : AppDeepLink
 }

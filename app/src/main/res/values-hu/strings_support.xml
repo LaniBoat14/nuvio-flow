@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="support_nuvio_button">A Nuvio csapatának támogatása</string>
+    <string name="support_nuvio_title">A Nuvio csapatának támogatása</string>
+    <string name="support_nuvio_subtitle">A Nuvio Arc a hivatalos Nuvio alkalmazásra épül. A tagság a Nuvio csapatához kerül, segít fedezni a szervereket és a fejlesztést, és mindenkinek ingyenesen tartja az alapalkalmazást.</string>
+    <string name="support_nuvio_perk_themes">Színátmenetes témák</string>
+    <string name="support_nuvio_perk_themes_desc">Extra színátmenetes témák, vagy készíts sajátot.</string>
+    <string name="support_nuvio_perk_backgrounds">Profilhátterek</string>
+    <string name="support_nuvio_perk_backgrounds_desc">A támogatói gyűjteményből, vagy saját kép.</string>
+    <string name="support_nuvio_perk_avatars">Tagsági avatarok</string>
+    <string name="support_nuvio_perk_avatars_desc">Extra avatarkészletek a profiljaidhoz.</string>
+    <string name="support_nuvio_perk_badge">Támogatói jelvény</string>
+    <string name="support_nuvio_perk_badge_desc">Kis jelvény a fiókodon és a profiljaidon.</string>
+    <string name="support_nuvio_perk_discord">Discord-szerep</string>
+    <string name="support_nuvio_perk_discord_desc">A szerephez csatlakoztasd a Discordot a weboldalon.</string>
+    <string name="support_nuvio_perk_votes">Szavazás az alkalmazás döntéseiről</string>
+    <string name="support_nuvio_perk_votes_desc">Csak Supporter Plus.</string>
+    <string name="support_nuvio_perk_votes_chip">Szavazás (Supporter Plus)</string>
+    <string name="support_nuvio_plus_tag">Plus</string>
+    <string name="support_nuvio_on_tag">Be</string>
+    <string name="support_nuvio_already_title">Már támogató vagy?</string>
+    <string name="support_nuvio_already_body">Jelentkezz be ezen a TV-n ugyanazzal a Nuvio-fiókkal. Az előnyeid automatikusan bekapcsolnak.</string>
+    <string name="support_nuvio_scan_title">Olvasd be a nuvio.tv/support megnyitásához</string>
+    <string name="support_nuvio_scan_body">A telefonodon nyílik meg. Ezen a TV-n semmit sem fizetsz.</string>
+    <string name="support_nuvio_patreon_manage">Olvasd be a módosításhoz vagy lemondáshoz a Patreonon</string>
+    <string name="support_nuvio_pass_until">A hozzáférésed eddig érvényes: %1$s.</string>
+    <string name="support_nuvio_sign_in">Bejelentkezés ezen a TV-n</string>
+    <string name="support_nuvio_close">Bezárás</string>
+    <string name="support_nuvio_checking">Tagság ellenőrzése…</string>
+    <string name="support_nuvio_thanks_title">Köszönjük, hogy támogatod a Nuvio csapatát</string>
+    <string name="support_nuvio_thanks_subtitle">Az előnyeid a Nuvio-fiókodhoz tartoznak, így itt a Nuvio Arcban és a hivatalos alkalmazásban is működnek.</string>
+    <string name="support_nuvio_gentle_eyebrow">Nuvio támogató</string>
+    <string name="support_nuvio_gentle_title">A Nuvio Arcban minden működik tagság nélkül</string>
+    <string name="support_nuvio_gentle_body">Ennek a fióknak nincs Nuvio támogatói tagsága, és ez teljesen rendben van. Ha egyszer szeretnéd segíteni a Nuvio csapatát, a tagság néhány extrát ad:</string>
+    <string name="support_nuvio_gentle_unavailable">A tagságodat most nem sikerült ellenőrizni. A Nuvio Arcban minden működik tagság nélkül. Ha szeretnéd segíteni a Nuvio csapatát, a tagság néhány extrát ad:</string>
+    <string name="support_nuvio_gentle_scan">Nézd meg a lehetőségeket a telefonodon</string>
+    <string name="support_nuvio_paid_check_again">Most fizettél? Ellenőrizd újra</string>
+    <string name="support_nuvio_no_thanks">Köszönöm, nem</string>
+    <string name="support_nuvio_no_thanks_hint">A „Köszönöm, nem” elrejti a Támogatás gombot és a zárolt támogatói témákat ezen a TV-n. Visszakapcsolhatod itt: Beállítások › Névjegy.</string>
+    <string name="support_nuvio_thanks_note_title">%1$s előnyök bekapcsolva</string>
+    <string name="support_nuvio_thanks_note_body">Köszönjük, hogy támogatod a Nuvio csapatát.</string>
+    <string name="support_nuvio_theme_locked">Támogató</string>
+    <string name="support_nuvio_suggestions_setting">Javaslatok a Nuvio csapatának támogatására</string>
+    <string name="support_nuvio_suggestions_setting_subtitle">A Nuvio csapatának támogatása gomb és a zárolt támogatói témák megjelenítése.</string>
+    <string name="cd_support_nuvio_qr">QR-kód a nuvio.tv/support oldalhoz</string>
+</resources>

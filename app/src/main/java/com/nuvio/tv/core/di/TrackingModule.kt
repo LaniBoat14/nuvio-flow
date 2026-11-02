@@ -15,6 +15,8 @@ import com.nuvio.tv.core.tracking.TrackingHistoryWriter
 import com.nuvio.tv.core.tracking.TrackingProgressProvider
 import com.nuvio.tv.data.repository.TraktTrackingHistoryWriter
 import com.nuvio.tv.data.repository.TraktTrackingProgressProvider
+import com.nuvio.tv.data.repository.AndroidTraktWatchedMoviesStorage
+import com.nuvio.tv.data.repository.TraktWatchedMoviesStorage
 import com.nuvio.tv.data.simkl.SimklTrackingHistoryWriter
 import com.nuvio.tv.data.simkl.SimklTrackingProgressProvider
 import com.nuvio.tv.data.simkl.SimklTrackingProvider
@@ -61,6 +63,10 @@ abstract class TrackingModule {
     @Binds
     @Singleton
     abstract fun bindSimklSyncStorage(storage: AndroidSimklSyncStorage): SimklSyncStorage
+
+    @Binds
+    @Singleton
+    abstract fun bindTraktWatchedMoviesStorage(storage: AndroidTraktWatchedMoviesStorage): TraktWatchedMoviesStorage
 
     @Binds
     @Singleton

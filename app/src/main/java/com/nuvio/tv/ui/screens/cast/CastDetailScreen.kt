@@ -20,10 +20,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -89,6 +91,8 @@ import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.PersonDetail
 import com.nuvio.tv.ui.components.GridContentCard
 import com.nuvio.tv.ui.components.PosterCardStyle
+import com.nuvio.tv.ui.components.rememberPosterCardStyle
+import com.nuvio.tv.ui.components.rememberScaledPosterCardStyle
 import com.nuvio.tv.ui.components.PosterCardDefaults
 import com.nuvio.tv.ui.components.LocalLandscapePosterMode
 import com.nuvio.tv.ui.components.rememberShimmerBrush
@@ -148,6 +152,7 @@ fun CastDetailScreen(
                         onNavigateToDetail = onNavigateToDetail,
                         posterOptions = viewModel.posterOptions,
                         posterCardCornerRadiusDp = viewModel.posterCardCornerRadiusDp.collectAsState().value,
+                        posterCardWidthDp = viewModel.posterCardWidthDp.collectAsState().value,
                         isItemWatched = { item ->
                             if (item.apiType == "movie") item.id in watchedMovieIds
                             else item.id in watchedSeriesIds
@@ -177,6 +182,7 @@ private fun CastDetailContent(
     onNavigateToDetail: (itemId: String, itemType: String, addonBaseUrl: String?) -> Unit,
     posterOptions: com.nuvio.tv.ui.components.posteroptions.PosterOptionsController,
     posterCardCornerRadiusDp: Int = 12,
+    posterCardWidthDp: Int = 126,
     isItemWatched: (MetaPreview) -> Boolean = { false }
 ) {
     val backgroundColor = NuvioTheme.colors.Background
@@ -189,24 +195,9 @@ private fun CastDetailContent(
     }
 
     val globalLandscape = LocalLandscapePosterMode.current
-    val filmographyPosterStyle = remember(posterCardCornerRadiusDp, globalLandscape) {
-        if (globalLandscape) {
-            PosterCardStyle(
-                width = 112.dp,
-                height = 240.dp,
-                cornerRadius = posterCardCornerRadiusDp.dp,
-                focusedBorderWidth = PosterCardDefaults.Style.focusedBorderWidth,
-                focusedScale = PosterCardDefaults.Style.focusedScale
-            )
-        } else {
-            PosterCardStyle(
-                width = 112.dp,
-                height = 168.dp,
-                cornerRadius = posterCardCornerRadiusDp.dp,
-                focusedBorderWidth = PosterCardDefaults.Style.focusedBorderWidth,
-                focusedScale = PosterCardDefaults.Style.focusedScale
-            )
-        }
+    val posterStyle = rememberPosterCardStyle(posterCardWidthDp, posterCardCornerRadiusDp)
+    val filmographyPosterStyle = remember(posterStyle, globalLandscape) {
+        if (globalLandscape) posterStyle.copy(height = posterStyle.width * (240f / 112f)) else posterStyle
     }
 
     val firstPosterFocusRequester = remember { FocusRequester() }
@@ -265,7 +256,7 @@ private fun CastDetailContent(
                             onBiographyExpandedChange(!isBiographyExpanded)
                         }
                     },
-                    modifier = if (isBiographyExpanded) Modifier.weight(1f) else Modifier
+                    modifier = Modifier.weight(1f, fill = isBiographyExpanded)
                 )
 
                 AnimatedVisibility(
@@ -344,8 +335,8 @@ private fun HeroSection(
         Card(
             onClick = onPortraitClick,
             modifier = Modifier
-                .width(160.dp)
-                .height(240.dp)
+                .heightIn(max = 240.dp)
+                .aspectRatio(2f / 3f, matchHeightConstraintsFirst = true)
                 .focusRequester(portraitFocusRequester)
                 .focusProperties {
                     canFocus = isBiographyExpanded || isBiographyTruncated
@@ -656,6 +647,7 @@ private fun CastDetailSkeleton(personName: String) {
     val backgroundColor = NuvioTheme.colors.Background
     val accentColor = NuvioTheme.colors.Secondary
     val shimmerBrush = rememberShimmerBrush()
+    val skeletonPoster = rememberScaledPosterCardStyle(PosterCardStyle(width = 112.dp, height = 168.dp))
 
     Box(modifier = Modifier.fillMaxSize().background(backgroundColor)) {
         val accentGradient = remember(accentColor, backgroundColor) {
@@ -758,11 +750,11 @@ private fun CastDetailSkeleton(personName: String) {
                 horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
             ) {
                 repeat(7) {
-                    Column(modifier = Modifier.width(112.dp)) {
+                    Column(modifier = Modifier.width(skeletonPoster.width)) {
                         Box(
                             modifier = Modifier
-                                .width(112.dp)
-                                .height(168.dp)
+                                .width(skeletonPoster.width)
+                                .height(skeletonPoster.height)
                                 .clip(RoundedCornerShape(PosterCardDefaults.Style.cornerRadius))
                                 .background(shimmerBrush)
                         )

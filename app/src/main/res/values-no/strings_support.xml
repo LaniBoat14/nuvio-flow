@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="support_nuvio_button">Støtt Nuvio-teamet</string>
+    <string name="support_nuvio_title">Støtt Nuvio-teamet</string>
+    <string name="support_nuvio_subtitle">Nuvio Arc bygger på den offisielle Nuvio-appen. Et medlemskap går til Nuvio-teamet, hjelper med å betale for servere og utvikling og holder kjerneappen gratis for alle.</string>
+    <string name="support_nuvio_perk_themes">Gradienttemaer</string>
+    <string name="support_nuvio_perk_themes_desc">Ekstra gradienttemaer, eller lag ditt eget.</string>
+    <string name="support_nuvio_perk_backgrounds">Profilbakgrunner</string>
+    <string name="support_nuvio_perk_backgrounds_desc">Fra Supporter-samlingen, eller ditt eget bilde.</string>
+    <string name="support_nuvio_perk_avatars">Medlemsavatarer</string>
+    <string name="support_nuvio_perk_avatars_desc">Ekstra avatarsett til profilene dine.</string>
+    <string name="support_nuvio_perk_badge">Supporter-merke</string>
+    <string name="support_nuvio_perk_badge_desc">Et lite merke på kontoen og profilene dine.</string>
+    <string name="support_nuvio_perk_discord">Discord-rolle</string>
+    <string name="support_nuvio_perk_discord_desc">Koble til Discord på nettsiden for å få rollen.</string>
+    <string name="support_nuvio_perk_votes">Stemmer om valg i appen</string>
+    <string name="support_nuvio_perk_votes_desc">Kun Supporter Plus.</string>
+    <string name="support_nuvio_perk_votes_chip">Stemmer (Supporter Plus)</string>
+    <string name="support_nuvio_plus_tag">Plus</string>
+    <string name="support_nuvio_on_tag">På</string>
+    <string name="support_nuvio_already_title">Allerede supporter?</string>
+    <string name="support_nuvio_already_body">Logg inn på denne TV-en med den samme Nuvio-kontoen. Fordelene dine slås på automatisk.</string>
+    <string name="support_nuvio_scan_title">Skann for å åpne nuvio.tv/support</string>
+    <string name="support_nuvio_scan_body">Åpnes på telefonen din. Ingenting betales på denne TV-en.</string>
+    <string name="support_nuvio_patreon_manage">Skann for å endre eller avslutte på Patreon</string>
+    <string name="support_nuvio_pass_until">Passet ditt gjelder til %1$s.</string>
+    <string name="support_nuvio_sign_in">Logg inn på denne TV-en</string>
+    <string name="support_nuvio_close">Lukk</string>
+    <string name="support_nuvio_checking">Sjekker medlemskapet ditt…</string>
+    <string name="support_nuvio_thanks_title">Takk for at du støtter Nuvio-teamet</string>
+    <string name="support_nuvio_thanks_subtitle">Fordelene følger Nuvio-kontoen din, så de virker her i Nuvio Arc og i den offisielle appen.</string>
+    <string name="support_nuvio_gentle_eyebrow">Nuvio Supporter</string>
+    <string name="support_nuvio_gentle_title">Alt i Nuvio Arc fungerer uten medlemskap</string>
+    <string name="support_nuvio_gentle_body">Denne kontoen har ikke noe Nuvio Supporter-medlemskap, og det er helt greit. Hvis du en gang vil hjelpe Nuvio-teamet, gir et medlemskap noen ekstra fordeler:</string>
+    <string name="support_nuvio_gentle_unavailable">Medlemskapet ditt kunne ikke sjekkes akkurat nå. Alt i Nuvio Arc fungerer også uten. Hvis du vil hjelpe Nuvio-teamet, gir et medlemskap noen ekstra fordeler:</string>
+    <string name="support_nuvio_gentle_scan">Se alternativene på telefonen din</string>
+    <string name="support_nuvio_paid_check_again">Nettopp betalt? Sjekk igjen</string>
+    <string name="support_nuvio_no_thanks">Nei takk</string>
+    <string name="support_nuvio_no_thanks_hint">Nei takk skjuler Støtt-knappen og de låste supportertemaene på denne TV-en. Hent dem tilbake i Innstillinger › Om.</string>
+    <string name="support_nuvio_thanks_note_title">Fordeler for %1$s er på</string>
+    <string name="support_nuvio_thanks_note_body">Takk for at du støtter Nuvio-teamet.</string>
+    <string name="support_nuvio_theme_locked">Supporter</string>
+    <string name="support_nuvio_suggestions_setting">Forslag om å støtte Nuvio-teamet</string>
+    <string name="support_nuvio_suggestions_setting_subtitle">Vis knappen Støtt Nuvio-teamet og de låste supportertemaene.</string>
+    <string name="cd_support_nuvio_qr">QR-kode for nuvio.tv/support</string>
+</resources>

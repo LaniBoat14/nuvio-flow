@@ -10,6 +10,8 @@ import java.time.ZoneOffset
 import java.time.ZonedDateTime
 
 private val ISO_DATE_PATTERN = Regex("(?<!\\d)\\d{4}-\\d{2}-\\d{2}(?!\\d)")
+// Every java.time ISO parser used below needs this start; anything else would only throw.
+private val ISO_DATE_START = Regex("^[+-]?\\d{4,}-\\d{2}-\\d{2}")
 
 /**
  * Converts timestamped episode releases into the viewer's local calendar date. Plain dates have
@@ -20,6 +22,7 @@ internal fun parseEpisodeReleaseLocalDate(
     zoneId: ZoneId = ZoneId.systemDefault()
 ): LocalDate? {
     val value = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    if (!ISO_DATE_START.containsMatchIn(value)) return parseEmbeddedReleaseDate(value)
 
     return runCatching { LocalDate.parse(value) }.getOrNull()
         ?: parseExplicitReleaseInstant(value)?.atZone(zoneId)?.toLocalDate()
@@ -45,6 +48,9 @@ internal fun parseEpisodeReleaseInstant(
     zoneId: ZoneId = ZoneId.systemDefault()
 ): Instant? {
     val value = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    if (!ISO_DATE_START.containsMatchIn(value)) {
+        return parseEmbeddedReleaseDate(value)?.atStartOfDay(ZoneOffset.UTC)?.toInstant()
+    }
 
     return parseExplicitReleaseInstant(value)
         ?: runCatching { LocalDateTime.parse(value).atZone(zoneId).toInstant() }.getOrNull()

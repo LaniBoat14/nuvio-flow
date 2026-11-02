@@ -25,6 +25,12 @@ data class SearchUiState(
     val query: String = "",
     val submittedQuery: String = "",
     val isSearching: Boolean = false,
+    /** The submitted query whose rows are ready to move into, before every catalog has answered. */
+    val focusReadyQuery: String = "",
+    /** The first row of [focusReadyQuery] that holds its own results, where focus lands. */
+    val focusTargetRowKey: String? = null,
+    /** Rows still showing the previous query's results while this one loads. */
+    val updatingRowKeys: Set<String> = emptySet(),
     val error: String? = null,
     val catalogRows: List<CatalogRow> = emptyList(),
     val installedAddons: List<Addon> = emptyList(),

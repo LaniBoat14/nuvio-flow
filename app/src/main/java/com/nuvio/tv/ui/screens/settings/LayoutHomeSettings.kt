@@ -30,10 +30,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Border
 import androidx.tv.material3.Card
@@ -46,34 +42,15 @@ import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.DiscoverLocation
 import com.nuvio.tv.domain.model.HomeImdbRatingsVisibility
 import com.nuvio.tv.domain.model.HomeLayout
-import com.nuvio.tv.ui.components.ClassicLayoutPreview
-import com.nuvio.tv.ui.components.GridLayoutPreview
-import com.nuvio.tv.ui.components.ModernLayoutPreview
+import com.nuvio.tv.domain.model.NavigationStyle
+import com.nuvio.tv.domain.model.WatchedTitlesMode
+import com.nuvio.tv.ui.v2.appearance.LocalV2Appearance
 
 @Composable
 internal fun LayoutHomeLayoutSection(
     uiState: LayoutSettingsUiState,
     onEvent: (LayoutSettingsEvent) -> Unit
 ) {
-    val firstHomeLayoutFocusRequester = remember { FocusRequester() }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .settingsOptionRow(firstHomeLayoutFocusRequester),
-        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
-    ) {
-        listOf(HomeLayout.MODERN, HomeLayout.GRID, HomeLayout.CLASSIC).forEachIndexed { index, layout ->
-            LayoutCard(
-                layout = layout,
-                isSelected = uiState.selectedLayout == layout,
-                onClick = { onEvent(LayoutSettingsEvent.SelectLayout(layout)) },
-                modifier = Modifier
-                    .weight(1f)
-                    .then(if (index == 0) Modifier.focusRequester(firstHomeLayoutFocusRequester) else Modifier)
-            )
-        }
-    }
-
     if (uiState.selectedLayout == HomeLayout.MODERN) {
         SettingsToggleRow(
             title = stringResource(R.string.layout_fullscreen_hero_backdrop),
@@ -171,6 +148,11 @@ internal fun LayoutHomeContentSection(
         checked = uiState.hideUnreleasedContent,
         onToggle = { onEvent(LayoutSettingsEvent.SetHideUnreleasedContent(!uiState.hideUnreleasedContent)) }
     )
+    WatchedTitlesRow(
+        selectedMode = uiState.watchedTitlesMode,
+        onModeSelected = { mode -> onEvent(LayoutSettingsEvent.SetWatchedTitlesMode(mode)) }
+    )
+    CalendarComingUpRowSetting()
     SettingsToggleRow(
         title = stringResource(R.string.layout_overall_ratings),
         subtitle = stringResource(
@@ -197,14 +179,15 @@ internal fun LayoutSidebarSection(
     uiState: LayoutSettingsUiState,
     onEvent: (LayoutSettingsEvent) -> Unit
 ) {
-    SettingsToggleRow(
-        title = stringResource(R.string.layout_modern_sidebar),
-        subtitle = stringResource(R.string.layout_modern_sidebar_sub),
-        checked = uiState.modernSidebarEnabled,
-        onToggle = { onEvent(LayoutSettingsEvent.SetModernSidebarEnabled(!uiState.modernSidebarEnabled)) }
-    )
-    if (uiState.modernSidebarEnabled) {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+    val v2 = LocalV2Appearance.current
+    if (v2 == null) {
+        SettingsToggleRow(
+            title = stringResource(R.string.layout_modern_sidebar),
+            subtitle = stringResource(R.string.layout_modern_sidebar_sub),
+            checked = uiState.modernSidebarEnabled,
+            onToggle = { onEvent(LayoutSettingsEvent.SetModernSidebarEnabled(!uiState.modernSidebarEnabled)) }
+        )
+        if (uiState.modernSidebarEnabled && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             SettingsToggleRow(
                 title = stringResource(R.string.layout_modern_sidebar_blur),
                 subtitle = stringResource(R.string.layout_modern_sidebar_blur_sub),
@@ -212,13 +195,15 @@ internal fun LayoutSidebarSection(
                 onToggle = { onEvent(LayoutSettingsEvent.SetModernSidebarBlurEnabled(!uiState.modernSidebarBlurEnabled)) }
             )
         }
+    }
+    if ((v2 == null && uiState.modernSidebarEnabled) || v2?.navigationStyle == NavigationStyle.FLOATING_SIDEBAR) {
         SettingsToggleRow(
-            title = stringResource(R.string.layout_hide_floating_pill),
-            subtitle = stringResource(R.string.layout_hide_floating_pill_sub),
+            title = stringResource(if (v2 != null) R.string.layout_hide_side_icons else R.string.layout_hide_floating_pill),
+            subtitle = stringResource(if (v2 != null) R.string.layout_hide_side_icons_sub else R.string.layout_hide_floating_pill_sub),
             checked = uiState.sidebarCollapsedByDefault,
             onToggle = { onEvent(LayoutSettingsEvent.SetSidebarCollapsed(!uiState.sidebarCollapsedByDefault)) }
         )
-    } else {
+    } else if (v2 == null) {
         SettingsToggleRow(
             title = stringResource(R.string.layout_collapse_sidebar),
             subtitle = stringResource(R.string.layout_collapse_sidebar_sub),
@@ -234,99 +219,49 @@ internal fun LayoutSidebarSection(
 }
 
 @Composable
-private fun LayoutCard(
-    layout: HomeLayout,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
+private fun WatchedTitlesRow(
+    selectedMode: WatchedTitlesMode,
+    onModeSelected: (WatchedTitlesMode) -> Unit
 ) {
-    var isFocused by remember { mutableStateOf(false) }
-    val animatePreview = isSelected || isFocused
+    var dialogOpen by remember { mutableStateOf(false) }
+    val options = listOf(
+        SettingsPickerOption(
+            WatchedTitlesMode.SHOW,
+            stringResource(R.string.layout_watched_titles_show),
+            stringResource(R.string.layout_watched_titles_show_desc)
+        ),
+        SettingsPickerOption(
+            WatchedTitlesMode.DIM,
+            stringResource(R.string.layout_watched_titles_dim),
+            stringResource(R.string.layout_watched_titles_dim_desc)
+        ),
+        SettingsPickerOption(
+            WatchedTitlesMode.HIDE,
+            stringResource(R.string.layout_watched_titles_hide),
+            stringResource(R.string.layout_watched_titles_hide_desc)
+        )
+    )
 
-    Card(
-        onClick = onClick,
-        modifier = modifier
-            .onFocusChanged { state ->
-                val nowFocused = state.isFocused
-                if (isFocused != nowFocused) {
-                    isFocused = nowFocused
-                }
-            }
-            .semantics {
-                role = Role.RadioButton
-                this.selected = isSelected
+    SettingsActionRow(
+        title = stringResource(R.string.layout_watched_titles),
+        subtitle = stringResource(R.string.layout_watched_titles_sub),
+        value = options.first { it.value == selectedMode }.title,
+        onClick = { dialogOpen = true }
+    )
+
+    if (dialogOpen) {
+        SettingsSingleChoiceDialog(
+            title = stringResource(R.string.layout_watched_titles_dialog_title),
+            options = options,
+            selectedValue = selectedMode,
+            onOptionSelected = { mode ->
+                onModeSelected(mode)
+                dialogOpen = false
             },
-        colors = CardDefaults.colors(
-            containerColor = NuvioTheme.colors.Background,
-            focusedContainerColor = NuvioTheme.colors.Background
-        ),
-        border = CardDefaults.border(
-            border = if (isSelected) Border(
-                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.hairline),
-                shape = RoundedCornerShape(SettingsSecondaryCardRadius)
-            ) else Border.None,
-            focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                shape = RoundedCornerShape(SettingsSecondaryCardRadius)
-            )
-        ),
-        shape = CardDefaults.shape(RoundedCornerShape(SettingsSecondaryCardRadius)),
-        scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(112.dp)
-            ) {
-                when (layout) {
-                    HomeLayout.CLASSIC -> ClassicLayoutPreview(
-                        modifier = Modifier.fillMaxWidth(),
-                        animated = animatePreview
-                    )
-                    HomeLayout.GRID -> GridLayoutPreview(
-                        modifier = Modifier.fillMaxWidth(),
-                        animated = animatePreview
-                    )
-                    HomeLayout.MODERN -> ModernLayoutPreview(
-                        modifier = Modifier.fillMaxWidth(),
-                        animated = animatePreview
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                if (isSelected) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = null,
-                        tint = NuvioTheme.colors.FocusRing,
-                        modifier = Modifier
-                            .size(NuvioTheme.spacing.lg)
-                            .padding(end = 6.dp)
-                    )
-                }
-                Text(
-                    text = when (layout) {
-                        HomeLayout.CLASSIC -> stringResource(R.string.layout_classic)
-                        HomeLayout.GRID -> stringResource(R.string.layout_grid)
-                        HomeLayout.MODERN -> stringResource(R.string.layout_modern)
-                    },
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (isSelected || isFocused) NuvioTheme.colors.TextPrimary else NuvioTheme.colors.TextSecondary
-                )
-            }
-        }
+            onDismiss = { dialogOpen = false },
+            width = 460.dp,
+            maxHeight = 400.dp
+        )
     }
 }
 

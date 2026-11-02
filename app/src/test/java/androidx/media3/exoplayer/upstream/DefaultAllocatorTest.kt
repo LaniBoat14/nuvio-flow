@@ -20,7 +20,7 @@ class DefaultAllocatorTest {
     }
 
     @Test
-    fun testLateReleasedAllocationsAreFreedOnTrim() {
+    fun testLateReleasedAllocationsMemoryLeak() {
         val segmentSize = 65536
         // Initialize allocator with trimOnReset = true
         val allocator = DefaultAllocator(true, segmentSize, 0, true)
@@ -41,11 +41,13 @@ class DefaultAllocatorTest {
         allocator.release(a2)
         allocator.release(a3)
 
+        // release() only returns segments to the pool, so they are still held here.
         assertEquals(0, allocator.totalBytesAllocated)
-        assertEquals(3 * segmentSize, allocator.availableBytes)
+        assertEquals(3 * segmentSize, allocator.memoryFootprint)
 
+        // The sample queues call trim() when they are released, and with a zero target that
+        // must free every pooled segment.
         allocator.trim()
-
         assertEquals(0, allocator.memoryFootprint)
         assertEquals(0, allocator.availableBytes)
     }

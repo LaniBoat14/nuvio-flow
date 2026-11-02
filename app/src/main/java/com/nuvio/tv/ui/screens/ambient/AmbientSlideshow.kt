@@ -61,6 +61,8 @@ private const val GENRES_FADE_OUT_MS = 250
 private const val TITLE_FADE_OUT_MS = 350
 private const val BACKDROP_FADE_OUT_MS = 700
 private const val BLACK_HOLD_MS = 300L
+private val LOGO_MAX_WIDTH = 460.dp
+private val LOGO_MAX_HEIGHT = 150.dp
 private const val ALL_FAILED_RETRY_MS = 15_000L
 private const val EMPTY_POLL_MS = 500L
 private const val MOTION_DURATION_MS = BACKDROP_FADE_IN_MS + TITLE_DELAY_MS.toInt() + TITLE_FADE_IN_MS +
@@ -82,6 +84,7 @@ fun AmbientSlideshow(
     val density = LocalDensity.current
     val screenWidthPx = with(density) { configuration.screenWidthDp.dp.roundToPx() }
     val screenHeightPx = with(density) { configuration.screenHeightDp.dp.roundToPx() }
+    val logoSizePx = with(density) { LOGO_MAX_WIDTH.roundToPx() to LOGO_MAX_HEIGHT.roundToPx() }
     val titleOffsetPx = with(density) { 18.dp.toPx() }
     val genresOffsetPx = with(density) { 12.dp.toPx() }
 
@@ -108,13 +111,13 @@ fun AmbientSlideshow(
                     continue
                 }
                 val loaded = (pending ?: async {
-                    loadSlide(context, available[index % available.size], screenWidthPx, screenHeightPx)
+                    loadSlide(context, available[index % available.size], screenWidthPx, screenHeightPx, logoSizePx)
                 }).await()
                 index += 1
                 val upcoming = latestSlides
                 pending = upcoming.takeIf { it.isNotEmpty() }?.let { list ->
                     val next = list[index % list.size]
-                    async { loadSlide(context, next, screenWidthPx, screenHeightPx) }
+                    async { loadSlide(context, next, screenWidthPx, screenHeightPx, logoSizePx) }
                 }
                 if (loaded == null) {
                     misses += 1
@@ -196,8 +199,8 @@ fun AmbientSlideshow(
                     contentScale = ContentScale.Fit,
                     alignment = Alignment.BottomCenter,
                     modifier = titleModifier
-                        .heightIn(max = 150.dp)
-                        .widthIn(max = 460.dp)
+                        .heightIn(max = LOGO_MAX_HEIGHT)
+                        .widthIn(max = LOGO_MAX_WIDTH)
                 )
             } else {
                 Text(
@@ -234,9 +237,10 @@ private suspend fun loadSlide(
     context: Context,
     slide: AmbientSlide,
     widthPx: Int,
-    heightPx: Int
+    heightPx: Int,
+    logoSizePx: Pair<Int, Int>
 ): LoadedSlide? = coroutineScope {
-    val logo = slide.logoUrl?.let { url -> async { loadBitmap(context, url, null) } }
+    val logo = slide.logoUrl?.let { url -> async { loadBitmap(context, url, logoSizePx) } }
     val backdrop = loadBitmap(context, slide.backdropUrl, widthPx to heightPx) ?: run {
         logo?.cancel()
         return@coroutineScope null

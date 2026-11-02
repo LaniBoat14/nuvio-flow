@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="support_nuvio_button">支持 Nuvio 团队</string>
+    <string name="support_nuvio_title">支持 Nuvio 团队</string>
+    <string name="support_nuvio_subtitle">Nuvio Arc 基于官方 Nuvio 应用打造。会员费用归 Nuvio 团队所有，用于支付服务器和开发费用，并让核心应用对所有人保持免费。</string>
+    <string name="support_nuvio_perk_themes">渐变主题</string>
+    <string name="support_nuvio_perk_themes_desc">更多渐变主题，或自行创建。</string>
+    <string name="support_nuvio_perk_backgrounds">个人资料背景</string>
+    <string name="support_nuvio_perk_backgrounds_desc">来自支持者合集，或使用您自己的图片。</string>
+    <string name="support_nuvio_perk_avatars">会员头像</string>
+    <string name="support_nuvio_perk_avatars_desc">为您的个人资料提供更多头像套装。</string>
+    <string name="support_nuvio_perk_badge">支持者徽章</string>
+    <string name="support_nuvio_perk_badge_desc">在您的账户和个人资料上显示小徽章。</string>
+    <string name="support_nuvio_perk_discord">Discord 身份组</string>
+    <string name="support_nuvio_perk_discord_desc">在网站上连接 Discord 即可获得身份组。</string>
+    <string name="support_nuvio_perk_votes">参与应用决策投票</string>
+    <string name="support_nuvio_perk_votes_desc">仅限支持者 Plus。</string>
+    <string name="support_nuvio_perk_votes_chip">投票（支持者 Plus）</string>
+    <string name="support_nuvio_plus_tag">Plus</string>
+    <string name="support_nuvio_on_tag">开启</string>
+    <string name="support_nuvio_already_title">已经是支持者？</string>
+    <string name="support_nuvio_already_body">在此电视上登录同一个 Nuvio 账户。您的权益会自动开启。</string>
+    <string name="support_nuvio_scan_title">扫描以打开 nuvio.tv/support</string>
+    <string name="support_nuvio_scan_body">在手机上打开。不会在此电视上付款。</string>
+    <string name="support_nuvio_patreon_manage">扫描以在 Patreon 上更改或取消</string>
+    <string name="support_nuvio_pass_until">您的通行证有效期至 %1$s。</string>
+    <string name="support_nuvio_sign_in">在此电视上登录</string>
+    <string name="support_nuvio_close">关闭</string>
+    <string name="support_nuvio_checking">正在检查您的会员资格…</string>
+    <string name="support_nuvio_thanks_title">感谢您支持 Nuvio 团队</string>
+    <string name="support_nuvio_thanks_subtitle">您的权益跟随您的 Nuvio 账户，因此在 Nuvio Arc 和官方应用中均可使用。</string>
+    <string name="support_nuvio_gentle_eyebrow">Nuvio 支持者</string>
+    <string name="support_nuvio_gentle_title">Nuvio Arc 的所有功能无需会员即可使用</string>
+    <string name="support_nuvio_gentle_body">此账户没有 Nuvio 支持者会员，这完全没问题。如果您想帮助 Nuvio 团队，会员可以带来一些额外权益：</string>
+    <string name="support_nuvio_gentle_unavailable">暂时无法检查您的会员资格。Nuvio Arc 的所有功能无需会员即可使用。如果您想帮助 Nuvio 团队，会员可以带来一些额外权益：</string>
+    <string name="support_nuvio_gentle_scan">在手机上查看选项</string>
+    <string name="support_nuvio_paid_check_again">刚付款？再次检查</string>
+    <string name="support_nuvio_no_thanks">不用了，谢谢</string>
+    <string name="support_nuvio_no_thanks_hint">选择“不用了，谢谢”会在此电视上隐藏支持按钮和锁定的支持者主题。可在 设置 › 关于 中重新显示。</string>
+    <string name="support_nuvio_thanks_note_title">%1$s 权益已开启</string>
+    <string name="support_nuvio_thanks_note_body">感谢您支持 Nuvio 团队。</string>
+    <string name="support_nuvio_theme_locked">支持者</string>
+    <string name="support_nuvio_suggestions_setting">“支持 Nuvio 团队”提示</string>
+    <string name="support_nuvio_suggestions_setting_subtitle">显示“支持 Nuvio 团队”按钮和锁定的支持者主题。</string>
+    <string name="cd_support_nuvio_qr">nuvio.tv/support 的 QR 码</string>
+</resources>

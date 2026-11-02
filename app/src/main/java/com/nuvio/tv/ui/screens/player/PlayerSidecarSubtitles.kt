@@ -261,7 +261,7 @@ internal fun PlayerRuntimeController.renderSidecarCuesAtCurrentPosition() {
     val stripSdh = currentPlayerSettingsForReport.subtitleStyle.stripSdh
     // Sign before sanitising, filtering and merging to skip that work while cues are
     // unchanged. stripSdh is included because it changes what filtering removes.
-    val signature = activeCueSignature(active, stripSdh)
+    val signature = activeCueSignature(active, stripSdh) * 31 + _uiState.value.sidecarStyleSignature()
     if (signature == lastSidecarCueSignature) return
     lastSidecarCueSignature = signature
     val sanitized = active.map { SubtitleMojibakeSanitizer.sanitizeCue(it) }
@@ -275,7 +275,7 @@ internal fun PlayerRuntimeController.renderSidecarCuesAtCurrentPosition() {
             activeSidecarGeneration == currentGeneration &&
             view.getTag(R.id.player_view_sidecar_generation_tag) == currentKey
         ) {
-            showSidecarCues(view, merged)
+            showSidecarCues(view, merged.map { presentSubtitleCue(it) })
         }
     }
 }
@@ -442,3 +442,7 @@ internal fun activeCueSignature(cues: List<Cue>, stripSdh: Boolean): Long {
 private const val SIDECAR_RENDER_INTERVAL_MS = 100L
 private const val EMPTY_CUE_SIGNATURE = 0x4E5556494FL // "NUVIO"
 private const val EMPTY_CUE_SIGNATURE_SDH = 0x4E5556494F01L
+
+/** Changes whenever the drawn look of a cue can change, including when the HDR style starts or stops applying. */
+internal fun PlayerUiState.sidecarStyleSignature(): Long =
+    subtitleStyle.hashCode().toLong() * 2L + (if (isEditingHdrSubtitleStyle) 1L else 0L)

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="support_nuvio_button">Υποστηρίξτε την ομάδα του Nuvio</string>
+    <string name="support_nuvio_title">Υποστηρίξτε την ομάδα του Nuvio</string>
+    <string name="support_nuvio_subtitle">Το Nuvio Arc βασίζεται στην επίσημη εφαρμογή Nuvio. Η συνδρομή πηγαίνει στην ομάδα του Nuvio, βοηθά να καλυφθούν οι servers και η ανάπτυξη, και κρατά τη βασική εφαρμογή δωρεάν για όλους.</string>
+    <string name="support_nuvio_perk_themes">Θέματα διαβάθμισης</string>
+    <string name="support_nuvio_perk_themes_desc">Επιπλέον θέματα διαβάθμισης, ή φτιάξτε το δικό σας.</string>
+    <string name="support_nuvio_perk_backgrounds">Φόντα προφίλ</string>
+    <string name="support_nuvio_perk_backgrounds_desc">Από τη συλλογή υποστηρικτών ή μια δική σας εικόνα.</string>
+    <string name="support_nuvio_perk_avatars">Avatar μελών</string>
+    <string name="support_nuvio_perk_avatars_desc">Επιπλέον σετ avatar για τα προφίλ σας.</string>
+    <string name="support_nuvio_perk_badge">Σήμα υποστηρικτή</string>
+    <string name="support_nuvio_perk_badge_desc">Ένα μικρό σήμα στον λογαριασμό και τα προφίλ σας.</string>
+    <string name="support_nuvio_perk_discord">Ρόλος στο Discord</string>
+    <string name="support_nuvio_perk_discord_desc">Συνδέστε το Discord στον ιστότοπο για τον ρόλο.</string>
+    <string name="support_nuvio_perk_votes">Ψήφοι σε αποφάσεις της εφαρμογής</string>
+    <string name="support_nuvio_perk_votes_desc">Μόνο για Υποστηρικτή Plus.</string>
+    <string name="support_nuvio_perk_votes_chip">Ψήφοι (Υποστηρικτής Plus)</string>
+    <string name="support_nuvio_plus_tag">Plus</string>
+    <string name="support_nuvio_on_tag">Ενεργό</string>
+    <string name="support_nuvio_already_title">Είστε ήδη υποστηρικτής;</string>
+    <string name="support_nuvio_already_body">Συνδεθείτε σε αυτή την τηλεόραση με τον ίδιο λογαριασμό Nuvio. Τα προνόμιά σας ενεργοποιούνται αυτόματα.</string>
+    <string name="support_nuvio_scan_title">Σαρώστε για να ανοίξει το nuvio.tv/support</string>
+    <string name="support_nuvio_scan_body">Ανοίγει στο κινητό σας. Καμία πληρωμή σε αυτή την τηλεόραση.</string>
+    <string name="support_nuvio_patreon_manage">Σαρώστε για αλλαγή ή ακύρωση στο Patreon</string>
+    <string name="support_nuvio_pass_until">Η πρόσβασή σας ισχύει έως %1$s.</string>
+    <string name="support_nuvio_sign_in">Σύνδεση σε αυτή την τηλεόραση</string>
+    <string name="support_nuvio_close">Κλείσιμο</string>
+    <string name="support_nuvio_checking">Έλεγχος της συνδρομής σας…</string>
+    <string name="support_nuvio_thanks_title">Ευχαριστούμε που στηρίζετε την ομάδα του Nuvio</string>
+    <string name="support_nuvio_thanks_subtitle">Τα προνόμιά σας ακολουθούν τον λογαριασμό Nuvio, άρα λειτουργούν εδώ στο Nuvio Arc και στην επίσημη εφαρμογή.</string>
+    <string name="support_nuvio_gentle_eyebrow">Υποστηρικτής Nuvio</string>
+    <string name="support_nuvio_gentle_title">Όλα στο Nuvio Arc λειτουργούν χωρίς συνδρομή</string>
+    <string name="support_nuvio_gentle_body">Αυτός ο λογαριασμός δεν έχει συνδρομή υποστηρικτή Nuvio, και αυτό είναι απολύτως εντάξει. Αν ποτέ θέλετε να βοηθήσετε την ομάδα του Nuvio, η συνδρομή προσθέτει μερικά επιπλέον προνόμια:</string>
+    <string name="support_nuvio_gentle_unavailable">Δεν ήταν δυνατός ο έλεγχος της συνδρομής σας αυτή τη στιγμή. Όλα στο Nuvio Arc λειτουργούν χωρίς αυτήν. Αν θέλετε να βοηθήσετε την ομάδα του Nuvio, η συνδρομή προσθέτει μερικά επιπλέον προνόμια:</string>
+    <string name="support_nuvio_gentle_scan">Δείτε τις επιλογές στο κινητό σας</string>
+    <string name="support_nuvio_paid_check_again">Μόλις πληρώσατε; Νέος έλεγχος</string>
+    <string name="support_nuvio_no_thanks">Όχι, ευχαριστώ</string>
+    <string name="support_nuvio_no_thanks_hint">Με το «Όχι, ευχαριστώ» κρύβονται το κουμπί υποστήριξης και τα κλειδωμένα θέματα υποστηρικτή σε αυτή την τηλεόραση. Επαναφέρετέ τα από τις Ρυθμίσεις › Σχετικά.</string>
+    <string name="support_nuvio_thanks_note_title">%1$s: τα προνόμια είναι ενεργά</string>
+    <string name="support_nuvio_thanks_note_body">Ευχαριστούμε που στηρίζετε την ομάδα του Nuvio.</string>
+    <string name="support_nuvio_theme_locked">Υποστηρικτής</string>
+    <string name="support_nuvio_suggestions_setting">Προτάσεις υποστήριξης της ομάδας Nuvio</string>
+    <string name="support_nuvio_suggestions_setting_subtitle">Εμφάνιση του κουμπιού Υποστηρίξτε την ομάδα του Nuvio και των κλειδωμένων θεμάτων υποστηρικτή.</string>
+    <string name="cd_support_nuvio_qr">Κωδικός QR για το nuvio.tv/support</string>
+</resources>

@@ -64,20 +64,30 @@ import com.nuvio.tv.R
 import com.nuvio.tv.core.cloud.PremiumizeCloudLibraryPosterUrl
 import com.nuvio.tv.core.cloud.TorboxCloudLibraryPosterUrl
 import com.nuvio.tv.core.cloud.cloudLibraryDisplayArtworkUrl
+import com.nuvio.tv.ui.components.TVDB_NAME
+import com.nuvio.tv.ui.components.TVDB_URL
+import com.nuvio.tv.ui.components.tvdbCreditShown
 import com.nuvio.tv.ui.util.rememberRawSvgPainter
 
-private const val NuvioRepositoryUrl = "https://github.com/NuvioMedia/NuvioTV"
+private const val NuvioRepositoryUrl = "https://github.com/ysosrs123/NuvioTV-Fork"
 private const val TmdbUrl = "https://www.themoviedb.org"
 private const val TraktUrl = "https://trakt.tv"
+private const val TvMazeUrl = "https://www.tvmaze.com"
 private const val SimklUrl = "https://simkl.com"
 private const val PremiumizeUrl = "https://www.premiumize.me"
 private const val TorboxUrl = "https://torbox.app"
 private const val MdbListUrl = "https://mdblist.com"
 private const val IntroDbUrl = "https://introdb.app/"
 private const val ImdbDatasetsUrl = "https://developer.imdb.com/non-commercial-datasets/"
+private const val JellyfinUrl = "https://jellyfin.org"
+private const val TrashGuidesUrl = "https://github.com/TRaSH-Guides/Guides"
 private const val ApacheLicenseUrl = "https://www.apache.org/licenses/LICENSE-2.0"
 private const val HazeLicenseUrl = "https://github.com/chrisbanes/haze/blob/1.7.2/LICENSE"
 private const val LibMpvAndroidUrl = "https://github.com/jarnedemeulemeester/libmpv-android"
+private const val LibDoviUrl = "https://github.com/quietvoid/dovi_tool"
+private const val FfmpegUrl = "https://ffmpeg.org/legal.html"
+private const val Dav1dUrl = "https://code.videolan.org/videolan/dav1d"
+private const val KodiUrl = "https://github.com/xbmc/xbmc"
 
 private sealed interface LicenseLogo {
     data class Drawable(@param:DrawableRes val resId: Int) : LicenseLogo
@@ -158,7 +168,7 @@ private fun LicensesAttributionsDetailsPanel(
     Column(
         modifier = modifier
             .border(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
-            .background(NuvioTheme.colors.BackgroundElevated.copy(alpha = 0.35f), RoundedCornerShape(18.dp))
+            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(18.dp))
             .padding(20.dp)
     ) {
         Box(
@@ -205,6 +215,20 @@ private fun LicensesAttributionsDetailsPanel(
                             title = stringResource(R.string.licenses_attributions_haze_title),
                             body = stringResource(R.string.licenses_attributions_haze_body),
                             url = HazeLicenseUrl
+                        )
+                    )
+                    AttributionDetailRow(
+                        item = LicenseAttributionItem(
+                            title = stringResource(R.string.licenses_attributions_avatars_title),
+                            body = stringResource(R.string.licenses_attributions_avatars_body),
+                            url = "https://www.dicebear.com/licenses/"
+                        )
+                    )
+                    AttributionDetailRow(
+                        item = LicenseAttributionItem(
+                            title = stringResource(R.string.licenses_attributions_subtitle_fonts_title),
+                            body = stringResource(R.string.licenses_attributions_subtitle_fonts_body),
+                            url = "https://openfontlicense.org"
                         )
                     )
                 }
@@ -291,7 +315,7 @@ private fun AttributionDetailRow(
                 Text(
                     text = item.url,
                     style = MaterialTheme.typography.labelSmall,
-                    color = NuvioTheme.colors.Primary,
+                    color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -357,7 +381,7 @@ private fun appLicenseItem() = LicenseAttributionItem(
 )
 
 @Composable
-private fun dataAttributionItems() = listOf(
+private fun dataAttributionItems() = listOfNotNull(
     LicenseAttributionItem(
         title = stringResource(R.string.licenses_attributions_tmdb_title),
         body = stringResource(R.string.licenses_attributions_tmdb_body),
@@ -370,6 +394,21 @@ private fun dataAttributionItems() = listOf(
         url = TraktUrl,
         logo = LicenseLogo.Raw(R.raw.trakt_tv_favicon)
     ),
+    LicenseAttributionItem(
+        title = stringResource(R.string.licenses_attributions_tvmaze_title),
+        body = stringResource(R.string.calendar_credit),
+        url = TvMazeUrl
+    ),
+    if (tvdbCreditShown) {
+        LicenseAttributionItem(
+            title = TVDB_NAME,
+            body = stringResource(R.string.tvdb_metadata_credit, TVDB_NAME),
+            url = TVDB_URL,
+            logo = LicenseLogo.Drawable(R.drawable.tvdb_logo)
+        )
+    } else {
+        null
+    },
     LicenseAttributionItem(
         title = stringResource(R.string.licenses_attributions_simkl_title),
         body = stringResource(R.string.licenses_attributions_simkl_body),
@@ -404,6 +443,16 @@ private fun dataAttributionItems() = listOf(
         title = stringResource(R.string.licenses_attributions_imdb_title),
         body = stringResource(R.string.licenses_attributions_imdb_body),
         url = ImdbDatasetsUrl
+    ),
+    LicenseAttributionItem(
+        title = stringResource(R.string.licenses_attributions_media_servers_title),
+        body = stringResource(R.string.licenses_attributions_media_servers_body),
+        url = JellyfinUrl
+    ),
+    LicenseAttributionItem(
+        title = stringResource(R.string.licenses_attributions_trash_title),
+        body = stringResource(R.string.licenses_attributions_trash_body),
+        url = TrashGuidesUrl
     )
 )
 
@@ -418,5 +467,32 @@ private fun playbackLicenseItems() = listOf(
         title = stringResource(R.string.licenses_attributions_libmpv_title),
         body = stringResource(R.string.licenses_attributions_libmpv_body),
         url = LibMpvAndroidUrl
+    ),
+    LicenseAttributionItem(
+        title = stringResource(R.string.licenses_attributions_libdovi_title),
+        body = stringResource(R.string.licenses_attributions_libdovi_body),
+        url = LibDoviUrl
+    ),
+    LicenseAttributionItem(
+        title = stringResource(R.string.licenses_attributions_ffmpeg_title),
+        body = stringResource(R.string.licenses_attributions_ffmpeg_body),
+        url = FfmpegUrl
+    ),
+    LicenseAttributionItem(
+        title = stringResource(R.string.licenses_attributions_dav1d_title),
+        body = stringResource(R.string.licenses_attributions_dav1d_body) + "\n\n" +
+            stringResource(R.string.licenses_attributions_dav1d_notice),
+        url = Dav1dUrl
+    ),
+    LicenseAttributionItem(
+        title = stringResource(R.string.licenses_attributions_cpu_features_title),
+        body = stringResource(R.string.licenses_attributions_cpu_features_body) + "\n\n" +
+            stringResource(R.string.licenses_attributions_cpu_features_notice),
+        url = ApacheLicenseUrl
+    ),
+    LicenseAttributionItem(
+        title = stringResource(R.string.licenses_attributions_kodi_title),
+        body = stringResource(R.string.licenses_attributions_kodi_body),
+        url = KodiUrl
     )
 )

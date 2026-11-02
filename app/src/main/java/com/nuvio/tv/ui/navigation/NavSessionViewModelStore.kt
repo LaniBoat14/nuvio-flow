@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.lifecycle.HasDefaultViewModelProviderFactory
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -69,12 +70,27 @@ fun rememberNavSessionViewModelStoreOwner(navController: NavHostController): Vie
             }
         }
     }
-    return remember(holder) {
-        object : ViewModelStoreOwner {
-            override val viewModelStore: ViewModelStore
-                get() = holder.viewModelStore
+    return remember(holder, activity) {
+        val factoryParent = activity as? HasDefaultViewModelProviderFactory
+        if (factoryParent != null) {
+            SessionStoreOwnerWithFactory(holder, factoryParent)
+        } else {
+            object : ViewModelStoreOwner {
+                override val viewModelStore: ViewModelStore
+                    get() = holder.viewModelStore
+            }
         }
     }
+}
+
+// Providers outside NavHost destinations resolve Hilt ViewModels through this owner, so it keeps
+// the activity's factory and creation extras instead of the no-arg factory.
+private class SessionStoreOwnerWithFactory(
+    private val holder: NavSessionViewModelStoreHolder,
+    parent: HasDefaultViewModelProviderFactory
+) : ViewModelStoreOwner, HasDefaultViewModelProviderFactory by parent {
+    override val viewModelStore: ViewModelStore
+        get() = holder.viewModelStore
 }
 
 /**

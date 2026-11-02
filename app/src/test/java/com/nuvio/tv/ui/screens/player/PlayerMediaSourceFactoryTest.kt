@@ -214,6 +214,49 @@ class PlayerMediaSourceFactoryTest {
         assertFalse(PlayerMediaSourceFactory.isLoopbackUrl(""))
     }
 
+    @Test
+    fun `chunk downloads give up on an unreachable server sooner but keep the read wait`() {
+        val base = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        val client = PlayerMediaSourceFactory.withChunkSessionTimeouts(base).build()
+        assertEquals(6_000, client.connectTimeoutMillis)
+        assertEquals(15_000, client.readTimeoutMillis)
+    }
+
+    @Test
+    fun `a media server stream never gets parallel connections`() {
+        assertTrue(PlayerMediaSourceFactory.usesParallelConnections(setting = true, mediaServer = false))
+        assertFalse(PlayerMediaSourceFactory.usesParallelConnections(setting = true, mediaServer = true))
+        assertFalse(PlayerMediaSourceFactory.usesParallelConnections(setting = false, mediaServer = false))
+    }
+
+    @Test
+    fun `a media server MP4 takes the plain single connection path`() {
+        val url = "https://jellyfin.example.com/Videos/abc/stream.mp4?static=true"
+        assertTrue(PlayerMediaSourceFactory.usesMp4Session(false, false, false, MimeTypes.VIDEO_MP4, url))
+        assertFalse(PlayerMediaSourceFactory.usesMp4Session(false, true, false, MimeTypes.VIDEO_MP4, url))
+    }
+
+    @Test
+    fun `the MP4 session keeps its other rules`() {
+        val url = "https://cdn.example.com/Film.mp4"
+        assertFalse(PlayerMediaSourceFactory.usesMp4Session(true, false, false, MimeTypes.VIDEO_MP4, url))
+        assertFalse(PlayerMediaSourceFactory.usesMp4Session(false, false, true, MimeTypes.VIDEO_MP4, url))
+        assertFalse(PlayerMediaSourceFactory.usesMp4Session(false, false, false, MimeTypes.VIDEO_MATROSKA, url))
+        assertFalse(PlayerMediaSourceFactory.usesMp4Session(false, false, false, MimeTypes.VIDEO_MP4, "http://127.0.0.1:8090/x.mp4"))
+    }
+
     private fun String.basicAuthHeader(): String =
         "Basic " + Base64.getEncoder().encodeToString(toByteArray(Charsets.UTF_8))
+
+    @Test
+    fun `automatic speed-up only on plain progressive streams with Custom network off`() {
+        assertTrue(PlayerMediaSourceFactory.usesAutoSpeedup(true, false, false, false, false))
+        assertFalse(PlayerMediaSourceFactory.usesAutoSpeedup(false, false, false, false, false))
+        assertFalse(PlayerMediaSourceFactory.usesAutoSpeedup(true, true, false, false, false))
+        assertFalse(PlayerMediaSourceFactory.usesAutoSpeedup(true, false, true, false, false))
+        assertFalse(PlayerMediaSourceFactory.usesAutoSpeedup(true, false, false, true, false))
+        assertFalse(PlayerMediaSourceFactory.usesAutoSpeedup(true, false, false, false, true))
+    }
 }

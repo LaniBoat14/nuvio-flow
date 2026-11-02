@@ -15,7 +15,10 @@ import com.nuvio.tv.domain.model.MetaCastMember
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.PosterShape
 import com.nuvio.tv.domain.model.Video
-import java.time.Instant
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.util.Locale
 import kotlin.math.roundToInt
 
 internal class MediaBrowserMapper(
@@ -115,7 +118,7 @@ internal class MediaBrowserMapper(
             positionMs = (data.playbackPositionTicks ?: 0L) / TICKS_PER_MS,
             durationMs = (item.runTimeTicks ?: 0L) / TICKS_PER_MS,
             played = data.played,
-            lastPlayedEpochMs = data.lastPlayedDate?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() },
+            lastPlayedEpochMs = data.lastPlayedDate?.let(::serverDateEpochMs),
             season = item.parentIndexNumber,
             episode = item.indexNumber,
             title = item.name
@@ -138,22 +141,20 @@ internal class MediaBrowserMapper(
     fun candidates(item: BaseItem): List<ServerCandidate> {
         if (item.isMissing) return emptyList()
         val itemRef = ServerItemRef(connectionId, item.id)
-        val sources = item.mediaSources.filterNot { it.isPlaceholder }
-        return sources.map { source ->
+        return item.mediaSources.filterNot { it.isPlaceholder }.map { source ->
             val video = source.mediaStreams.firstOrNull { it.type.equals("Video", ignoreCase = true) }
-            val audio = source.mediaStreams.firstOrNull { it.type.equals("Audio", ignoreCase = true) }
+            val filename = source.path?.substringAfterLast('/')?.substringAfterLast('\\')?.takeIf { it.isNotBlank() }
             ServerCandidate(
                 target = ServerPlaybackTarget(item = itemRef, mediaSourceId = source.id),
-                title = source.name?.takeIf { it.isNotBlank() && sources.size > 1 }
-                    ?: video?.let(::resolutionLabel)
-                    ?: source.name.orEmpty(),
-                description = listOfNotNull(
-                    video?.displayTitle,
-                    audio?.displayTitle,
-                    source.container?.uppercase()
-                ).joinToString(" • ").ifBlank { null },
-                filename = source.path?.substringAfterLast('/')?.substringAfterLast('\\'),
-                sizeBytes = source.size
+                title = video?.let(::resolutionLabel) ?: source.name.orEmpty(),
+                filename = filename,
+                sizeBytes = source.size,
+                bitrateBps = sourceBitrate(source, item.runTimeTicks),
+                video = video?.let(::videoLabel),
+                audio = source.defaultAudio()?.let(::audioLabel),
+                container = containerLabel(source.container, filename),
+                versionName = source.name?.trim()?.takeIf { it.isNotEmpty() },
+                durationMs = (source.runTimeTicks ?: item.runTimeTicks)?.takeIf { it > 0 }?.let { it / TICKS_PER_MS }
             )
         }
     }
@@ -188,8 +189,8 @@ internal class MediaBrowserMapper(
         if (kind != ServerMediaKind.SERIES) return start.toString()
         val end = endDate?.take(4)?.toIntOrNull()
         return when {
-            status.equals("Continuing", ignoreCase = true) -> "$start–"
-            end != null && end != start -> "$start–$end"
+            status.equals("Continuing", ignoreCase = true) -> "$start-"
+            end != null && end != start -> "$start-$end"
             else -> start.toString()
         }
     }
@@ -229,14 +230,173 @@ private fun ticksToMinutes(ticks: Long): Int = (ticks / TICKS_PER_MS / 60_000L).
 
 private fun Double.formatRating(): Float = ((this * 10).roundToInt() / 10.0).toFloat()
 
-private fun resolutionLabel(stream: MediaStream): String? {
+internal fun sourceBitrate(source: MediaSource, itemRunTimeTicks: Long? = null): Long? {
+    source.bitrate?.takeIf(::isPlausibleBitrate)?.let { return it }
+    val ticks = source.runTimeTicks ?: itemRunTimeTicks
+    val size = source.size
+    if (size != null && size > 0 && ticks != null && ticks > 0) {
+        (size * 8.0 / (ticks / 10_000_000.0)).toLong().takeIf(::isPlausibleBitrate)?.let { return it }
+    }
+    val streams = source.mediaStreams.filter {
+        it.type.equals("Video", ignoreCase = true) || it.type.equals("Audio", ignoreCase = true)
+    }
+    val video = streams.firstOrNull { it.type.equals("Video", ignoreCase = true) }?.bitRate ?: return null
+    if (video <= 0) return null
+    return streams.sumOf { (it.bitRate ?: 0L).coerceAtLeast(0L) }.takeIf(::isPlausibleBitrate)
+}
+
+internal fun formatBitrate(bps: Long): String = when {
+    bps < 1_000_000L -> "${(bps / 1_000.0).roundToInt()} kbps"
+    bps < 10_000_000L -> String.format(Locale.US, "%.1f Mbps", bps / 1_000_000.0)
+    else -> "${(bps / 1_000_000.0).roundToInt()} Mbps"
+}
+
+private fun isPlausibleBitrate(bps: Long): Boolean = bps in MIN_BITRATE..MAX_BITRATE
+
+private const val MIN_BITRATE = 50_000L
+private const val MAX_BITRATE = 400_000_000L
+
+internal fun resolutionLabel(stream: MediaStream): String? {
     val width = stream.width ?: 0
     val height = stream.height ?: 0
     return when {
-        width >= 3200 || height >= 2000 -> "4K"
+        width >= 3200 || height >= 2000 -> "2160p"
         width >= 1800 || height >= 1000 -> "1080p"
         width >= 1200 || height >= 700 -> "720p"
+        height >= 560 -> "576p"
+        height >= 460 -> "480p"
         height > 0 -> "${height}p"
         else -> null
     }
 }
+
+private fun MediaSource.defaultAudio(): MediaStream? {
+    val audio = mediaStreams.filter { it.type.equals("Audio", ignoreCase = true) }
+    return audio.firstOrNull { defaultAudioStreamIndex != null && it.index == defaultAudioStreamIndex }
+        ?: audio.firstOrNull { it.isDefault }
+        ?: audio.firstOrNull()
+}
+
+internal fun videoLabel(stream: MediaStream): String? =
+    listOfNotNull(videoCodecLabel(stream.codec), dynamicRangeLabel(stream)).joinToString(" • ").ifEmpty { null }
+
+private fun videoCodecLabel(codec: String?): String? = when (val name = codec?.trim()?.lowercase()) {
+    null, "" -> null
+    "hevc", "h265" -> "HEVC"
+    "h264", "avc" -> "AVC"
+    "av1" -> "AV1"
+    "vp9" -> "VP9"
+    "vp8" -> "VP8"
+    "vc1" -> "VC-1"
+    "mpeg2video" -> "MPEG-2"
+    "mpeg4" -> "MPEG-4"
+    else -> name.uppercase()
+}
+
+private fun dynamicRangeLabel(stream: MediaStream): String? {
+    val rangeType = stream.videoRangeType?.trim().orEmpty()
+    val embyType = stream.extendedVideoType?.trim().orEmpty()
+    val embyDv = DOVI_SUBTYPE.find(stream.extendedVideoSubType.orEmpty())
+    val dolbyVision = when {
+        rangeType.equals("DOVIInvalid", ignoreCase = true) -> false
+        rangeType.startsWith("DOVI", ignoreCase = true) -> true
+        embyType.equals("DolbyVision", ignoreCase = true) -> true
+        else -> rangeType.isEmpty() && (stream.dvProfile ?: 0) > 0
+    }
+    if (!dolbyVision) {
+        return rangeName(rangeType) ?: rangeName(embyType) ?: stream.videoRange?.let(::rangeName)
+    }
+    val profile = stream.dvProfile ?: embyDv?.groupValues?.get(1)?.toIntOrNull()
+    val compatibility = stream.dvBlSignalCompatibilityId ?: embyDv?.groupValues?.get(2)?.toIntOrNull()
+    val name = when {
+        profile == null -> "DV"
+        compatibility != null && compatibility > 0 -> "DV P$profile.$compatibility"
+        else -> "DV P$profile"
+    }
+    val baseLayer = rangeName(rangeType.removePrefix("DOVIWith").removePrefix("DOVI").removePrefix("EL"))
+        ?: when (compatibility) {
+            1, 6 -> "HDR10"
+            2 -> "SDR"
+            4 -> "HLG"
+            else -> null
+        }
+    return if (baseLayer != null) "$name ($baseLayer)" else name
+}
+
+private fun rangeName(value: String): String? = when (value.filter { it.isLetterOrDigit() || it == '+' }.lowercase()) {
+    "hdr10plus", "hdr10+" -> "HDR10+"
+    "hdr10" -> "HDR10"
+    "hlg", "hyperloggamma" -> "HLG"
+    "sdr" -> "SDR"
+    "hdr" -> "HDR"
+    else -> null
+}
+
+internal fun audioLabel(stream: MediaStream): String? {
+    val codec = audioCodecLabel(stream)
+    val atmos = listOfNotNull(stream.profile, stream.displayTitle).any { it.contains("Atmos", ignoreCase = true) }
+    val name = when {
+        codec == null -> "Atmos".takeIf { atmos }
+        atmos -> "$codec Atmos"
+        else -> codec
+    }
+    return listOfNotNull(name, channelLabel(stream)).joinToString(" • ").ifEmpty { null }
+}
+
+private fun audioCodecLabel(stream: MediaStream): String? = when (val codec = stream.codec?.trim()?.lowercase()) {
+    null, "" -> null
+    "truehd", "mlp" -> "TrueHD"
+    "dts", "dca" -> dtsLabel(stream.profile.orEmpty())
+    "eac3", "ec3" -> "EAC3"
+    "ac3", "a52" -> "AC3"
+    "aac" -> "AAC"
+    "flac" -> "FLAC"
+    "alac" -> "ALAC"
+    "opus" -> "Opus"
+    "vorbis" -> "Vorbis"
+    "mp3" -> "MP3"
+    "mp2" -> "MP2"
+    else -> if (codec.startsWith("pcm")) "PCM" else codec.uppercase()
+}
+
+private fun dtsLabel(profile: String): String = when {
+    profile.contains("DTS:X", ignoreCase = true) || profile.contains("DTS-X", ignoreCase = true) -> "DTS:X"
+    profile.contains("HD MA", ignoreCase = true) || profile.contains("HD-MA", ignoreCase = true) ||
+        profile.equals("MA", ignoreCase = true) -> "DTS-HD MA"
+    profile.contains("HRA", ignoreCase = true) -> "DTS-HD HRA"
+    profile.contains("Express", ignoreCase = true) -> "DTS Express"
+    else -> "DTS"
+}
+
+private fun channelLabel(stream: MediaStream): String? {
+    val layout = stream.channelLayout?.trim()?.lowercase().orEmpty()
+    CHANNEL_LAYOUT.find(layout)?.let { return it.value }
+    if (layout.startsWith("stereo")) return "2.0"
+    if (layout == "mono") return "1.0"
+    return when (val channels = stream.channels ?: 0) {
+        0 -> null
+        1 -> "1.0"
+        2 -> "2.0"
+        3 -> "2.1"
+        6 -> "5.1"
+        7 -> "6.1"
+        8 -> "7.1"
+        else -> if (channels > 0) "$channels.0" else null
+    }
+}
+
+internal fun containerLabel(container: String?, filename: String?): String? {
+    val names = container.orEmpty().split(',').map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+    if (names.isEmpty()) return null
+    val extension = filename?.substringAfterLast('.', "")?.lowercase()
+    return (names.firstOrNull { it == extension } ?: names.first()).uppercase()
+}
+
+private val DOVI_SUBTYPE = Regex("""DoviProfile(\d)(\d)""", RegexOption.IGNORE_CASE)
+private val CHANNEL_LAYOUT = Regex("""^\d+\.\d""")
+
+/** Reads a server date with a zone ("Z" or an offset such as "+00:00") or without one, which counts as UTC. */
+internal fun serverDateEpochMs(value: String): Long? =
+    runCatching { OffsetDateTime.parse(value).toInstant().toEpochMilli() }
+        .recoverCatching { LocalDateTime.parse(value).toInstant(ZoneOffset.UTC).toEpochMilli() }
+        .getOrNull()

@@ -53,13 +53,20 @@ class DebridStreamPresentation @Inject constructor(
                 .filterNot { stream -> stream.isInactiveResolverStream(settings) }
                 .filterNot { stream -> stream.isUncachedDebridStream() }
             val debridStreams = visibleStreams.filter { stream -> stream.isManagedDebridStream() }
-            if (debridStreams.isEmpty()) return@map group.copy(streams = visibleStreams)
+            if (debridStreams.isEmpty()) {
+                return@map group.copy(streams = visibleStreams, thumbnailCopyStreams = emptyList())
+            }
 
-            val presentedDebridStreams = DirectDebridStreamFilter.applyPreferencesWithFacts(debridStreams, settings)
+            val presented = DirectDebridStreamFilter.presentWithCopies(debridStreams, settings)
+            val presentedDebridStreams = presented.shownWithFacts
                 .map { (stream, facts) -> formatter.format(stream, settings, badgeFilters, facts) }
             val passthroughStreams = visibleStreams.filterNot { stream -> stream.isManagedDebridStream() }
 
-            group.copy(streams = presentedDebridStreams + passthroughStreams)
+            group.copy(
+                streams = presentedDebridStreams + passthroughStreams,
+                thumbnailCopyStreams = presented.thumbnailCopiesWithFacts
+                    .map { (stream, facts) -> formatter.format(stream, settings, badgeFilters, facts) }
+            )
         }
     }
 

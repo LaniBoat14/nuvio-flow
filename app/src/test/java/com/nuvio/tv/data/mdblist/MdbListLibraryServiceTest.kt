@@ -645,4 +645,108 @@ class MdbListLibraryServiceTest {
         assertFalse(service.isRefreshing.first())
         assertEquals(mdbListLibrarySnapshot(h.http.now), h.repository.currentSnapshot()?.library)
     }
+
+    @Test
+    fun `library toggle on a stale cache writes first and refreshes afterwards`() = runTest {
+        val h = MdbListSyncTestHarness(backgroundScope)
+        h.seedLibrary(mdbListLibrarySnapshot(h.http.now - MdbListSyncRepository.AUTOMATIC_INTERVAL_MS - 1))
+        val service = h.libraryService(backgroundScope)
+        val movie = LibraryEntryInput("tt1", "movie", "Movie", tmdbId = 1)
+
+        assertEquals(mapOf(MDBLIST_WATCHLIST_KEY to false, MDBLIST_TEST_LIST_KEY to false),
+            service.getDefaultMembershipSnapshot(movie).listMembership)
+        assertTrue(h.http.engine.requests.isEmpty())
+
+        h.http.reply(body = """{"added":1,"existing":0,"not_found":0}""")
+        h.http.reply(body = mdbListLibraryListsBody())
+        h.http.reply(body = """{"movies":[{"id":1,"imdb_id":"tt1","title":"Movie","rank":1}],"shows":[]}""")
+        h.http.reply(body = "[]")
+        h.http.reply(body = MDBLIST_EMPTY_LIKED_LISTS)
+        service.applyMembershipChanges(movie, ListMembershipChanges(mapOf(MDBLIST_WATCHLIST_KEY to true, MDBLIST_TEST_LIST_KEY to false)))
+        assertEquals(listOf("/watchlist/items/add"), h.http.engine.requests.map { it.path })
+        assertEquals(setOf(MDBLIST_WATCHLIST_KEY), service.observeMembership("tt1", "movie").first())
+
+        runCurrent()
+        assertEquals(listOf("/watchlist/items/add", "/lists/user", "/watchlist/items", "/external/lists/user", "/lists/liked"),
+            h.http.engine.requests.map { it.path })
+        assertEquals(1, h.repository.currentSnapshot()!!.library!!.itemsByList.getValue(MDBLIST_WATCHLIST_KEY).size)
+        assertEquals(setOf(MDBLIST_WATCHLIST_KEY), service.observeMembership("tt1", "movie").first())
+    }
+
+    @Test
+    fun `library toggle does not wait for a running watch history sync`() = runTest {
+        val h = MdbListSyncTestHarness(backgroundScope)
+        h.seedLibrary()
+        val service = h.libraryService(backgroundScope)
+        h.repository.ensureLoaded()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        h.remote.beforeActivities = { entered.complete(Unit); release.await() }
+        val sync = launch { h.repository.refresh(TrackingRefreshIntent.USER_INITIATED) }
+        entered.await()
+
+        h.http.reply(body = """{"added":1,"existing":0,"not_found":0}""")
+        val movie = LibraryEntryInput("tt1", "movie", "Movie", tmdbId = 1)
+        service.applyMembershipChanges(movie, ListMembershipChanges(mapOf(MDBLIST_WATCHLIST_KEY to true)))
+        assertEquals(listOf("/watchlist/items/add"), h.http.engine.requests.map { it.path })
+        assertTrue(sync.isActive)
+        assertEquals(setOf(MDBLIST_WATCHLIST_KEY), service.observeMembership("tt1", "movie").first())
+        assertEquals(mapOf(MDBLIST_WATCHLIST_KEY to true, MDBLIST_TEST_LIST_KEY to false),
+            service.getDefaultMembershipSnapshot(movie).listMembership)
+
+        release.complete(Unit)
+        sync.join()
+        runCurrent()
+        assertEquals(1, h.repository.currentSnapshot()!!.library!!.itemsByList.getValue(MDBLIST_WATCHLIST_KEY).size)
+        assertEquals(setOf(MDBLIST_WATCHLIST_KEY), service.observeMembership("tt1", "movie").first())
+        assertEquals(1, h.http.engine.requests.size)
+    }
+
+    @Test
+    fun `library toggle without a cached library reads only the watchlist before writing`() = runTest {
+        val h = MdbListSyncTestHarness(backgroundScope)
+        h.seed()
+        val service = h.libraryService(backgroundScope)
+        val movie = LibraryEntryInput("tt0111161", "movie", "Shawshank")
+        h.http.reply(body = MDBLIST_LIBRARY_MOVIE_PAGE)
+        assertEquals(mapOf(MDBLIST_WATCHLIST_KEY to true), service.getDefaultMembershipSnapshot(movie).listMembership)
+        assertEquals(listOf("/watchlist/items"), h.http.engine.requests.map { it.path })
+
+        h.http.reply(body = """{"removed":1,"not_found":0}""")
+        h.http.reply(body = mdbListLibraryListsBody())
+        h.http.reply(body = MDBLIST_EMPTY_LIBRARY_PAGE)
+        h.http.reply(body = MDBLIST_EMPTY_LIBRARY_PAGE)
+        h.http.reply(body = "[]")
+        h.http.reply(body = MDBLIST_EMPTY_LIKED_LISTS)
+        service.applyMembershipChanges(movie, ListMembershipChanges(mapOf(MDBLIST_WATCHLIST_KEY to false)))
+        assertEquals(listOf("/watchlist/items", "/watchlist/items/remove"), h.http.engine.requests.map { it.path })
+
+        runCurrent()
+        assertEquals(listOf("/watchlist/items", "/watchlist/items/remove", "/lists/user", "/watchlist/items", "/lists/7/items",
+            "/external/lists/user", "/lists/liked"), h.http.engine.requests.map { it.path })
+        assertTrue(h.repository.currentSnapshot()!!.library!!.itemsByList.getValue(MDBLIST_WATCHLIST_KEY).isEmpty())
+        assertTrue(service.observeMembership("tt0111161", "movie").first().isEmpty())
+    }
+
+    @Test
+    fun `failed library toggle marks the cache for reconciliation without blocking the caller`() = runTest {
+        val h = MdbListSyncTestHarness(backgroundScope)
+        h.seedLibrary()
+        val service = h.libraryService(backgroundScope)
+        h.http.reply(500)
+        expectMdbListFailure<MdbListApiException> {
+            service.applyMembershipChanges(LibraryEntryInput("tt1", "movie", "Movie", tmdbId = 1),
+                ListMembershipChanges(mapOf(MDBLIST_WATCHLIST_KEY to true)))
+        }
+        h.http.reply(body = mdbListLibraryListsBody())
+        h.http.reply(body = MDBLIST_EMPTY_LIBRARY_PAGE)
+        h.http.reply(body = MDBLIST_EMPTY_LIBRARY_PAGE)
+        h.http.reply(body = "[]")
+        h.http.reply(body = MDBLIST_EMPTY_LIKED_LISTS)
+        runCurrent()
+        assertEquals(listOf("/watchlist/items/add", "/lists/user", "/watchlist/items", "/lists/7/items", "/external/lists/user",
+            "/lists/liked"), h.http.engine.requests.map { it.path })
+        assertFalse(h.repository.currentSnapshot()!!.library!!.invalidated)
+        assertTrue(service.observeMembership("tt1", "movie").first().isEmpty())
+    }
 }

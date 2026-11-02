@@ -3,7 +3,10 @@ package com.nuvio.tv.core.player
 import com.nuvio.tv.core.build.AppFeaturePolicy
 import com.nuvio.tv.data.local.StreamAutoPlayMode
 import com.nuvio.tv.data.local.StreamAutoPlaySource
+import com.nuvio.tv.data.mediaserver.ServerItemRef
+import com.nuvio.tv.data.mediaserver.ServerPlaybackTarget
 import com.nuvio.tv.domain.model.AddonStreams
+import com.nuvio.tv.domain.model.DebridStreamPreferences
 import com.nuvio.tv.domain.model.Stream
 import com.nuvio.tv.domain.model.StreamBehaviorHints
 import com.nuvio.tv.domain.model.StreamDebridCacheState
@@ -13,6 +16,103 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class StreamAutoPlaySelectorTest {
+
+    private val baseInputs = AutoPlaySelection.Inputs(
+        mode = StreamAutoPlayMode.FIRST_STREAM,
+        regexPattern = "",
+        source = StreamAutoPlaySource.ALL_SOURCES,
+        installedAddonNames = setOf("AddonA", "AddonB"),
+        selectedAddons = emptySet(),
+        selectedPlugins = emptySet(),
+        preferredBingeGroup = null
+    )
+
+    @Test
+    fun `AutoPlaySelection matches the argument set the stream screen used to pass`() {
+        val first = stream(addonName = "AddonA", url = "https://example.com/a.mkv", name = "1080p")
+        val second = stream(addonName = "AddonB", url = "https://example.com/b.mkv", name = "720p")
+        val streams = listOf(first, second)
+
+        val viaSelector = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = streams,
+            mode = baseInputs.mode,
+            regexPattern = baseInputs.regexPattern,
+            source = baseInputs.source,
+            installedAddonNames = baseInputs.installedAddonNames,
+            selectedAddons = baseInputs.selectedAddons,
+            selectedPlugins = baseInputs.selectedPlugins,
+            preferredBingeGroup = baseInputs.preferredBingeGroup,
+            preferBingeGroupInSelection = baseInputs.preferredBingeGroup != null,
+            debridStreamPreferences = null
+        )
+        val viaExtraction = AutoPlaySelection.select(
+            streams = streams,
+            inputs = baseInputs,
+            debridStreamPreferences = null
+        )
+
+        assertEquals(viaSelector, viaExtraction)
+        assertEquals(first, viaExtraction)
+    }
+
+    @Test
+    fun `AutoPlaySelection derives binge preference from the inputs`() {
+        val other = stream(
+            addonName = "AddonA",
+            url = "https://example.com/other.mkv",
+            bingeGroup = "other-group"
+        )
+        val preferred = stream(
+            addonName = "AddonB",
+            url = "https://example.com/preferred.mkv",
+            bingeGroup = "same-group"
+        )
+
+        // preferredBingeGroup set -> preferBingeGroupInSelection is derived true,
+        // and a binge match outranks the mode even in MANUAL.
+        val withGroup = AutoPlaySelection.select(
+            streams = listOf(other, preferred),
+            inputs = baseInputs.copy(
+                mode = StreamAutoPlayMode.MANUAL,
+                preferredBingeGroup = "same-group"
+            ),
+            debridStreamPreferences = null
+        )
+        assertEquals(preferred, withGroup)
+
+        // preferredBingeGroup null -> derived false, MANUAL yields the picker.
+        val withoutGroup = AutoPlaySelection.select(
+            streams = listOf(other, preferred),
+            inputs = baseInputs.copy(mode = StreamAutoPlayMode.MANUAL),
+            debridStreamPreferences = null
+        )
+        assertNull(withoutGroup)
+    }
+
+    @Test
+    fun `AutoPlaySelection bingeGroupOnly does not fall back to the mode`() {
+        val only = stream(
+            addonName = "AddonA",
+            url = "https://example.com/only.mkv",
+            bingeGroup = "other-group"
+        )
+
+        val eager = AutoPlaySelection.select(
+            streams = listOf(only),
+            inputs = baseInputs.copy(preferredBingeGroup = "missing-group"),
+            debridStreamPreferences = null,
+            bingeGroupOnly = true
+        )
+        assertNull(eager)
+
+        // Same inputs without the flag fall back to FIRST_STREAM.
+        val fallback = AutoPlaySelection.select(
+            streams = listOf(only),
+            inputs = baseInputs.copy(preferredBingeGroup = "missing-group"),
+            debridStreamPreferences = null
+        )
+        assertEquals(only, fallback)
+    }
 
     @Test
     fun `orderAddonStreams follows installed addon order and leaves plugins last`() {
@@ -90,7 +190,7 @@ class StreamAutoPlaySelectorTest {
     }
 
     @Test
-    fun `bingeGroup-first ignores source and addon plugin filters`() {
+    fun `bingeGroup-first follows the group outside the source filter`() {
         val filteredOutAddonMatch = stream(
             addonName = "AddonFilteredOut",
             url = "https://example.com/addon-match.m3u8",
@@ -115,6 +215,37 @@ class StreamAutoPlaySelectorTest {
         )
 
         assertEquals(filteredOutAddonMatch, selected)
+    }
+
+    @Test
+    fun `without a binge group match the source filter still decides`() {
+        val filteredOutAddon = stream(
+            addonName = "AddonFilteredOut",
+            url = "https://example.com/addon.m3u8",
+            bingeGroup = "other-group"
+        )
+        val allowedPlugin = stream(
+            addonName = "PluginAllowed",
+            url = "https://example.com/plugin.m3u8"
+        )
+
+        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(filteredOutAddon, allowedPlugin),
+            mode = StreamAutoPlayMode.FIRST_STREAM,
+            regexPattern = "",
+            source = StreamAutoPlaySource.ENABLED_PLUGINS_ONLY,
+            installedAddonNames = setOf("AddonFilteredOut"),
+            selectedAddons = emptySet(),
+            selectedPlugins = setOf("PluginAllowed"),
+            preferredBingeGroup = "same-group",
+            preferBingeGroupInSelection = true
+        )
+
+        if (AppFeaturePolicy.pluginsEnabled) {
+            assertEquals(allowedPlugin, selected)
+        } else {
+            assertEquals(filteredOutAddon, selected)
+        }
     }
 
     @Test
@@ -143,6 +274,35 @@ class StreamAutoPlaySelectorTest {
         )
 
         assertEquals(regexMatch, selected)
+    }
+
+    @Test
+    fun `regex mode sees the file name of a media server source`() {
+        val server = stream(addonName = "Jellyfin · Home", name = "Jellyfin · 2160p").copy(
+            description = "HEVC • DV P7.6 (HDR10)\nTrueHD Atmos • 7.1\nMKV • 52 Mbps • 53.6 GB • Home",
+            behaviorHints = StreamBehaviorHints(
+                notWebReady = null,
+                bingeGroup = null,
+                countryWhitelist = null,
+                proxyHeaders = null,
+                filename = "Film 2160p UHD BluRay REMUX TrueHD.mkv"
+            ),
+            serverTarget = ServerPlaybackTarget(ServerItemRef("c1", "m1"), "ms1")
+        )
+        fun pick(pattern: String) = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(server),
+            mode = StreamAutoPlayMode.REGEX_MATCH,
+            regexPattern = pattern,
+            source = StreamAutoPlaySource.ALL_SOURCES,
+            installedAddonNames = setOf("Jellyfin · Home"),
+            selectedAddons = emptySet(),
+            selectedPlugins = emptySet(),
+            preferredBingeGroup = null,
+            preferBingeGroupInSelection = false
+        )
+
+        assertEquals(server, pick("BluRay"))
+        assertNull(pick("WEB-DL"))
     }
 
     @Test
@@ -332,6 +492,329 @@ class StreamAutoPlaySelectorTest {
 
         assertEquals(listOf(regular, cachedDebrid), ordered)
     }
+
+    @Test
+    fun `quality rank prefers lossless remux over lossy web-dl`() {
+        val lossyWebDl = stream(
+            addonName = "AddonA",
+            url = "https://example.com/webdl.mp4",
+            name = "Movie 2160p WEB-DL DD+ 5.1"
+        )
+        val losslessRemux = stream(
+            addonName = "AddonB",
+            url = "https://example.com/remux.mkv",
+            name = "Movie 2160p Remux TrueHD Atmos"
+        )
+
+        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(lossyWebDl, losslessRemux),
+            mode = StreamAutoPlayMode.QUALITY_RANK,
+            regexPattern = "",
+            source = StreamAutoPlaySource.ALL_SOURCES,
+            installedAddonNames = setOf("AddonA", "AddonB"),
+            selectedAddons = emptySet(),
+            selectedPlugins = emptySet()
+        )
+
+        assertEquals(losslessRemux, selected)
+    }
+
+    @Test
+    fun `quality rank resolution wins outright over audio`() {
+        val fourKLossy = stream(
+            addonName = "AddonA",
+            url = "https://example.com/a.mkv",
+            name = "Movie 2160p WEB-DL AAC"
+        )
+        val fullHdLossless = stream(
+            addonName = "AddonA",
+            url = "https://example.com/b.mkv",
+            name = "Movie 1080p Remux TrueHD"
+        )
+
+        val selected = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = listOf(fullHdLossless, fourKLossy),
+            mode = StreamAutoPlayMode.QUALITY_RANK,
+            regexPattern = "",
+            source = StreamAutoPlaySource.ALL_SOURCES,
+            installedAddonNames = setOf("AddonA"),
+            selectedAddons = emptySet(),
+            selectedPlugins = emptySet()
+        )
+
+        assertEquals(fourKLossy, selected)
+    }
+
+    @Test
+    fun `a null binge group makes preferBingeGroupInSelection inert`() {
+        // playNextEpisode passed preferBingeGroupInSelection as the SETTING,
+        // while AutoPlaySelection derives it from preferredBingeGroup != null.
+        // Those disagree in exactly one case: the setting on with no binge
+        // group known. This proves the disagreement cannot change the pick --
+        // selectAutoPlayStream gates the binge branch on
+        // targetBingeGroup.isNotEmpty(), which is false either way.
+        val first = stream(addonName = "AddonA", url = "https://example.com/a.mkv", name = "1080p")
+        val second = stream(addonName = "AddonB", url = "https://example.com/b.mkv", name = "720p")
+        val streams = listOf(first, second)
+
+        fun select(prefer: Boolean): Stream? = StreamAutoPlaySelector.selectAutoPlayStream(
+            streams = streams,
+            mode = baseInputs.mode,
+            regexPattern = baseInputs.regexPattern,
+            source = baseInputs.source,
+            installedAddonNames = baseInputs.installedAddonNames,
+            selectedAddons = baseInputs.selectedAddons,
+            selectedPlugins = baseInputs.selectedPlugins,
+            preferredBingeGroup = null,
+            preferBingeGroupInSelection = prefer,
+            debridStreamPreferences = null
+        )
+
+        assertEquals(select(true), select(false))
+        assertEquals(first, select(true))
+    }
+
+    @Test
+    fun `server groups are listed before debrid, addons and plugins`() {
+        val plugin = addonStreams("Plugin", stream("Plugin", url = "https://example.com/p.mkv"))
+        val addonA = addonStreams("AddonA", stream("AddonA", url = "https://example.com/a.mkv"))
+        val server = addonStreams("Jellyfin · Den", serverStream("Jellyfin · Den", "4K"))
+        val second = addonStreams("Emby · Attic", serverStream("Emby · Attic", "1080p", item = "i2"))
+
+        val ordered = StreamAutoPlaySelector.orderAddonStreams(
+            streams = listOf(plugin, addonA, server, second),
+            installedOrder = listOf("AddonA", "AddonB")
+        )
+        assertEquals(listOf(server, second, addonA, plugin), ordered)
+
+        val preferred = StreamAutoPlaySelector.orderAddonStreams(
+            streams = listOf(plugin, addonA, server, second),
+            installedOrder = listOf("AddonA", "AddonB"),
+            preferredNames = setOf("Emby · Attic")
+        )
+        assertEquals(listOf(second, server, addonA, plugin), preferred)
+    }
+
+    @Test
+    fun `auto-play treats server streams like any other source`() {
+        val addon = stream(addonName = "AddonA", url = "https://example.com/a.mkv", name = "2160p REMUX")
+        val server = serverStream("Jellyfin · Den", "1080p")
+
+        assertEquals(
+            addon,
+            AutoPlaySelection.select(
+                streams = listOf(addon, server),
+                inputs = baseInputs.copy(mode = StreamAutoPlayMode.FIRST_STREAM),
+                debridStreamPreferences = null
+            )
+        )
+        assertEquals(
+            addon,
+            AutoPlaySelection.select(
+                streams = listOf(server, addon),
+                inputs = baseInputs.copy(mode = StreamAutoPlayMode.REGEX_MATCH, regexPattern = "2160p"),
+                debridStreamPreferences = null
+            )
+        )
+        assertEquals(
+            server,
+            AutoPlaySelection.select(
+                streams = listOf(server, addon),
+                inputs = baseInputs.copy(mode = StreamAutoPlayMode.FIRST_STREAM),
+                debridStreamPreferences = null
+            )
+        )
+        assertNull(
+            AutoPlaySelection.select(listOf(server, addon), baseInputs.copy(mode = StreamAutoPlayMode.MANUAL), debridStreamPreferences = null)
+        )
+    }
+
+    @Test
+    fun `auto-play picks the matching server version when a pattern is set`() {
+        val low = serverStream("Jellyfin · Den", "1080p", source = "v1")
+        val high = serverStream("Jellyfin · Den", "4K", source = "v2")
+
+        val selected = AutoPlaySelection.select(
+            streams = listOf(low, high),
+            inputs = baseInputs.copy(mode = StreamAutoPlayMode.REGEX_MATCH, regexPattern = "4K"),
+            debridStreamPreferences = null
+        )
+        assertEquals(high, selected)
+    }
+
+    @Test
+    fun `server streams stay eligible when auto-play is limited to chosen addons`() {
+        val addon = stream(addonName = "AddonA", url = "https://example.com/a.mkv")
+        val server = serverStream("Jellyfin · Den", "1080p")
+
+        val selected = AutoPlaySelection.select(
+            streams = listOf(server, addon),
+            inputs = baseInputs.copy(source = StreamAutoPlaySource.INSTALLED_ADDONS_ONLY, selectedAddons = setOf("AddonA")),
+            debridStreamPreferences = null
+        )
+        assertEquals(server, selected)
+    }
+
+    @Test
+    fun `a binge group in progress still continues on its addon`() {
+        val addon = stream(addonName = "AddonA", url = "https://example.com/a.mkv", bingeGroup = "same-group")
+        val server = serverStream("Jellyfin · Den", "1080p")
+
+        val selected = AutoPlaySelection.select(
+            streams = listOf(server, addon),
+            inputs = baseInputs.copy(preferredBingeGroup = "same-group"),
+            debridStreamPreferences = null
+        )
+        assertEquals(addon, selected)
+    }
+
+    @Test
+    fun `best quality picks the largest of otherwise equal files whatever the addon order`() {
+        val small = aioStream("small", "1.44 GiB", sizeBytes = gib(1.44))
+        val mid = aioStream("mid", "5.71 GiB", sizeBytes = gib(5.71))
+        val large = aioStream("large", "5.9 GiB", sizeBytes = gib(5.9))
+
+        assertEquals(large, selectBest(listOf(small, mid, large)))
+        assertEquals(large, selectBest(listOf(large, mid, small)))
+        assertEquals(mid, selectBest(listOf(small, mid)))
+    }
+
+    @Test
+    fun `best quality reads GiB sizes from the text when no size field is sent`() {
+        val small = aioStream("small", "1.44 GiB", sizeBytes = null)
+        val large = aioStream("large", "5.71 GiB", sizeBytes = null)
+
+        assertEquals(large, selectBest(listOf(small, large)))
+    }
+
+    @Test
+    fun `best quality with a binge group picks the best file inside that group`() {
+        val groupSmall = aioStream("g-small", "1.44 GiB", gib(1.44), bingeGroup = "aio|FLUX")
+        val outsider = aioStream("outsider", "9.8 GiB", gib(9.8), bingeGroup = "aio|other")
+        val groupLarge = aioStream("g-large", "5.71 GiB", gib(5.71), bingeGroup = "aio|FLUX")
+
+        assertEquals(groupLarge, selectBest(listOf(groupSmall, outsider, groupLarge), bingeGroup = "aio|FLUX"))
+        assertEquals(
+            groupLarge,
+            selectBest(listOf(groupSmall, outsider, groupLarge), bingeGroup = "aio|FLUX", bingeGroupOnly = true)
+        )
+    }
+
+    @Test
+    fun `best quality with a binge group skips files in the group that cannot play`() {
+        val groupSmall = aioStream("g-small", "1.44 GiB", gib(1.44), bingeGroup = "aio|FLUX")
+        val groupLargeUncached = aioStream("g-large", "5.71 GiB", gib(5.71), bingeGroup = "aio|FLUX").copy(
+            debridCacheStatus = StreamDebridCacheStatus(
+                providerId = "torbox",
+                providerName = "Torbox",
+                state = StreamDebridCacheState.NOT_CACHED
+            )
+        )
+
+        assertEquals(groupSmall, selectBest(listOf(groupSmall, groupLargeUncached), bingeGroup = "aio|FLUX"))
+    }
+
+    @Test
+    fun `first stream with a binge group still takes the first match in list order`() {
+        val groupSmall = aioStream("g-small", "1.44 GiB", gib(1.44), bingeGroup = "aio|FLUX")
+        val groupLarge = aioStream("g-large", "5.71 GiB", gib(5.71), bingeGroup = "aio|FLUX")
+
+        assertEquals(
+            groupSmall,
+            selectBest(listOf(groupSmall, groupLarge), bingeGroup = "aio|FLUX", mode = StreamAutoPlayMode.FIRST_STREAM)
+        )
+        assertEquals(
+            groupSmall,
+            selectBest(listOf(groupSmall, groupLarge), bingeGroup = "aio|FLUX", mode = StreamAutoPlayMode.MANUAL)
+        )
+    }
+
+    @Test
+    fun `best quality inside a binge group still drops excluded files`() {
+        val excludedLarge = aioStream("g-large", "5.71 GiB", gib(5.71), bingeGroup = "aio|FLUX")
+        val keptSmall = aioStream("g-small", "1.44 GiB", gib(1.44), bingeGroup = "aio|FLUX").copy(
+            description = "Lanterns S01E06 2160p WEB-DL DV HDR DDP5.1 Atmos HEVC-NTb\n1.44 GiB"
+        )
+
+        assertEquals(
+            keptSmall,
+            selectBest(
+                listOf(excludedLarge, keptSmall),
+                bingeGroup = "aio|FLUX",
+                preferences = DebridStreamPreferences(excludedReleaseGroups = listOf("FLUX"))
+            )
+        )
+    }
+
+    @Test
+    fun `regex mode with a binge group still takes the first match in list order`() {
+        val groupSmall = aioStream("g-small", "1.44 GiB", gib(1.44), bingeGroup = "aio|FLUX")
+        val groupLarge = aioStream("g-large", "5.71 GiB", gib(5.71), bingeGroup = "aio|FLUX")
+
+        assertEquals(
+            groupSmall,
+            AutoPlaySelection.select(
+                streams = listOf(groupSmall, groupLarge),
+                inputs = baseInputs.copy(
+                    mode = StreamAutoPlayMode.REGEX_MATCH,
+                    regexPattern = "2160p",
+                    installedAddonNames = setOf("AIOStreams"),
+                    preferredBingeGroup = "aio|FLUX"
+                ),
+                debridStreamPreferences = null
+            )
+        )
+    }
+
+    private fun selectBest(
+        streams: List<Stream>,
+        bingeGroup: String? = null,
+        mode: StreamAutoPlayMode = StreamAutoPlayMode.QUALITY_RANK,
+        bingeGroupOnly: Boolean = false,
+        preferences: DebridStreamPreferences? = null
+    ): Stream? = AutoPlaySelection.select(
+        streams = streams,
+        inputs = baseInputs.copy(
+            mode = mode,
+            installedAddonNames = setOf("AIOStreams"),
+            preferredBingeGroup = bingeGroup
+        ),
+        debridStreamPreferences = preferences,
+        bingeGroupOnly = bingeGroupOnly
+    )
+
+    private fun gib(value: Double): Long = (value * 1024 * 1024 * 1024).toLong()
+
+    private fun aioStream(
+        id: String,
+        sizeText: String,
+        sizeBytes: Long?,
+        bingeGroup: String? = null,
+        name: String = "AIOStreams 4K DV"
+    ): Stream = Stream(
+        name = name,
+        title = null,
+        description = "Lanterns S01E06 2160p WEB-DL DV HDR DDP5.1 Atmos HEVC-FLUX\n$sizeText",
+        url = "https://example.com/$id.mkv",
+        ytId = null,
+        infoHash = null,
+        fileIdx = null,
+        externalUrl = null,
+        behaviorHints = StreamBehaviorHints(
+            notWebReady = null,
+            bingeGroup = bingeGroup,
+            countryWhitelist = null,
+            proxyHeaders = null,
+            videoSize = sizeBytes
+        ),
+        addonName = "AIOStreams",
+        addonLogo = null
+    )
+
+    private fun serverStream(addonName: String, name: String, item: String = "i1", source: String = "ms1"): Stream =
+        stream(addonName = addonName, name = name).copy(
+            serverTarget = ServerPlaybackTarget(ServerItemRef("c1", item), mediaSourceId = source)
+        )
 
     private fun stream(
         addonName: String,

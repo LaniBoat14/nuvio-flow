@@ -24,12 +24,16 @@ class MdbListTrackingLibraryProvider @Inject constructor(
     override fun recognizesListKey(key: String): Boolean =
         key == MDBLIST_WATCHLIST_KEY || key.startsWith(MDBLIST_LIST_KEY_PREFIX) || isMdbListReadOnlyListKey(key)
 
+    override fun countsAsInLibrary(listKey: String): Boolean = !isMdbListReadOnlyListKey(listKey)
+
     override fun observeMembership(itemId: String, itemType: String) = service.observeMembership(itemId, itemType)
 
     override fun toggledDefaultMembership(currentMembership: Map<String, Boolean>): Map<String, Boolean> =
         currentMembership + (MDBLIST_WATCHLIST_KEY to (currentMembership[MDBLIST_WATCHLIST_KEY] != true))
 
     override suspend fun getMembershipSnapshot(item: LibraryEntryInput) = service.getMembershipSnapshot(item)
+
+    override suspend fun getDefaultMembershipSnapshot(item: LibraryEntryInput) = service.getDefaultMembershipSnapshot(item)
 
     override suspend fun applyMembershipChanges(item: LibraryEntryInput, changes: ListMembershipChanges, destructiveRemovalConfirmed: Boolean) =
         service.applyMembershipChanges(item, changes)

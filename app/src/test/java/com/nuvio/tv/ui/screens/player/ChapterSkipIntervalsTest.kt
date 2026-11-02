@@ -9,7 +9,7 @@ class ChapterSkipIntervalsTest {
     private val durationMs = 24 * 60_000L // 24 minutes
 
     private fun chapters(vararg entries: Pair<Long, String?>): List<PlayerChapter> =
-        PlayerChapters.normalize(entries.map { (ms, title) -> PlayerChapter(ms, title) })
+        entries.sortedBy { it.first }.mapIndexed { index, (ms, title) -> PlayerChapter(index + 1, ms, title) }
 
     @Test
     fun `OP chapter produces intro interval`() {
@@ -101,7 +101,7 @@ class ChapterSkipIntervalsTest {
 
     @Test
     fun `fewer than two chapters produce no intervals`() {
-        val single = listOf(PlayerChapter(0L, "OP"))
+        val single = listOf(PlayerChapter(1, 0L, "OP"))
         val intervals = ChapterSkipIntervals.fromChapters(single, durationMs)
         assertTrue(intervals.isEmpty())
     }

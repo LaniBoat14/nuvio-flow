@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="player_chapters">Capitole</string>
+    <string name="player_chapter_number">Capitolul %1$d</string>
+    <string name="player_chapter_named">Capitolul %1$d: %2$s</string>
+    <string name="player_chapter_now_playing">Se redă acum</string>
+    <string name="playback_chapters">Capitole în player</string>
+    <string name="playback_chapters_sub">Pentru filmele cu capitole: un buton Capitole, marcaje pe bara de timp și numele capitolului</string>
+</resources>

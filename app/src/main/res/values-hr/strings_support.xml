@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="support_nuvio_button">Podrži tim Nuvio</string>
+    <string name="support_nuvio_title">Podrži tim Nuvio</string>
+    <string name="support_nuvio_subtitle">Nuvio Arc temelji na službenoj aplikaciji Nuvio. Članstvo ide timu Nuvio, pomaže platiti poslužitelje i razvoj te čuva osnovnu aplikaciju besplatnom za sve.</string>
+    <string name="support_nuvio_perk_themes">Gradijentne teme</string>
+    <string name="support_nuvio_perk_themes_desc">Dodatne gradijentne teme ili izradi svoju.</string>
+    <string name="support_nuvio_perk_backgrounds">Pozadine profila</string>
+    <string name="support_nuvio_perk_backgrounds_desc">Iz kolekcije za podupiratelje ili tvoja slika.</string>
+    <string name="support_nuvio_perk_avatars">Avatari za članove</string>
+    <string name="support_nuvio_perk_avatars_desc">Dodatni setovi avatara za tvoje profile.</string>
+    <string name="support_nuvio_perk_badge">Značka podupiratelja</string>
+    <string name="support_nuvio_perk_badge_desc">Mala značka na tvom računu i profilima.</string>
+    <string name="support_nuvio_perk_discord">Uloga na Discordu</string>
+    <string name="support_nuvio_perk_discord_desc">Poveži Discord na web-stranici za ulogu.</string>
+    <string name="support_nuvio_perk_votes">Glasanje o odlukama</string>
+    <string name="support_nuvio_perk_votes_desc">Samo za razinu Podupiratelj Plus.</string>
+    <string name="support_nuvio_perk_votes_chip">Glasanje (Podupiratelj Plus)</string>
+    <string name="support_nuvio_plus_tag">Plus</string>
+    <string name="support_nuvio_on_tag">Uključeno</string>
+    <string name="support_nuvio_already_title">Već si podupiratelj?</string>
+    <string name="support_nuvio_already_body">Prijavi se na ovom TV-u istim Nuvio računom. Pogodnosti se uključe same.</string>
+    <string name="support_nuvio_scan_title">Skeniraj za otvaranje nuvio.tv/support</string>
+    <string name="support_nuvio_scan_body">Otvara se na mobitelu. Na ovom TV-u ništa se ne plaća.</string>
+    <string name="support_nuvio_patreon_manage">Skeniraj za promjenu ili otkazivanje na Patreonu</string>
+    <string name="support_nuvio_pass_until">Tvoje članstvo vrijedi do %1$s.</string>
+    <string name="support_nuvio_sign_in">Prijavi se na ovom TV-u</string>
+    <string name="support_nuvio_close">Zatvori</string>
+    <string name="support_nuvio_checking">Provjera članstva…</string>
+    <string name="support_nuvio_thanks_title">Hvala što podržavaš tim Nuvio</string>
+    <string name="support_nuvio_thanks_subtitle">Pogodnosti prate tvoj Nuvio račun, pa rade ovdje u Nuvio Arc i u službenoj aplikaciji.</string>
+    <string name="support_nuvio_gentle_eyebrow">Nuvio podupiratelj</string>
+    <string name="support_nuvio_gentle_title">Sve u Nuvio Arc radi bez članstva</string>
+    <string name="support_nuvio_gentle_body">Ovaj račun nema Nuvio članstvo za podupiratelje i to je sasvim u redu. Ako ikad poželiš pomoći timu Nuvio, članstvo donosi nekoliko pogodnosti:</string>
+    <string name="support_nuvio_gentle_unavailable">Članstvo trenutačno nije moguće provjeriti. Sve u Nuvio Arc radi i bez njega. Ako želiš pomoći timu Nuvio, članstvo donosi nekoliko pogodnosti:</string>
+    <string name="support_nuvio_gentle_scan">Pogledaj opcije na mobitelu</string>
+    <string name="support_nuvio_paid_check_again">Upravo plaćeno? Provjeri ponovno</string>
+    <string name="support_nuvio_no_thanks">Ne, hvala</string>
+    <string name="support_nuvio_no_thanks_hint">„Ne, hvala“ skriva gumb za podršku i zaključane teme za podupiratelje na ovom TV-u. Vrati ih u Postavke › O aplikaciji.</string>
+    <string name="support_nuvio_thanks_note_title">Pogodnosti razine %1$s su uključene</string>
+    <string name="support_nuvio_thanks_note_body">Hvala što podržavaš tim Nuvio.</string>
+    <string name="support_nuvio_theme_locked">Podupiratelj</string>
+    <string name="support_nuvio_suggestions_setting">Prijedlozi za podršku timu Nuvio</string>
+    <string name="support_nuvio_suggestions_setting_subtitle">Prikaži gumb „Podrži tim Nuvio“ i zaključane teme za podupiratelje.</string>
+    <string name="cd_support_nuvio_qr">QR kôd za nuvio.tv/support</string>
+</resources>

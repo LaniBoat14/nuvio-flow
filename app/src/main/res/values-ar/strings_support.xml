@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="support_nuvio_button">ادعم فريق Nuvio</string>
+    <string name="support_nuvio_title">ادعم فريق Nuvio</string>
+    <string name="support_nuvio_subtitle">Nuvio Arc مبني على تطبيق Nuvio الرسمي. تذهب العضوية إلى فريق Nuvio، وتساعد في تغطية تكاليف الخوادم والتطوير، وتُبقي التطبيق الأساسي مجانيًا للجميع.</string>
+    <string name="support_nuvio_perk_themes">مظاهر متدرجة</string>
+    <string name="support_nuvio_perk_themes_desc">مظاهر متدرجة إضافية، أو أنشئ مظهرك الخاص.</string>
+    <string name="support_nuvio_perk_backgrounds">خلفيات الملف الشخصي</string>
+    <string name="support_nuvio_perk_backgrounds_desc">من مجموعة الداعمين، أو صورتك الخاصة.</string>
+    <string name="support_nuvio_perk_avatars">صور رمزية للأعضاء</string>
+    <string name="support_nuvio_perk_avatars_desc">مجموعات صور رمزية إضافية لملفاتك الشخصية.</string>
+    <string name="support_nuvio_perk_badge">شارة الداعم</string>
+    <string name="support_nuvio_perk_badge_desc">شارة صغيرة على حسابك وملفاتك الشخصية.</string>
+    <string name="support_nuvio_perk_discord">دور في Discord</string>
+    <string name="support_nuvio_perk_discord_desc">اربط Discord على الموقع للحصول على الدور.</string>
+    <string name="support_nuvio_perk_votes">التصويت على قرارات التطبيق</string>
+    <string name="support_nuvio_perk_votes_desc">لأعضاء Supporter Plus فقط.</string>
+    <string name="support_nuvio_perk_votes_chip">التصويت (Supporter Plus)</string>
+    <string name="support_nuvio_plus_tag">Plus</string>
+    <string name="support_nuvio_on_tag">مفعل</string>
+    <string name="support_nuvio_already_title">هل أنت داعم بالفعل؟</string>
+    <string name="support_nuvio_already_body">سجّل الدخول على هذا التلفاز بحساب Nuvio نفسه. ستُفعَّل مزاياك تلقائيًا.</string>
+    <string name="support_nuvio_scan_title">امسح لفتح nuvio.tv/support</string>
+    <string name="support_nuvio_scan_body">يُفتح على هاتفك. لا يُدفع أي شيء على هذا التلفاز.</string>
+    <string name="support_nuvio_patreon_manage">امسح للتغيير أو الإلغاء على Patreon</string>
+    <string name="support_nuvio_pass_until">عضويتك سارية حتى %1$s.</string>
+    <string name="support_nuvio_sign_in">سجّل الدخول على هذا التلفاز</string>
+    <string name="support_nuvio_close">إغلاق</string>
+    <string name="support_nuvio_checking">جارٍ التحقق من عضويتك…</string>
+    <string name="support_nuvio_thanks_title">شكرًا لدعمك فريق Nuvio</string>
+    <string name="support_nuvio_thanks_subtitle">مزاياك مرتبطة بحساب Nuvio، لذا تعمل هنا في Nuvio Arc وفي التطبيق الرسمي.</string>
+    <string name="support_nuvio_gentle_eyebrow">داعمو Nuvio</string>
+    <string name="support_nuvio_gentle_title">كل شيء في Nuvio Arc يعمل دون عضوية</string>
+    <string name="support_nuvio_gentle_body">لا يملك هذا الحساب عضوية داعمي Nuvio، ولا بأس بذلك إطلاقًا. إذا رغبت يومًا في مساعدة فريق Nuvio، فالعضوية تضيف بعض المزايا:</string>
+    <string name="support_nuvio_gentle_unavailable">تعذّر التحقق من عضويتك الآن. كل شيء في Nuvio Arc يعمل دونها. إذا رغبت في مساعدة فريق Nuvio، فالعضوية تضيف بعض المزايا:</string>
+    <string name="support_nuvio_gentle_scan">اطّلع على الخيارات على هاتفك</string>
+    <string name="support_nuvio_paid_check_again">دفعت للتو؟ تحقق مجددًا</string>
+    <string name="support_nuvio_no_thanks">لا، شكرًا</string>
+    <string name="support_nuvio_no_thanks_hint">يُخفي «لا، شكرًا» زر الدعم والمظاهر المقفلة للداعمين على هذا التلفاز. يمكنك إعادتها من الإعدادات › حول.</string>
+    <string name="support_nuvio_thanks_note_title">مزايا %1$s مفعّلة</string>
+    <string name="support_nuvio_thanks_note_body">شكرًا لدعمك فريق Nuvio.</string>
+    <string name="support_nuvio_theme_locked">داعم</string>
+    <string name="support_nuvio_suggestions_setting">اقتراحات دعم فريق Nuvio</string>
+    <string name="support_nuvio_suggestions_setting_subtitle">إظهار زر «ادعم فريق Nuvio» والمظاهر المقفلة للداعمين.</string>
+    <string name="cd_support_nuvio_qr">رمز QR لـ nuvio.tv/support</string>
+</resources>

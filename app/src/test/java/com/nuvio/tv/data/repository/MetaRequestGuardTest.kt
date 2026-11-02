@@ -1,0 +1,84 @@
+package com.nuvio.tv.data.repository
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class MetaRequestGuardTest {
+
+    private var now = 1_000_000L
+
+    @Test
+    fun `retry after in seconds sets the pause`() {
+        val limits = AddonRateLimits(nowMs = { now })
+
+        assertEquals(12_000L, limits.recordRateLimited("bingecat.com", "12"))
+        assertTrue(limits.isPaused("bingecat.com"))
+        now += 11_999L
+        assertTrue(limits.isPaused("bingecat.com"))
+        now += 1L
+        assertFalse(limits.isPaused("bingecat.com"))
+    }
+
+    @Test
+    fun `without retry after the pause doubles while 429s keep coming`() {
+        val limits = AddonRateLimits(nowMs = { now }, defaultPauseMs = 30_000L)
+
+        assertEquals(30_000L, limits.recordRateLimited("a.example", null))
+        now += 30_000L
+        assertEquals(60_000L, limits.recordRateLimited("a.example", null))
+        now += 60_000L
+        assertEquals(120_000L, limits.recordRateLimited("a.example", "not a number"))
+    }
+
+    @Test
+    fun `a success after the pause resets the streak`() {
+        val limits = AddonRateLimits(nowMs = { now }, defaultPauseMs = 30_000L)
+        limits.recordRateLimited("a.example", null)
+        now += 30_000L
+        limits.recordSuccess("a.example")
+
+        assertEquals(30_000L, limits.recordRateLimited("a.example", null))
+    }
+
+    @Test
+    fun `the pause is capped and kept per host`() {
+        val limits = AddonRateLimits(nowMs = { now }, maxPauseMs = 60_000L)
+
+        assertEquals(60_000L, limits.recordRateLimited("a.example", "3600"))
+        assertFalse(limits.isPaused("b.example"))
+    }
+
+    @Test
+    fun `addon host ignores path and query`() {
+        assertEquals("aiometadatafortheweebs.midnightignite.me",
+            addonHost("https://aiometadatafortheweebs.midnightignite.me/stremio/abc/manifest.json?x=1"))
+        assertEquals("not a url", addonHost("not a url"))
+    }
+
+    @Test
+    fun `stats sum a window in one line and start a new window afterwards`() {
+        val stats = MetaRequestStats(nowMs = { now }, firstWindowMs = 60_000L, laterWindowMs = 600_000L)
+
+        assertTrue(stats.request("server-art", "Bingecat"))
+        assertFalse(stats.request("server-art", "AIOMetadata"))
+        assertFalse(stats.request("cw", "Bingecat"))
+        stats.rateLimited("Bingecat")
+        assertFalse(stats.skipped("server-art", "Bingecat"))
+        assertEquals(60_000L, stats.currentWindowMs())
+        now += 60_000L
+
+        val line = stats.drain()
+        assertNotNull(line)
+        assertTrue(line!!, line.contains("total=3 429=1 paused=1"))
+        assertTrue(line, line.contains("callers={server-art=2,cw=1,server-art(paused)=1}"))
+        assertTrue(line, line.contains("addons={Bingecat=2,AIOMetadata=1}"))
+        assertNull(stats.drain())
+
+        assertTrue(stats.request("cw", "Bingecat"))
+        assertEquals(600_000L, stats.currentWindowMs())
+    }
+}

@@ -3,6 +3,7 @@ package com.nuvio.tv.ui.screens.player
 import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import com.nuvio.tv.data.local.toTrackPreference
@@ -37,6 +38,22 @@ internal fun PlayerRuntimeController.preparePlaybackBeforeStart(
     clearPendingEngineSwitchTrackPreference()
     playbackPreparationJob?.cancel()
 
+    // Start the saved-progress read NOW, concurrent with
+    // everything up to and including player construction, instead of
+    // serially between the preparing_metadata and initializing_player
+    // phases (about 350 ms on the Trakt-active path, which collects the
+    // whole account's progress and filters client-side). The join sits in
+    // initializePlayer immediately before the resume position is read
+    // -- on both engine branches, before setMediaSource/setMedia -- so
+    // the STATE_READY race (see loadSavedProgressSuspend's KDoc) stays
+    // closed.
+    savedProgressDeferred?.cancel()
+    savedProgressDeferred = if (loadSavedProgress) {
+        scope.async { loadSavedProgressSuspend(currentSeason, currentEpisode) }
+    } else {
+        null
+    }
+
     // Fire-and-forget: warm the Trakt episode mapping in the background.
     traktMappingJob?.cancel()
     traktMappingJob = scope.launch {
@@ -63,6 +80,7 @@ internal fun PlayerRuntimeController.preparePlaybackBeforeStart(
                         "result=${if (loaded == null) "null (no saved preference)" else "audio=${loaded.audio?.language}/${loaded.audio?.name} subtitle=${loaded.subtitle?.javaClass?.simpleName}"}"
                 )
                 persistedTrackPreference = loaded
+                loadedTrackPreference = loaded?.let { id to it }
             } ?: Log.d(PlayerRuntimeController.TAG, "TRACK_PREF load: skipped (contentId is null)")
             // Subtitle delay is keyed per-videoId, so it is loaded separately
             // from the track selection above. This happens before
@@ -103,16 +121,13 @@ internal fun PlayerRuntimeController.preparePlaybackBeforeStart(
         // callback fired before the DB read completed, causing the resume
         // seek to be silently skipped — the player would start from 0:00
         // or hang in buffering after a late seek.
-        val partyPositionMs = partyResumePositionMs()
-        if (partyPositionMs != null) {
-            pendingResumeProgress = null
-            _uiState.update { it.copy(pendingSeekPosition = partyPositionMs) }
-        } else if (loadSavedProgress) {
+        if (loadSavedProgress) {
+            // The read itself runs concurrently (launched above); the phase
+            // marker keeps loading timelines comparable and should read ~0 ms.
             recordLoadingDiagnosticEvent(
                 phase = "loading_saved_progress",
                 message = context.getString(com.nuvio.tv.R.string.player_loading_preparing)
             )
-            loadSavedProgressSuspend(currentSeason, currentEpisode)
         }
         recordLoadingDiagnosticEvent(
             phase = "initializing_player",

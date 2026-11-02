@@ -89,6 +89,7 @@ class MetaRepositoryAddonCacheTest {
             context = context,
             api = api,
             addonRepository = addonRepository,
+            healthStore = mockk(relaxed = true),
             serverCatalog = mockk(relaxed = true)
         )
     }

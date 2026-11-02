@@ -4,6 +4,7 @@ import com.nuvio.tv.ui.theme.NuvioTheme
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,7 +36,9 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.ui.components.GridContentCard
+import com.nuvio.tv.ui.components.PanelEyebrow
 import com.nuvio.tv.ui.components.PosterCardStyle
+import com.nuvio.tv.ui.components.rememberScaledPosterCardStyle
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -106,7 +109,7 @@ fun CollectionSection(
         itemFocusRequesters.keys.retainAll(validIds)
     }
 
-    val landscapeStyle = remember(posterCardCornerRadius) {
+    val landscapeStyle = rememberScaledPosterCardStyle(remember(posterCardCornerRadius) {
         PosterCardStyle(
             width = 260.dp,
             height = 146.dp,
@@ -114,7 +117,7 @@ fun CollectionSection(
             focusedBorderWidth = NuvioTheme.spacing.xxs,
             focusedScale = 1.02f
         )
-    }
+    })
 
     Column(
         modifier = Modifier
@@ -122,13 +125,9 @@ fun CollectionSection(
             .padding(top = if (title.isNullOrBlank()) NuvioTheme.spacing.sm else 20.dp, bottom = NuvioTheme.spacing.sm)
     ) {
         if (!title.isNullOrBlank()) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge,
-                color = NuvioTheme.colors.TextPrimary,
-                modifier = Modifier
-                    .padding(start = NuvioTheme.spacing.xxxl, end = NuvioTheme.spacing.xxxl, bottom = NuvioTheme.spacing.sm)
-            )
+            Box(modifier = Modifier.padding(start = detailStartInset, end = NuvioTheme.spacing.xxxl)) {
+                PanelEyebrow(text = title)
+            }
         }
         LazyRow(
             state = listState,
@@ -143,7 +142,7 @@ fun CollectionSection(
                     }
                 }
                 .focusGroup(),
-            contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.xxxl, vertical = 6.dp),
+            contentPadding = PaddingValues(start = detailStartInset, end = NuvioTheme.spacing.xxxl, top = 6.dp, bottom = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
         ) {
             itemsIndexed(

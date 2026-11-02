@@ -1,8 +1,10 @@
 package com.nuvio.tv.ui.screens.player
 
+import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 
 data class PlayerMediaInfo(
@@ -12,62 +14,133 @@ data class PlayerMediaInfo(
     val audioCodec: String? = null,
     val audioProfiles: List<String> = emptyList(),
     val audioChannels: Int? = null,
+    /** The playing audio track, as [TrackInfo.trackId] names it, and its language. */
+    val audioTrackId: String? = null,
+    val audioLanguage: String? = null,
     val hdr: List<String> = emptyList(),
+    /** False until the player knows the transfer, as mpv only does once it decodes a frame; until then no SDR. */
+    val hdrKnown: Boolean = false,
     val bitDepth: Int? = null
-)
+) {
+    /** Everything the row shows is in: picture size and the audio format with its channels. */
+    val isComplete: Boolean
+        get() = videoWidth != null && audioCodec != null && audioChannels != null
+}
 
 internal fun PlayerRuntimeController.playerMediaInfo(): PlayerMediaInfo =
     if (isUsingMpvEngine()) {
         mpvView?.readPlayerMediaInfo() ?: PlayerMediaInfo()
     } else {
-        exoMediaInfo(_exoPlayer?.videoFormat, _exoPlayer?.audioFormat)
+        val player = _exoPlayer
+        // The decoders' formats arrive with the first data; the selected tracks are known before that.
+        exoMediaInfo(
+            player?.videoFormat ?: player?.selectedTrackFormat(C.TRACK_TYPE_VIDEO),
+            player?.audioFormat ?: player?.selectedTrackFormat(C.TRACK_TYPE_AUDIO)
+        )
     }
 
-internal fun mpvMediaInfo(property: (String) -> String?): PlayerMediaInfo =
-    PlayerMediaInfo(
+/** The one selected track of [type]; null for an adaptive group, where the variant playing is not known yet. */
+private fun Player.selectedTrackFormat(type: Int): Format? {
+    val group = currentTracks.groups.firstOrNull { it.type == type && it.isSelected } ?: return null
+    val selected = (0 until group.length).filter(group::isTrackSelected)
+    return selected.singleOrNull()?.let(group::getTrackFormat)
+}
+
+/** The file name the stats HUD shows: the add-on's file name, else the link's last part, else the stream name. */
+internal fun PlayerRuntimeController.playingFileName(): String? =
+    listOfNotNull(currentFilename, urlFileName(getCurrentStreamUrl()), _uiState.value.currentStreamName)
+        .firstOrNull { it.isNotBlank() }
+
+internal fun urlFileName(url: String?): String? = url
+    ?.let { runCatching { java.net.URI(it).path }.getOrNull() }
+    ?.substringAfterLast('/')
+    ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrNull() ?: it }
+    ?.takeIf { it.isNotBlank() && it.contains('.') }
+
+/** File name, stream name and description of what is playing, for badges the player cannot read. */
+internal fun PlayerRuntimeController.playingReleaseText(): String =
+    listOfNotNull(currentFilename, _uiState.value.currentStreamName, currentStreamDescription)
+        .joinToString(" ")
+
+internal fun mpvMediaInfo(property: (String) -> String?): PlayerMediaInfo {
+    val gamma = property("video-params/gamma")
+    return PlayerMediaInfo(
         videoCodec = property("current-tracks/video/codec")?.let(::mpvCodecLabel),
-        videoWidth = property("video-params/w")?.toIntOrNull()?.takeIf { it > 0 },
-        videoHeight = property("video-params/h")?.toIntOrNull()?.takeIf { it > 0 },
+        // Decoded values once there are frames; the file's own track values before that.
+        videoWidth = mpvInt(property, "video-params/w") ?: mpvInt(property, "current-tracks/video/demux-w"),
+        videoHeight = mpvInt(property, "video-params/h") ?: mpvInt(property, "current-tracks/video/demux-h"),
         audioCodec = property("current-tracks/audio/codec")?.let(::mpvCodecLabel),
         audioProfiles = listOfNotNull(property("current-tracks/audio/codec-profile")),
-        audioChannels = property("audio-params/channel-count")?.toIntOrNull()?.takeIf { it > 0 },
+        audioChannels = mpvInt(property, "audio-params/channel-count")
+            ?: mpvInt(property, "current-tracks/audio/demux-channel-count"),
+        audioTrackId = property("current-tracks/audio/id"),
+        audioLanguage = property("current-tracks/audio/lang"),
         hdr = buildList {
             if (!property("current-tracks/video/dolby-vision-profile").isNullOrBlank()) add("DV")
-            when (property("video-params/gamma")) {
+            when (gamma) {
                 "pq" -> add("HDR10")
                 "hlg" -> add("HLG")
             }
         },
+        hdrKnown = gamma != null,
         bitDepth = property("video-params/pixelformat")?.let(::mpvBitDepth)
     )
+}
+
+private fun mpvInt(property: (String) -> String?, name: String): Int? =
+    property(name)?.toIntOrNull()?.takeIf { it > 0 }
 
 private fun exoMediaInfo(video: Format?, audio: Format?): PlayerMediaInfo =
     PlayerMediaInfo(
-        videoCodec = exoVideoCodec(video),
+        videoCodec = video?.let(::exoVideoCodec),
         videoWidth = video?.width?.takeIf { it > 0 },
         videoHeight = video?.height?.takeIf { it > 0 },
-        audioCodec = CustomDefaultTrackNameProvider.formatNameFromMime(audio?.sampleMimeType),
+        audioCodec = audio?.sampleMimeType?.let(::exoCodecLabel),
         audioProfiles = exoAudioProfiles(audio),
         audioChannels = audio?.channelCount?.takeIf { it > 0 },
+        audioTrackId = audio?.id,
+        audioLanguage = audio?.language,
         hdr = video?.hdrFormats().orEmpty(),
-        bitDepth = video?.exoBitDepth()
+        hdrKnown = video != null,
+        bitDepth = video?.colorInfo?.lumaBitdepth?.takeIf { it > 0 } ?: video?.codecs?.let(::codecsBitDepth)
     )
 
-private fun exoVideoCodec(video: Format?): String? {
-    if (video == null) return null
-    val mime = video.sampleMimeType
-    // For Dolby Vision the mime is always video/dolby-vision regardless of the base codec.
-    // Resolve the actual base codec from the codecs string prefix.
-    if (mime == MimeTypes.VIDEO_DOLBY_VISION) {
-        val c = video.codecs.orEmpty().lowercase()
-        return when {
-            c.startsWith("dvhe") || c.startsWith("dvh1") -> "HEVC"
-            c.startsWith("dvav") || c.startsWith("dva1") -> "AVC"
-            c.startsWith("dav1") -> "AV1"
-            else -> "HEVC" // safe default for unknown DV profiles
-        }
+/** A Dolby Vision track names its base layer in the codecs string: dvav/dva1 AVC, dav1 AV1, dvhe/dvh1 HEVC. */
+private fun exoVideoCodec(video: Format): String? {
+    val mime = video.sampleMimeType ?: return null
+    if (mime != MimeTypes.VIDEO_DOLBY_VISION) return exoCodecLabel(mime)
+    val codecs = video.codecs.orEmpty().lowercase()
+    return when {
+        codecs.startsWith("dvav") || codecs.startsWith("dva1") -> "AVC"
+        codecs.startsWith("dav1") -> "AV1"
+        else -> "HEVC"
     }
-    return CustomDefaultTrackNameProvider.resolveCodecName(mime, video.codecs)
+}
+
+@OptIn(UnstableApi::class)
+private fun exoCodecLabel(mime: String): String? =
+    CustomDefaultTrackNameProvider.formatNameFromMime(mime) ?: when (mime) {
+        MimeTypes.AUDIO_DTS_X -> "DTS:X"
+        MimeTypes.VIDEO_VC1 -> "VC-1"
+        MimeTypes.VIDEO_MPEG2 -> "MPEG-2"
+        MimeTypes.VIDEO_MP4V -> "MPEG-4"
+        else -> null
+    }
+
+/**
+ * Bit depth from the RFC 6381 codecs string, for containers that leave colorInfo empty:
+ * HEVC Main 10 (hvc1.2…), AVC High 10 (avc1.6E…), AV1 and VP9 (av01.0.08M.10, vp09.02.10.10).
+ * Dolby Vision is always at least 10-bit.
+ */
+internal fun codecsBitDepth(codecs: String): Int? {
+    val parts = codecs.substringBefore(',').trim().lowercase().split('.')
+    return when (parts.firstOrNull()) {
+        "hvc1", "hev1" -> parts.getOrNull(1)?.trimStart('a', 'b', 'c')?.toIntOrNull()?.let { if (it == 2) 10 else null }
+        "avc1", "avc3" -> parts.getOrNull(1)?.take(2)?.toIntOrNull(16)?.let { if (it == 110) 10 else null }
+        "av01", "vp09" -> parts.getOrNull(3)?.toIntOrNull()?.takeIf { it > 8 }
+        "dvhe", "dvh1", "dvav", "dva1", "dav1" -> 10
+        else -> null
+    }
 }
 
 private val DTS_HD_MA_LABEL = Regex("""\b(ma|master audio)\b""")
@@ -90,35 +163,12 @@ internal fun exoAudioProfiles(audio: Format?): List<String> {
     }
 }
 
+/** Shared by the badges and the stats HDR row; the transfer falls back to the HEVC SPS. */
 internal fun Format.hdrFormats(): List<String> = buildList {
-    val lowerCodecs = codecs.orEmpty().lowercase()
-    // Dolby Vision: mime type or codecs string (dual-layer DV has HEVC mime but dvhe/dav1 codecs)
-    if (sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION
-        || lowerCodecs.contains("dvhe") || lowerCodecs.contains("dvh1")
-        || lowerCodecs.contains("dvav")
-        || lowerCodecs.contains("dav1") || lowerCodecs.contains("dva1")
-    ) {
-        add("DV")
-    }
-    when (colorInfo?.colorTransfer) {
+    if (sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION) add("DV")
+    when (PlaybackVideoColorTransfer.of(this@hdrFormats)) {
         C.COLOR_TRANSFER_ST2084 -> add("HDR10")
         C.COLOR_TRANSFER_HLG -> add("HLG")
-    }
-}
-
-/**
- * Resolve bit depth from colorInfo, falling back to codecs string heuristics.
- */
-private fun Format.exoBitDepth(): Int? {
-    colorInfo?.lumaBitdepth?.takeIf { it > 0 }?.let { return it }
-    // Heuristic: HEVC Main 10 profiles have ".2." in the codecs string (profile = 2)
-    val c = codecs.orEmpty().lowercase()
-    return when {
-        c.startsWith("hev1.2.") || c.startsWith("hvc1.2.") -> 10
-        c.contains("dvhe") || c.contains("dvh1") -> 10 // DV profile 5/7/8: 10-bit HEVC
-        c.startsWith("dav1") -> 10 // DV profile 10: 10-bit AV1
-        // dvav/dva1 (DV profile 9) is 8-bit AVC — no fallback needed
-        else -> null
     }
 }
 
@@ -143,13 +193,3 @@ private fun mpvCodecLabel(codec: String): String? =
             else -> codec.trim().uppercase()
         }
     }
-
-internal fun PlayerRuntimeController.playingFileName(): String? =
-    listOfNotNull(currentFilename, urlFileName(getCurrentStreamUrl()), _uiState.value.currentStreamName)
-        .firstOrNull { it.isNotBlank() }
-
-internal fun urlFileName(url: String?): String? = url
-    ?.let { runCatching { java.net.URI(it).path }.getOrNull() }
-    ?.substringAfterLast('/')
-    ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrNull() ?: it }
-    ?.takeIf { it.isNotBlank() && it.contains('.') }

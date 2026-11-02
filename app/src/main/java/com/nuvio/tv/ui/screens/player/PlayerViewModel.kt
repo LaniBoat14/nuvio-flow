@@ -1,36 +1,24 @@
 package com.nuvio.tv.ui.screens.player
 
-import com.nuvio.tv.data.local.InternalPlayerEngine
-
-import kotlinx.coroutines.withContext
-
-import kotlinx.coroutines.Dispatchers
-
-import java.net.URI
-
-import androidx.media3.common.MimeTypes
-
-import androidx.media3.common.Player
-
-import androidx.media3.common.C
-
-import android.os.Debug
-
-import com.nuvio.tv.core.player.DoviBridge
-
 import com.nuvio.tv.core.player.DolbyVisionConversionStats
-
+import com.nuvio.tv.core.player.DoviBridge
 import android.content.Context
+import android.os.Debug
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.C
+import androidx.media3.common.Player
+import androidx.media3.common.MimeTypes
+import java.net.URI
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.media3.exoplayer.ExoPlayer
 import com.nuvio.tv.core.debrid.DirectDebridResolver
 import com.nuvio.tv.core.debrid.DirectDebridStreamPreparer
 import com.nuvio.tv.core.cloud.CloudLibraryPlaybackSessionStore
 import com.nuvio.tv.core.cloud.CloudLibraryPlaybackProgressStore
 import com.nuvio.tv.core.cloud.CloudLibraryRepository
-import com.nuvio.tv.core.party.PartyMedia
 import com.nuvio.tv.core.plugin.PluginManager
 import com.nuvio.tv.core.player.StreamAutoPlayPolicy
 import com.nuvio.tv.core.tracking.TrackingScrobbleCoordinator
@@ -52,11 +40,13 @@ import com.nuvio.tv.domain.repository.StreamRepository
 import com.nuvio.tv.domain.repository.WatchProgressRepository
 import com.nuvio.tv.core.tmdb.TmdbService
 import com.nuvio.tv.core.tmdb.TmdbMetadataService
+import com.nuvio.tv.data.local.InternalPlayerEngine
 import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.data.local.TraktAuthDataStore
 import com.nuvio.tv.data.local.TraktSettingsDataStore
 import com.nuvio.tv.data.local.TrailerSettingsDataStore
 import com.nuvio.tv.data.local.WatchedSeriesStateHolder
+import com.nuvio.tv.data.mediaserver.ServerThumbnailSource
 import com.nuvio.tv.data.repository.TraktRelatedService
 import com.nuvio.tv.data.trailer.TrailerService
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -114,16 +104,21 @@ class PlayerViewModel @Inject constructor(
     private val cloudPlaybackProgressStore: CloudLibraryPlaybackProgressStore,
     private val cloudPlaybackSessionStore: CloudLibraryPlaybackSessionStore,
     private val streamBadgePresentation: com.nuvio.tv.core.streams.StreamBadgePresentation,
+    private val debridSettingsDataStore: com.nuvio.tv.data.local.DebridSettingsDataStore,
     private val playbackIssueReportRepository: com.nuvio.tv.data.repository.PlaybackIssueReportRepository,
     private val externalPlaybackTracker: com.nuvio.tv.core.player.ExternalPlaybackTracker,
     private val subtitleFileCache: com.nuvio.tv.core.player.SubtitleFileCache,
+    private val prefetchSelectionSupplier: com.nuvio.tv.core.stream.PrefetchSelectionSupplier,
+    private val screensaverController: com.nuvio.tv.core.player.ScreensaverController,
     private val tvRecommendationManager: com.nuvio.tv.core.recommendations.TvRecommendationManager,
     private val serverPlayback: com.nuvio.tv.data.mediaserver.ServerPlayback,
     private val serverStreams: com.nuvio.tv.data.mediaserver.ServerStreams,
-    partyRepository: com.nuvio.tv.core.party.PartyRepository,
+    private val thumbnailCopyDebrid: com.nuvio.tv.core.debrid.ThumbnailCopyDebrid,
     profileManager: com.nuvio.tv.core.profile.ProfileManager,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+
+    private val diagnosticPlaybackLease = com.nuvio.tv.core.network.DiagnosticPlaybackGuard.shared.enterPlayback()
 
     init {
         // Release trailer player codec resources so the full-screen player can
@@ -136,6 +131,7 @@ class PlayerViewModel @Inject constructor(
         watchProgressRepository = watchProgressRepository,
         metaRepository = metaRepository,
         streamRepository = streamRepository,
+        prefetchSelectionSupplier = prefetchSelectionSupplier,
         addonRepository = addonRepository,
         pluginManager = pluginManager,
         subtitleRepository = subtitleRepository,
@@ -165,43 +161,20 @@ class PlayerViewModel @Inject constructor(
         cloudPlaybackProgressStore = cloudPlaybackProgressStore,
         cloudPlaybackSessionStore = cloudPlaybackSessionStore,
         streamBadgePresentation = streamBadgePresentation,
+        debridSettingsDataStore = debridSettingsDataStore,
         playbackIssueReportRepository = playbackIssueReportRepository,
         tvRecommendationManager = tvRecommendationManager,
         serverPlayback = serverPlayback,
         serverStreams = serverStreams,
-        party = partyRepository,
         profileId = savedStateHandle.get<String>("profileId")?.toIntOrNull()
             ?: profileManager.activeProfileId.value,
         savedStateHandle = savedStateHandle,
         scope = viewModelScope
     )
 
-    init {
-        controller.bindParty()
-    }
-
-    val party: com.nuvio.tv.core.party.PartyRepository
-        get() = controller.party
-
-    val canUseParty: Boolean
-        get() = controller.canUseParty
-
-    val partyKey: String
-        get() = controller.partyKey
-
-    fun startParty() = controller.startParty()
-
-    fun catchUpParty() = controller.catchUpParty()
-
-    val partyMedia: PartyMedia
-        get() = controller.currentPartyMedia()
-
-    fun switchParty() = controller.party.publishMedia(controller.currentPartyMedia(), controller.currentPlaybackPositionMs() ?: 0L)
-
-    fun currentPartyStream() = controller.currentPartyStream()
-
     private val postPlayRecommendationController = PostPlayRecommendationController(
         playbackController = controller,
+        profileManager = profileManager,
         playerSettingsDataStore = playerSettingsDataStore,
         metaRepository = metaRepository,
         tmdbService = tmdbService,
@@ -226,6 +199,27 @@ class PlayerViewModel @Inject constructor(
     val uiState: StateFlow<PlayerUiState>
         get() = controller.uiState
 
+    init {
+        // OLED screensaver: mirror playback-active (playing or buffering) so the idle
+        // dimmer never engages during playback, restarts its clock on pause, and
+        // auto-wakes on resume (including MediaSession resumes).
+        viewModelScope.launch {
+            controller.uiState
+                .map { it.isPlaying || it.isBuffering }
+                .distinctUntilChanged()
+                .collect { active -> screensaverController.setPlaybackActive(active) }
+        }
+        viewModelScope.launch {
+            controller.uiState
+                .map { it.currentStreamInfoHash }
+                .distinctUntilChanged()
+                .collect { thumbnailCopyDebrid.notePlaying(it) }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            com.nuvio.tv.core.performance.ArtCompileStatus.logOnce(context, PlayerRuntimeController.TAG)
+        }
+    }
+
     val playbackTimeline: StateFlow<PlaybackTimelineState>
         get() = controller.playbackTimeline
 
@@ -238,8 +232,6 @@ class PlayerViewModel @Inject constructor(
 
     val exoPlayer: ExoPlayer?
         get() = controller.exoPlayer
-
-
 
     /** Called only on the player's application thread, by the two HUD samplers. */
     internal fun sampleVideoPresentation(): PlaybackVideoPresentation {
@@ -328,7 +320,7 @@ class PlayerViewModel @Inject constructor(
         lastPingMs: PlaybackConnectSample?
     ): PlaybackStatsSample {
         val timeline = controller.playbackTimeline.value
-        val positionRow = positionStatsRow(timeline.currentPosition, timeline.duration, timeline.isLive)
+        val positionRow = positionStatsRow(timeline.playbackPosition, timeline.duration, timeline.isLive)
         val engine = controller.currentInternalPlayerEngine
         val mpvActive = controller.isUsingMpvEngine() ||
             (engine == InternalPlayerEngine.AUTO && controller.mpvView != null)
@@ -423,7 +415,7 @@ class PlayerViewModel @Inject constructor(
         val statsUi = controller.uiState.value
         statsUi.currentStreamAddonName?.takeIf { it.isNotBlank() }
             ?.let { rows += StatsRow("Add-on", it) }
-        (resolveStreamProvider(
+        (controller.serverProviderLabel() ?: resolveStreamProvider(
             streamName = statsUi.currentStreamName,
             streamDescription = controller.currentStreamDescription,
             addonName = statsUi.currentStreamAddonName,
@@ -541,7 +533,7 @@ class PlayerViewModel @Inject constructor(
                 dvDiag.dv7DoviSignalRewrites > 0 || dvDiag.dv7DoviSuccess > 0
             val text = PlaybackStatsDv.profileRowText(
                 sourceProfile = sourceProfile,
-                elType = null, // Flow does not expose an EL-type detector.
+                elType = dvDiag.dvElType,
                 modeEffective = dvDiag.dv7ModeEffective,
                 sourceCodecs = controller.currentVideoTrackCodecs ?: player?.videoFormat?.codecs,
                 converting = converting
@@ -549,11 +541,39 @@ class PlayerViewModel @Inject constructor(
             rows += StatsRow("DV", text)
         }
 
+        // DV source mastering metadata (static per stream), read from the
+        // RPU. Gated on its own value rather than the DV-conversion line above,
+        // so it also appears on strip/HDR10 paths where no source-profile line is
+        // emitted. Informational only, no health dot.
+        // The RPU detail rows only for native DV7 FEL/MEL, so the panel fits smaller screens on every other film.
+        val dvDetail = dvDiag.dvSourceProfile?.trim() == "7" && dvDiag.dv7ModeEffective == "NATIVE_FEL"
+        (DolbyVisionConversionStats.getLastRpuMetadata()?.toDiagnosticLine() ?: dvDiag.dvHdrMastering)
+            ?.takeIf { dvDetail && it.isNotBlank() }?.let { mastering ->
+            rows += StatsRow("DV HDR", mastering, StatsDot.NONE, marquee = mastering.length > 40)
+        }
+
+        // RPU display-management rows. The summary is sampled every ~0.5 s of media
+        // by the feeding path (native FEL renderer / conversion extractor hooks) and looked up
+        // at the playback position; CM version and levels fall back to the first RPU.
+        // Only for a DV stream: a late write from the previous title's loader (after the per-playback reset)
+        // must not put DV rows on a non-DV title.
+        val dvStream = dvDetail
+        val dmLive = if (dvStream) player?.let { DolbyVisionConversionStats.liveDmAt(it.currentPosition * 1000L) } else null
+        val dmFirst = if (dvStream) DolbyVisionConversionStats.getFirstDm() else null
+        (dmLive ?: dmFirst)?.let { dm ->
+            PlaybackStatsDv.cmText(dm)?.let { rows += StatsRow("DV CM", it) }
+            dm.levelsLabel().takeIf { it.isNotEmpty() }?.let { rows += StatsRow("DV levels", it) }
+        }
+        dmLive?.let { dm ->
+            PlaybackStatsDv.l1Text(dm)?.let { rows += StatsRow("DV L1", it) }
+            PlaybackStatsDv.l5Text(dm, player?.videoFormat?.width ?: 0, player?.videoFormat?.height ?: 0)
+                ?.let { rows += StatsRow("DV L5", it) }
+        }
         player?.videoFormat?.let { format ->
             PlaybackStatsDv.formatRowText(
                 format = format,
-                dm = null,
-                nativeFel = false
+                dm = dmFirst,
+                nativeFel = dvDiag.dv7ModeEffective == "NATIVE_FEL"
             )?.let { rows += StatsRow("Format", it, marquee = it.length > 46) }
         }
 
@@ -941,15 +961,77 @@ class PlayerViewModel @Inject constructor(
 
     fun getCurrentHeaders(): Map<String, String> = controller.getCurrentHeaders()
 
-    internal fun flowStreamInfo(): StreamInfoData = controller.buildStreamInfoData()
+    /** Stable identity for a title's stored thumbnails (the videoId carries season and episode). */
+    fun seekThumbnailIdentity(): String? =
+        controller.currentVideoId?.takeIf { it.isNotBlank() } ?: controller.contentId?.takeIf { it.isNotBlank() }
+
+    /** True when [seekThumbnailIdentity] is the videoId, not a fallback shared by a show's episodes. */
+    fun seekThumbnailIdentityExact(): Boolean = !controller.currentVideoId.isNullOrBlank()
 
     fun getCurrentFileSizeBytes(): Long? = controller.currentVideoSize
 
+    fun currentStreamMimeType(): String? = controller.currentStreamMimeType
+
+    /** The source list as copies for a 4K or Usenet title's thumbnails. */
+    internal fun thumbnailCopySources(): ThumbnailCopySources = ThumbnailCopySources(controller, thumbnailCopyDebrid)
+
+    /** The media server's own seek thumbnails for [url] when it is a server stream. */
+    fun serverThumbnails(url: String?): ServerThumbnailSource? = serverPlayback.thumbnails(url)
+
+    /** [url] plays from a media server (Silo, Jellyfin, Emby). */
+    fun isServerStream(url: String?): Boolean = serverPlayback.isServerSource(url)
+
+    fun isAutoPlayedEpisode(): Boolean = controller.currentEpisodeAutoPlayed
+
+    fun pauseForSeekThumbnails(): Boolean? = controller.pauseForSeekThumbnails()
+
+    fun letGoForSeekThumbnails(): Boolean = controller.letGoForSeekThumbnails()
+
+    fun loadAgainAfterSeekThumbnails(play: Boolean) = controller.loadAgainAfterSeekThumbnails(play)
+
+    fun seekThumbnailSkipReason(): String? =
+        if (controller.isErrorCardPlayback()) "error card or a film/episode stream under 2 minutes" else null
+
+    /** Where [url] comes from, for the thumbnails "gave up" line. */
+    fun seekThumbnailKindNote(url: String?, usenet: Boolean): String {
+        val ui = controller._uiState.value
+        return thumbSourceKind(
+            serverType = serverPlayback.providerName(url),
+            usenet = usenet,
+            torrent = ui.isTorrentStream,
+            debridStore = debridStoreOf(ui.currentStreamName, controller.currentStreamDescription),
+        )
+    }
+
+    /** Player engine, buffer settings and box class, for the thumbnails "gave up" line. */
+    fun seekThumbnailSettingsNote(): String {
+        val settings = controller.currentPlayerSettingsForReport
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+        val info = android.app.ActivityManager.MemoryInfo().also { am?.getMemoryInfo(it) }
+        return thumbSettingsNote(
+            engine = controller.currentInternalPlayerEngine,
+            settings = settings,
+            nativeMemory = NuvioExoPlayerPerformanceHelper.enabled,
+            totalRamMb = info.totalMem / (1024L * 1024L),
+            lowRam = am?.isLowRamDevice == true,
+        )
+    }
+
+    /** Connections playback keeps open to the stream. */
+    fun playbackConnectionCount(): Int =
+        controller.mediaSourceFactory.playbackConnections(controller.getCurrentStreamUrl())
+
+    /** Playback's read-ahead reserve; null until the player is built. */
+    fun seekThumbnailBufferReserve(): com.nuvio.tv.core.player.thumbnail.PlaybackBufferReserve? =
+        controller._loadControl as? com.nuvio.tv.core.player.thumbnail.PlaybackBufferReserve
+
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-    fun getPlayerNativeMemoryBytes(): Long? {
+    fun getPlayerSampleAllocatorBytes(): Long? {
         val allocator = controller._loadControl?.allocator as? androidx.media3.exoplayer.upstream.DefaultAllocator ?: return null
         return allocator.totalBytesAllocated.toLong().coerceAtLeast(0L)
     }
+
+    internal fun getAudioRoutingSnapshot(): AudioRoutingSnapshot? = controller.getAudioRoutingSnapshot()
 
     fun stopAndRelease() {
         postPlayRecommendationController.stop()
@@ -988,6 +1070,8 @@ class PlayerViewModel @Inject constructor(
         controller.hideControls()
     }
 
+    fun cancelSeekSettle(): Boolean = controller.cancelSeekSettle()
+
     fun attachHostActivity(activity: android.app.Activity?) {
         controller.attachHostActivity(activity)
     }
@@ -1018,6 +1102,10 @@ class PlayerViewModel @Inject constructor(
 
     fun playerMediaInfo(): PlayerMediaInfo = controller.playerMediaInfo()
 
+    fun playingReleaseText(): String = controller.playingReleaseText()
+
+    fun playingFileName(): String = controller.playingFileName().orEmpty()
+
     fun playerStreamFilename(): String? = controller.currentFilename
 
     fun bindExoSubtitleView(subtitleView: androidx.media3.ui.SubtitleView?) {
@@ -1029,8 +1117,10 @@ class PlayerViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        screensaverController.setPlaybackActive(false)
         postPlayRecommendationController.stop()
         controller.onCleared()
+        diagnosticPlaybackLease.close()
         // Allow the trailer player to be re-created when returning to home screen.
         trailerPlayerPool.reclaim()
         super.onCleared()

@@ -45,6 +45,9 @@ class CastDetailViewModel @Inject constructor(
     private val _posterCardCornerRadiusDp = MutableStateFlow(12)
     val posterCardCornerRadiusDp: StateFlow<Int> = _posterCardCornerRadiusDp.asStateFlow()
 
+    private val _posterCardWidthDp = MutableStateFlow(126)
+    val posterCardWidthDp: StateFlow<Int> = _posterCardWidthDp.asStateFlow()
+
     init {
         posterOptions.bind(viewModelScope)
         loadPersonDetail()
@@ -52,6 +55,10 @@ class CastDetailViewModel @Inject constructor(
         viewModelScope.launch {
             layoutPreferenceDataStore.posterCardCornerRadiusDp
                 .collect { _posterCardCornerRadiusDp.value = it }
+        }
+        viewModelScope.launch {
+            layoutPreferenceDataStore.posterCardWidthDp
+                .collect { _posterCardWidthDp.value = it }
         }
     }
 

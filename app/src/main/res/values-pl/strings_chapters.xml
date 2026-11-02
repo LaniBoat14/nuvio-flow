@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="player_chapters">Rozdziały</string>
+    <string name="player_chapter_number">Rozdział %1$d</string>
+    <string name="player_chapter_named">Rozdział %1$d: %2$s</string>
+    <string name="player_chapter_now_playing">Teraz odtwarzane</string>
+    <string name="playback_chapters">Rozdziały w odtwarzaczu</string>
+    <string name="playback_chapters_sub">Dla filmów z rozdziałami: przycisk Rozdziały, znaczniki na osi czasu i nazwa rozdziału</string>
+</resources>

@@ -1,6 +1,8 @@
 package com.nuvio.tv.ui.screens.player
 
+import android.os.SystemClock
 import android.util.Log
+import com.nuvio.tv.core.logging.redactLinksForLog
 import com.nuvio.tv.R
 import com.nuvio.tv.data.repository.PlaybackIssueErrorInput
 import `is`.xyz.mpv.MPV
@@ -23,6 +25,7 @@ private const val MPV_MAX_AUTO_RETRIES = 2
 private const val MPV_RETRY_DELAY_MS = 1_500L
 private const val MPV_STABLE_PROGRESS_RESET_DELAY_MS = 5_000L
 private const val MPV_ERROR_LOG_LINES = 6
+private const val MPV_HTTP_ERROR_FRESH_MS = 10_000L
 
 private val MPV_HTTP_ERROR_REGEX = Regex("HTTP error (\\d{3})(?:\\s+(.+))?", RegexOption.IGNORE_CASE)
 private val MPV_URL_REGEX = Regex("https?://\\S+")
@@ -117,6 +120,7 @@ internal fun PlayerRuntimeController.registerMpvEventRelay(view: NuvioMpvSurface
     mpvErrorRecoveryArmed = false
     mpvActivePlaylistEntryId = null
     mpvLastErrorLogLine = null
+    mpvLastHttpErrorAtMs = 0L
     mpvLastFileError = null
     resetMpvStartupWatchdog()
     // Changes that happened before the relay was attached are not replayed.
@@ -187,6 +191,7 @@ internal fun PlayerRuntimeController.onMpvLogLine(prefix: String, level: Int, te
     if (body.isEmpty()) return
     val line = if (prefix.isBlank()) body else "[${prefix.trim()}] $body"
     mpvLastErrorLogLine = rememberMpvErrorLog(mpvLastErrorLogLine, line)
+    if (isHttp) mpvLastHttpErrorAtMs = SystemClock.elapsedRealtime()
     playbackAnalyticsDiagnostics.recordRawEventLine("MPV_LOG: $line".take(300))
 }
 
@@ -242,7 +247,7 @@ internal fun PlayerRuntimeController.handleMpvPlaybackError(
         }
         Log.e(
             PlayerRuntimeController.TAG,
-            "MPV_PLAYBACK_ERROR: source=$source code=$mpvErrorCode detail=$detailedError"
+            "MPV_PLAYBACK_ERROR: source=$source code=$mpvErrorCode detail=${detailedError.redactLinksForLog()}"
         )
         playbackAnalyticsDiagnostics.recordRawEventLine(
             "MPV_PLAYBACK_ERROR: source=$source mpvErrorCode=$mpvErrorCode " +
@@ -259,6 +264,13 @@ internal fun PlayerRuntimeController.handleMpvPlaybackError(
         )
         lastPlaybackDiagnosticsForReport =
             lastPlaybackDiagnosticsForReport.copy(result = "Error: $detailedError")
+
+        if (isMpvDeadLinkHttpStatus(httpCode) &&
+            isMpvHttpErrorFresh(mpvLastHttpErrorAtMs, SystemClock.elapsedRealtime()) &&
+            advanceToNextLiveSource(detailedError)
+        ) {
+            return
+        }
 
         val startupFailed = !hasRenderedFirstFrame
         if (startupFailed &&
@@ -310,7 +322,7 @@ private fun PlayerRuntimeController.attemptMpvAutoRetry(
 
     Log.w(
         PlayerRuntimeController.TAG,
-        "MPV auto-retry ${attempt + 1}/$MPV_MAX_AUTO_RETRIES after ${MPV_RETRY_DELAY_MS}ms for: $detailedError"
+        "MPV auto-retry ${attempt + 1}/$MPV_MAX_AUTO_RETRIES after ${MPV_RETRY_DELAY_MS}ms for: ${detailedError.redactLinksForLog()}"
     )
 
     errorRetryJob?.cancel()
@@ -360,7 +372,8 @@ internal fun PlayerRuntimeController.maybeRunMpvStartupWatchdog(view: NuvioMpvSu
                 surfaceWaitTicks = mpvSurfaceWaitTicks,
                 idleTicks = mpvIdleActiveTicks,
                 stallTicks = mpvStartupStallTicks,
-                absoluteTicks = mpvStartupAbsoluteTicks
+                absoluteTicks = mpvStartupAbsoluteTicks,
+                cacheGrowthTicks = mpvStartupCacheGrowthTicks
             )
         )
     )
@@ -368,6 +381,7 @@ internal fun PlayerRuntimeController.maybeRunMpvStartupWatchdog(view: NuvioMpvSu
     mpvIdleActiveTicks = step.counters.idleTicks
     mpvStartupStallTicks = step.counters.stallTicks
     mpvStartupAbsoluteTicks = step.counters.absoluteTicks
+    mpvStartupCacheGrowthTicks = step.counters.cacheGrowthTicks
 
     when (step.action) {
         MpvStartupWatchdogPolicy.Action.Continue -> Unit
@@ -397,6 +411,7 @@ internal fun PlayerRuntimeController.resetMpvStartupWatchdog() {
     mpvIdleActiveTicks = 0
     mpvStartupStallTicks = 0
     mpvStartupAbsoluteTicks = 0
+    mpvStartupCacheGrowthTicks = 0
     mpvLastDemuxerCacheSec = 0.0
 }
 
@@ -415,14 +430,21 @@ internal fun PlayerRuntimeController.scheduleMpvStableProgressReset() {
     }
 }
 
-private fun PlayerRuntimeController.mpvHttpStatusCodeFromLog(): Int? {
-    return mpvLastErrorLogLine
+private fun PlayerRuntimeController.mpvHttpStatusCodeFromLog(): Int? = mpvHttpStatusCode(mpvLastErrorLogLine)
+
+internal fun mpvHttpStatusCode(logLine: String?): Int? {
+    return logLine
         ?.let { MPV_HTTP_ERROR_REGEX.find(it) }
         ?.groupValues
         ?.getOrNull(1)
         ?.toIntOrNull()
         ?.takeIf { it in 100..599 }
 }
+
+internal fun isMpvDeadLinkHttpStatus(httpCode: Int?): Boolean = httpCode == 404 || httpCode == 410
+
+internal fun isMpvHttpErrorFresh(loggedAtMs: Long, nowMs: Long): Boolean =
+    loggedAtMs > 0L && nowMs - loggedAtMs <= MPV_HTTP_ERROR_FRESH_MS
 
 private fun PlayerRuntimeController.mpvCodecContextLine(): String? {
     val mpv = mpvView?.mpv ?: return null

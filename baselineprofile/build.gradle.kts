@@ -7,7 +7,6 @@ plugins {
 android {
     namespace = "com.nuvio.tv.baselineprofile"
     compileSdk = 36
-    buildToolsVersion = "36.0.0"
 
     defaultConfig {
         minSdk = 28

@@ -2,6 +2,7 @@ package com.nuvio.tv.ui.screens.player
 
 import android.net.Uri
 import android.util.Log
+import com.nuvio.tv.core.logging.redactedUrlForLog
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
@@ -9,10 +10,10 @@ import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.Util
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.container.NalUnitUtil
 import com.nuvio.tv.core.player.FrameRateUtils
 import com.nuvio.tv.data.local.AVAILABLE_SUBTITLE_LANGUAGES
 import com.nuvio.tv.data.local.InternalPlayerEngine
+import com.nuvio.tv.data.local.SubtitleStyleSettings
 import com.nuvio.tv.domain.model.Subtitle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -92,6 +93,10 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
                                 )
                             }
                         }
+                        // Drive the display-mode switch from
+                        // the format ExoPlayer just reported (self-gating; see
+                        // PlayerRuntimeControllerAfrTrack.kt).
+                        maybeRunTrackFormatAfr(rawFps = raw, format = format)
                     }
                     // Extract video codec, resolution, and bitrate for stream info
                     currentVideoCodec = CustomDefaultTrackNameProvider.resolveCodecName(format.sampleMimeType, format.codecs)
@@ -126,7 +131,9 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
                             codec = codecName,
                             channelCount = format.channelCount.takeIf { it > 0 },
                             isSelected = isSelected,
-                            sampleRate = format.sampleRate.takeIf { it > 0 }
+                            sampleRate = format.sampleRate.takeIf { it > 0 },
+                            title = format.label?.trim()?.takeIf { it.isNotEmpty() },
+                            role = trackRoleFromRoleFlags(format.roleFlags, format.containerMimeType)
                         )
                     )
                 }
@@ -152,7 +159,7 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
                             name = format.label ?: format.language ?: context.getString(com.nuvio.tv.R.string.player_track_subtitle_fallback, subtitleTracks.size + 1),
                             language = format.language,
                             trackId = format.id,
-                            codec = CustomDefaultTrackNameProvider.formatNameFromMime(format.sampleMimeType),
+                            codec = subtitleCodecName(format),
                             isForced = hasForcedFlag || nameHintForced || isSongsAndSigns,
                             isSelected = isSelected
                         )
@@ -164,7 +171,14 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
 
     currentStreamHasVideoTrack = hasVideoTrack
     val effectiveVideoFormat = selectedVideoFormat ?: firstVideoFormat
-    val isHdrVideo = effectiveVideoFormat?.isHdrVideoFormat() == true
+    val chapters = chaptersFor(tracks)
+    _uiState.update {
+        it.copy(
+            isHdrVideo = isHdrVideoFormat(selectedVideoFormat),
+            chapters = chapters,
+            showChaptersPanel = it.showChaptersPanel && chapters.isNotEmpty()
+        )
+    }
     if (effectiveVideoFormat != null) {
         currentVideoTrackMimeType = effectiveVideoFormat.sampleMimeType
         currentVideoTrackCodecs = effectiveVideoFormat.codecs
@@ -232,6 +246,16 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
             retryCurrentStreamWithVc1TrackSelectionBypass(currentPosition)
             return
         }
+        if (UnsupportedFormatMpvFallbackPolicy.shouldSwitchForUnplayableVideoTrack(
+                exoPlayerActive = isExoPlayerActiveForFormatFallback,
+                alreadySwitched = currentStreamUrl in mpvFormatFallbackStreamUrls,
+                videoTrackPresent = true,
+                videoTrackSelected = currentVideoTrackSelected,
+                videoFormatSupport = currentVideoTrackBestSupport
+            ) && switchToMpvForUnsupportedFormat("no-decoder")
+        ) {
+            return
+        }
     } else {
         currentVideoTrackMimeType = null
         currentVideoTrackCodecs = null
@@ -242,6 +266,16 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
         currentVideoTrackBestSupport = C.FORMAT_UNSUPPORTED_TYPE
         currentVideoTrackIsLikelyVc1 = false
         lastLoggedVideoTrackSignature = null
+        if (UnsupportedFormatMpvFallbackPolicy.shouldSwitchForMissingVideoTrack(
+                exoPlayerActive = isExoPlayerActiveForFormatFallback,
+                alreadySwitched = currentStreamUrl in mpvFormatFallbackStreamUrls,
+                hasAudioTrack = audioTracks.isNotEmpty(),
+                fileName = currentFilename ?: currentStreamUrl,
+                streamMimeType = currentStreamMimeType
+            ) && switchToMpvForUnsupportedFormat("no-video-track")
+        ) {
+            return
+        }
     }
 
     hasScannedTextTracksOnce = true
@@ -298,8 +332,7 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
             audioTracks = audioTracks,
             subtitleTracks = subtitleTracks,
             selectedAudioTrackIndex = selectedAudioIndex,
-            selectedSubtitleTrackIndex = finalSubtitleIndex,
-            isHdrVideo = isHdrVideo
+            selectedSubtitleTrackIndex = finalSubtitleIndex
         )
     }
     updateAudioControlAvailability(audioTracks, selectedAudioIndex)
@@ -316,10 +349,13 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
         audioTracks = audioTracks,
         subtitleTracks = subtitleTracks
     )
+    applyLosslessAudioDefaultIfUnset(audioTracks)
     if (currentStreamHasVideoTrack) {
         maybeScheduleFirstFrameWatchdog()
+        maybeScheduleTunnelAvSyncWatchdog()
     } else {
         cancelFirstFrameWatchdog()
+        cancelTunnelAvSyncWatchdog()
     }
     tryAutoSelectPreferredSubtitleFromAvailableTracks()
     maybeAdjustLibassPipelineForTracks(tracks)
@@ -402,11 +438,14 @@ internal fun PlayerRuntimeController.maybeAdjustLibassPipelineForTracks(tracks: 
                 group.getTrackFormat(i).sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION
             }
     }
+    if (hasDvVideoTrack) hasDetectedDolbyVisionForCurrentStream = true
     val needsVideoEffectRebuild = tracks.hasSelectedAssSsaTextTrack() &&
         activeAssVideoEffect == null &&
         activePlayerUsesLibass &&
-        _uiState.value.libassRenderMode == com.nuvio.tv.data.local.LibassRenderMode.VIDEO_EFFECT &&
-        !hasDvVideoTrack
+        requestedLibassRenderMode == com.nuvio.tv.data.local.LibassRenderMode.VIDEO_EFFECT &&
+        !hasDetectedDolbyVisionForCurrentStream &&
+        !isTunnelingActiveForCurrentPlayback &&
+        !isNativeFelActiveForCurrentPlayback
 
     // Don't rebuild just to drop libass, except when it's holding the MKV extractor on a DV
     // file and blocking conversion; then drop it so the DV extractor runs.
@@ -490,41 +529,6 @@ private fun Tracks.hasSelectedAssSsaTextTrack(): Boolean {
 // shouldn't trigger a libass-drop reload.
 private val DV_PROFILE_7_CODEC = Regex("^(dvhe|dvh1|dvav|dva1)\\.0?7\\.")
 
-private val DV_CODEC_PREFIX = Regex("^(dvhe|dvh1|dvav|dva1|dav1)\\.")
-
-/** PQ (HDR10/HDR10+), HLG or Dolby Vision video, whose bright output calls for the HDR subtitle style. */
-internal fun Format.isHdrVideoFormat(): Boolean {
-    val transfer = colorInfo?.colorTransfer?.takeIf { it != Format.NO_VALUE } ?: hevcSpsColorTransfer()
-    if (transfer == C.COLOR_TRANSFER_ST2084 || transfer == C.COLOR_TRANSFER_HLG) return true
-    if (sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION) return true
-    return DV_CODEC_PREFIX.containsMatchIn(codecs?.lowercase(Locale.US).orEmpty())
-}
-
-private const val H265_NAL_UNIT_TYPE_SPS = 33
-
-/**
- * Transfer characteristics from the HEVC SPS in the initialization data. Matroska files without a
- * Colour element only carry their HDR signalling there, and Dolby Vision streams played on their
- * HDR10 base layer arrive as plain HEVC, so the container gives no colour info for either.
- */
-internal fun Format.hevcSpsColorTransfer(): Int? {
-    if (sampleMimeType != MimeTypes.VIDEO_H265) return null
-    for (data in initializationData) {
-        val prefixFlags = BooleanArray(3)
-        var start = NalUnitUtil.findNalUnit(data, 0, data.size, prefixFlags)
-        while (start < data.size) {
-            val next = NalUnitUtil.findNalUnit(data, start + 3, data.size, prefixFlags)
-            if (NalUnitUtil.getH265NalUnitType(data, start) == H265_NAL_UNIT_TYPE_SPS) {
-                return runCatching {
-                    NalUnitUtil.parseH265SpsNalUnit(data, start + 3, next, null).colorTransfer
-                }.getOrNull()?.takeIf { it != Format.NO_VALUE }
-            }
-            start = next
-        }
-    }
-    return null
-}
-
 private fun Tracks.hasDolbyVisionProfile7VideoTrack(): Boolean {
     groups.forEach { trackGroup ->
         if (trackGroup.type != C.TRACK_TYPE_VIDEO) return@forEach
@@ -563,7 +567,7 @@ internal fun PlayerRuntimeController.maybeRestorePendingAudioSelectionAfterSubti
     if (pending.streamUrl != currentStreamUrl) {
         logSwitchTrace(
             stage = "restore-audio-after-subtitle-refresh",
-            message = "action=clear reason=stream-mismatch pendingStream=${pending.streamUrl} currentStream=$currentStreamUrl"
+            message = "action=clear reason=stream-mismatch pendingStream=${pending.streamUrl.redactedUrlForLog()} currentStream=${currentStreamUrl.redactedUrlForLog()}"
         )
         pendingAudioSelectionAfterSubtitleRefresh = null
         return null
@@ -980,7 +984,7 @@ internal fun PlayerRuntimeController.applyPersistedTrackPreference(
     if (pendingEngineSwitchTrackPreference != null && switchPending == null) {
         logSwitchTrace(
             stage = "restore-switch-pref-clear",
-            message = "reason=stream-mismatch pendingStream=${pendingEngineSwitchTrackPreference?.streamUrl} currentStream=$currentStreamUrl"
+            message = "reason=stream-mismatch pendingStream=${pendingEngineSwitchTrackPreference?.streamUrl.redactedUrlForLog()} currentStream=${currentStreamUrl.redactedUrlForLog()}"
         )
         pendingEngineSwitchTrackPreference = null
     }
@@ -1007,6 +1011,9 @@ internal fun PlayerRuntimeController.applyPersistedTrackPreference(
     var updatedAddonSubtitle: com.nuvio.tv.domain.model.Subtitle? = null
 
     pending.audio?.let { audioSelection ->
+        // An audio preference existed for this stream (whether or not it
+        // matches a track here), so the lossless default must never run over it.
+        persistedAudioPreferenceSeenForStream = true
         if (audioTracks.isEmpty()) {
             logSwitchTrace(
                 stage = "restore-audio",
@@ -1266,11 +1273,15 @@ internal fun PlayerRuntimeController.applyPersistedTrackPreference(
     }
 }
 
-internal fun PlayerRuntimeController.subtitleLanguageTargets(): List<String> {
-    val preferred = _uiState.value.subtitleStyle.preferredLanguage.lowercase()
+internal fun PlayerRuntimeController.subtitleLanguageTargets(): List<String> =
+    subtitleLanguageTargets(_uiState.value.subtitleStyle)
+
+internal fun subtitleLanguageTargets(style: SubtitleStyleSettings): List<String> {
+    val preferred = style.preferredLanguage.lowercase()
     if (preferred == "none") return emptyList()
-    val secondary = _uiState.value.subtitleStyle.secondaryPreferredLanguage?.lowercase()
-    return listOfNotNull(preferred, secondary)
+    val secondary = style.secondaryPreferredLanguage?.lowercase()
+    val tertiary = style.tertiaryPreferredLanguage?.lowercase()
+    return listOfNotNull(preferred, secondary, tertiary)
 }
 
 internal fun PlayerRuntimeController.findBestInternalSubtitleTrackIndex(
@@ -1766,11 +1777,12 @@ internal fun PlayerRuntimeController.tryAutoSelectPreferredSubtitleFromAvailable
             )
             return
         }
-        // If internal match is secondary and a primary addon match exists, prefer the addon.
+        // If an addon matches a language ranked above the internal match, prefer the addon.
         if (matchedTargetPosition > 0 && addonSubtitlesLoaded) {
-            val primaryTarget = targets.first()
-            val primaryAddonMatch = state.addonSubtitles.firstOrNull { subtitle ->
-                PlayerSubtitleUtils.matchesLanguageCode(subtitle.lang, primaryTarget)
+            val primaryAddonMatch = targets.take(matchedTargetPosition).firstNotNullOfOrNull { higherTarget ->
+                state.addonSubtitles.firstOrNull { subtitle ->
+                    PlayerSubtitleUtils.matchesLanguageCode(subtitle.lang, higherTarget)
+                }
             }
             if (primaryAddonMatch != null) {
                 autoSubtitleSelected = true
@@ -1970,10 +1982,14 @@ internal fun PlayerRuntimeController.startFrameRateProbe(
     }
 }
 
-internal fun PlayerRuntimeController.applySubtitlePreferences(preferred: String, secondary: String?) {
+internal fun PlayerRuntimeController.applySubtitlePreferences(
+    preferred: String,
+    secondary: String?,
+    tertiary: String? = null
+) {
     if (isUserExplicitSubtitleSelection) return
     if (isUsingMpvEngine()) {
-        mpvView?.applySubtitleLanguagePreferences(preferred, secondary)
+        mpvView?.applySubtitleLanguagePreferences(preferred, secondary, tertiary)
         if (preferred == "none") {
             mpvView?.disableSubtitles()
             _uiState.update {

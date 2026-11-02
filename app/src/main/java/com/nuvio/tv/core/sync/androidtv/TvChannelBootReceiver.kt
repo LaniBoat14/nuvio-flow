@@ -10,7 +10,9 @@ class TvChannelBootReceiver : BroadcastReceiver() {
         when (intent.action) {
             Intent.ACTION_BOOT_COMPLETED,
             TvContractCompat.ACTION_INITIALIZE_PROGRAMS -> {
-                TvChannelRefreshJobService.scheduleImmediate(context)
+                if (AndroidTvChannelManager.isSupported(context)) {
+                    TvChannelRefreshJobService.scheduleImmediate(context)
+                }
             }
         }
     }

@@ -67,6 +67,7 @@ import com.nuvio.tv.data.local.PlayerSettings
 import com.nuvio.tv.data.local.NextEpisodeThresholdMode
 import com.nuvio.tv.data.local.StreamAutoPlayMode
 import com.nuvio.tv.data.local.StreamAutoPlaySource
+import com.nuvio.tv.data.local.StreamListSort
 import com.nuvio.tv.ui.components.NuvioDialog
 import kotlin.math.roundToInt
 import java.util.Locale
@@ -75,7 +76,9 @@ import java.util.Locale
 internal fun PlaybackStreamSelectionSection(
     settings: PlayerSettings,
     onUpdate: PlaybackSettingsUpdate,
-    onOpenDialog: (PlaybackDialog) -> Unit
+    onOpenDialog: (PlaybackDialog) -> Unit,
+    onOpenConnectedServices: (() -> Unit)? = null,
+    qualityRulesFocusRequester: FocusRequester? = null
 ) {
     val effectiveAutoPlaySource = if (
         !AppFeaturePolicy.pluginsEnabled &&
@@ -93,8 +96,29 @@ internal fun PlaybackStreamSelectionSection(
             StreamAutoPlayMode.MANUAL -> stringResource(R.string.autoplay_mode_manual)
             StreamAutoPlayMode.FIRST_STREAM -> stringResource(R.string.autoplay_mode_first)
             StreamAutoPlayMode.REGEX_MATCH -> stringResource(R.string.autoplay_mode_regex)
+            StreamAutoPlayMode.QUALITY_RANK -> stringResource(R.string.autoplay_mode_quality)
         },
         onClick = { onOpenDialog(PlaybackDialog.STREAM_AUTO_PLAY_MODE) }
+    )
+
+    if (onOpenConnectedServices != null) {
+        SettingsActionRow(
+            title = stringResource(R.string.autoplay_quality_rules_title),
+            subtitle = stringResource(R.string.autoplay_quality_rules_subtitle),
+            onClick = onOpenConnectedServices,
+            modifier = if (qualityRulesFocusRequester != null) {
+                Modifier.focusRequester(qualityRulesFocusRequester)
+            } else {
+                Modifier
+            }
+        )
+    }
+
+    SettingsActionRow(
+        title = stringResource(R.string.stream_sort_sources),
+        subtitle = stringResource(R.string.stream_sort_sources_sub),
+        value = stringResource(settings.streamListSort.label()),
+        onClick = { onOpenDialog(PlaybackDialog.STREAM_LIST_SORT) }
     )
 
     if (settings.streamAutoPlayMode == StreamAutoPlayMode.REGEX_MATCH) {
@@ -159,11 +183,13 @@ internal fun PlaybackStreamSelectionSection(
         onValueChange = { seconds -> onUpdate { setStreamAutoPlayTimeoutSeconds(seconds) } }
     )
 
-    SettingsToggleRow(
-        title = stringResource(R.string.autoplay_preload_next_episode),
-        subtitle = stringResource(R.string.autoplay_preload_next_episode_sub),
-        checked = settings.preloadNextEpisodeSources,
-        onToggle = { onUpdate { setPreloadNextEpisodeSources(!settings.preloadNextEpisodeSources) } }
+    SliderSettingsItem(
+        title = stringResource(R.string.addon_stream_timeout_title),
+        subtitle = stringResource(R.string.addon_stream_timeout_sub),
+        values = PlayerSettings.ADDON_STREAM_TIMEOUT_VALUES,
+        selected = settings.addonStreamTimeoutSeconds,
+        valueText = "${settings.addonStreamTimeoutSeconds}s",
+        onValueChange = { seconds -> onUpdate { setAddonStreamTimeoutSeconds(seconds) } }
     )
 
     SettingsToggleRow(
@@ -179,6 +205,34 @@ internal fun PlaybackStreamSelectionSection(
             subtitle = null,
             value = formatReuseCacheDuration(settings.streamReuseLastLinkCacheHours),
             onClick = { onOpenDialog(PlaybackDialog.REUSE_LAST_LINK_CACHE) }
+        )
+    }
+
+    SettingsToggleRow(
+        title = stringResource(R.string.autoplay_eager_ready_title),
+        subtitle = stringResource(R.string.autoplay_eager_ready_sub),
+        checked = settings.streamAutoPlayEagerReadyEnabled,
+        onToggle = { onUpdate { setStreamAutoPlayEagerReadyEnabled(!settings.streamAutoPlayEagerReadyEnabled) } }
+    )
+    SettingsToggleRow(
+        title = stringResource(R.string.playback_speculative_stream_search),
+        subtitle = stringResource(R.string.playback_speculative_stream_search_sub),
+        checked = settings.speculativeStreamSearchEnabled,
+        onToggle = { onUpdate { setSpeculativeStreamSearchEnabled(!settings.speculativeStreamSearchEnabled) } }
+    )
+
+    if (settings.speculativeStreamSearchEnabled) {
+        SettingsToggleRow(
+            title = stringResource(R.string.playback_source_line_badges),
+            subtitle = stringResource(R.string.playback_source_line_badges_sub),
+            checked = settings.showSourceLineBadges,
+            onToggle = { onUpdate { setShowSourceLineBadges(!settings.showSourceLineBadges) } }
+        )
+        SettingsToggleRow(
+            title = stringResource(R.string.playback_source_line_release_group),
+            subtitle = stringResource(R.string.playback_source_line_release_group_sub),
+            checked = settings.showSourceLineReleaseGroup,
+            onToggle = { onUpdate { setShowSourceLineReleaseGroup(!settings.showSourceLineReleaseGroup) } }
         )
     }
 }
@@ -333,6 +387,17 @@ internal fun AutoPlaySettingsDialogs(
             },
             onDismiss = onDismiss
         )
+        PlaybackDialog.STREAM_LIST_SORT -> SettingsSingleChoiceDialog(
+            title = stringResource(R.string.stream_sort_sources),
+            options = StreamListSort.entries.map { SettingsPickerOption(it, stringResource(it.label())) },
+            selectedValue = settings.streamListSort,
+            onOptionSelected = { sort ->
+                onUpdate { setStreamListSort(sort) }
+                onDismiss()
+            },
+            onDismiss = onDismiss,
+            width = 520.dp
+        )
         PlaybackDialog.STREAM_AUTO_PLAY_SOURCE -> StreamAutoPlaySourceDialog(
             selectedSource = settings.streamAutoPlaySource,
             onSourceSelected = { source ->
@@ -446,7 +511,8 @@ private fun StreamAutoPlayModeDialog(
     val options = listOf(
         SettingsPickerOption(StreamAutoPlayMode.MANUAL, stringResource(R.string.autoplay_mode_manual), stringResource(R.string.autoplay_mode_manual_desc)),
         SettingsPickerOption(StreamAutoPlayMode.FIRST_STREAM, stringResource(R.string.autoplay_mode_first), stringResource(R.string.autoplay_mode_first_desc)),
-        SettingsPickerOption(StreamAutoPlayMode.REGEX_MATCH, stringResource(R.string.autoplay_mode_regex), stringResource(R.string.autoplay_mode_regex_desc))
+        SettingsPickerOption(StreamAutoPlayMode.REGEX_MATCH, stringResource(R.string.autoplay_mode_regex), stringResource(R.string.autoplay_mode_regex_desc)),
+        SettingsPickerOption(StreamAutoPlayMode.QUALITY_RANK, stringResource(R.string.autoplay_mode_quality), stringResource(R.string.autoplay_mode_quality_desc))
     )
 
     SettingsSingleChoiceDialog(
@@ -489,6 +555,11 @@ private fun StreamReuseLastLinkCacheDurationDialog(
         width = 420.dp,
         maxHeight = 320.dp
     )
+}
+
+private fun StreamListSort.label(): Int = when (this) {
+    StreamListSort.SOURCE_ORDER -> R.string.stream_sort_sources_source_order
+    StreamListSort.BEST_QUALITY_FIRST -> R.string.stream_sort_sources_best_first
 }
 
 @Composable

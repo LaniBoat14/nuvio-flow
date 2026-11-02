@@ -1,5 +1,13 @@
 package com.nuvio.tv.ui.screens.search
 
+import com.nuvio.tv.ui.v2.components.sidebarPageContent
+
+import com.nuvio.tv.ui.v2.appearance.LocalV2Appearance
+import com.nuvio.tv.ui.v2.appearance.V2Atmosphere
+import com.nuvio.tv.ui.v2.components.nuvioControlSurface
+import com.nuvio.tv.ui.v2.components.nuvioGlass
+import com.nuvio.tv.ui.v2.components.nuvioV2Focus
+import com.nuvio.tv.ui.v2.components.GlassRole
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.screens.home.HeroBackdropState
 
@@ -21,7 +29,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -30,10 +37,8 @@ import androidx.compose.ui.res.stringResource
 import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.DiscoverLocation
 import com.nuvio.tv.ui.components.EmptyScreenState
-import com.nuvio.tv.ui.components.PosterCardDefaults
-import com.nuvio.tv.ui.components.PosterCardStyle
+import com.nuvio.tv.ui.components.rememberPosterCardStyle
 import com.nuvio.tv.ui.theme.NuvioColors
-import kotlin.math.roundToInt
 
 @Composable
 fun DiscoverScreen(
@@ -50,16 +55,7 @@ fun DiscoverScreen(
     var restoreDiscoverFocus by rememberSaveable { mutableStateOf(false) }
     var pendingDiscoverRestoreOnResume by rememberSaveable { mutableStateOf(false) }
 
-    val posterCardStyle = remember(uiState.posterCardWidthDp, uiState.posterCardCornerRadiusDp) {
-        val computedHeightDp = (uiState.posterCardWidthDp * 1.5f).roundToInt()
-        PosterCardStyle(
-            width = uiState.posterCardWidthDp.dp,
-            height = computedHeightDp.dp,
-            cornerRadius = uiState.posterCardCornerRadiusDp.dp,
-            focusedBorderWidth = PosterCardDefaults.Style.focusedBorderWidth,
-            focusedScale = PosterCardDefaults.Style.focusedScale
-        )
-    }
+    val posterCardStyle = rememberPosterCardStyle(uiState.posterCardWidthDp, uiState.posterCardCornerRadiusDp)
 
     LaunchedEffect(uiState.discoverLocation) {
         if (uiState.discoverLocation != DiscoverLocation.OFF) {
@@ -84,8 +80,10 @@ fun DiscoverScreen(
             .fillMaxSize()
             .background(NuvioTheme.colors.Background)
     ) {
+        if (LocalV2Appearance.current != null) V2Atmosphere(background = LocalV2Appearance.current!!.settingsBackground)
         if (uiState.discoverLocation == DiscoverLocation.OFF) {
             EmptyScreenState(
+                modifier = Modifier.sidebarPageContent(),
                 title = stringResource(R.string.discover_disabled_title),
                 subtitle = stringResource(R.string.discover_disabled_subtitle),
                 icon = Icons.Default.Search
@@ -129,7 +127,7 @@ fun DiscoverScreen(
                 onItemLongPress = { item, addonBaseUrl ->
                     viewModel.posterOptions.show(item, addonBaseUrl)
                 },
-                modifier = Modifier.padding(top = NuvioTheme.spacing.lg)
+                modifier = Modifier.sidebarPageContent().padding(top = NuvioTheme.spacing.lg)
             )
         }
 

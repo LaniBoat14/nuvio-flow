@@ -33,6 +33,25 @@ class TrackingScrobbleCoordinatorTest {
     }
 
     @Test
+    fun `services a media server already scrobbles to are left out`() = runTest {
+        val trakt = FakeScrobbler(TrackingProviderId.TRAKT)
+        val simkl = FakeScrobbler(TrackingProviderId.SIMKL)
+        val event = TrackingScrobbleEvent(
+            media = TrackingMediaReference(
+                kind = TrackingMediaKind.MOVIE,
+                ids = TrackingExternalIds(imdb = "tt0111161")
+            ),
+            progressPercent = 10.0,
+            skippedProviders = setOf(TrackingProviderId.TRAKT)
+        )
+
+        dispatchTrackingScrobble(listOf(trakt, simkl), TrackingScrobbleAction.START, event)
+
+        assertEquals(0, trakt.callCount)
+        assertEquals(1, simkl.callCount)
+    }
+
+    @Test
     fun `seek fanout targets only providers that restart sessions`() = runTest {
         val trakt = FakeScrobbler(
             providerId = TrackingProviderId.TRAKT,

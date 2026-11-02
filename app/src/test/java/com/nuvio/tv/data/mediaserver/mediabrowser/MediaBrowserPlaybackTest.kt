@@ -13,6 +13,7 @@ import com.nuvio.tv.data.mediaserver.ServerPlayerCapabilities
 import com.nuvio.tv.data.mediaserver.ServerSession
 import com.nuvio.tv.data.mediaserver.readableTranscodeReason
 import kotlinx.serialization.json.Json
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -60,7 +61,7 @@ class MediaBrowserPlaybackTest {
         assertEquals(ServerPlayMethod.DIRECT_PLAY, playback.playMethod)
         assertTrue(playback.url.startsWith("https://media.example.com/jellyfin/Videos/item1/stream?static=true&mediaSourceId=ms1&playSessionId=ps1"))
         assertEquals("ps1", playback.playSessionId)
-        assertEquals("https://media.example.com/jellyfin/Videos/item1/ms1/Subtitles/3/0/Stream.srt?api_key=secret", playback.subtitles.single().url)
+        assertEquals("https://media.example.com/jellyfin/Videos/item1/ms1/Subtitles/3/0/Stream.srt?ApiKey=secret", playback.subtitles.single().url)
         assertEquals("eng", playback.subtitles.single().lang)
     }
 
@@ -77,6 +78,16 @@ class MediaBrowserPlaybackTest {
     }
 
     @Test
+    fun remembersWhetherTheServerOfferedATranscode() {
+        fun offered(source: String) = jellyfin.playbackSession(session, request, info(source), deviceId = "d1").transcodeOffered
+
+        assertFalse(offered("""{"Id": "ms1", "SupportsDirectPlay": true}"""))
+        assertFalse(offered("""{"Id": "ms1", "SupportsDirectPlay": true, "SupportsTranscoding": false}"""))
+        assertTrue(offered("""{"Id": "ms1", "SupportsDirectPlay": true, "SupportsTranscoding": true}"""))
+        assertTrue(offered("""{"Id": "ms1", "SupportsDirectPlay": true, "TranscodingUrl": "/videos/item1/master.m3u8"}"""))
+    }
+
+    @Test
     fun marksRemuxAsDirectStream() {
         val playback = jellyfin.playbackSession(
             session,
@@ -85,7 +96,34 @@ class MediaBrowserPlaybackTest {
             deviceId = "d1"
         )
         assertEquals(ServerPlayMethod.DIRECT_STREAM, playback.playMethod)
-        assertTrue(playback.url.endsWith("&api_key=secret"))
+        assertTrue(playback.url.endsWith("&ApiKey=secret"))
+    }
+
+    @Test
+    fun jellyfinLinksCarryTheTokenAsApiKeyAndEmbyLinksAsApiUnderscoreKey() {
+        val subtitle = """"MediaStreams": [{"Type": "Subtitle", "Index": 3, "DeliveryMethod": "External",
+                          "DeliveryUrl": "/Videos/item1/ms1/Subtitles/3/0/Stream.srt"}]"""
+        val direct = info("""{"Id": "ms1", "SupportsDirectPlay": true, $subtitle}""")
+        val transcode = info("""{"Id": "ms1", "TranscodingUrl": "/videos/item1/master.m3u8?MediaSourceId=ms1", $subtitle}""")
+        val noDirect = request.copy(capabilities = ServerPlayerCapabilities(allowDirectPlay = false))
+
+        val jellyfinUrls = listOf(
+            jellyfin.playbackSession(session, request, direct, deviceId = "d1"),
+            jellyfin.playbackSession(session, noDirect, transcode, deviceId = "d1")
+        ).flatMap { listOf(it.url) + it.subtitles.map { sub -> sub.url } }
+        jellyfinUrls.forEach { url ->
+            assertTrue(url, url.contains("ApiKey=secret"))
+            assertFalse(url, url.contains("api_key="))
+        }
+
+        val embyUrls = listOf(
+            emby.playbackSession(embySession, request, direct, deviceId = "d1"),
+            emby.playbackSession(embySession, noDirect, transcode, deviceId = "d1")
+        ).flatMap { listOf(it.url) + it.subtitles.map { sub -> sub.url } }
+        embyUrls.forEach { url ->
+            assertTrue(url, url.contains("api_key=secret"))
+            assertFalse(url, url.contains("ApiKey="))
+        }
     }
 
     @Test
@@ -98,6 +136,19 @@ class MediaBrowserPlaybackTest {
             jellyfin.playbackSession(session, request, info("""{"Id": "ms1"}"""), "d1")
         }
         assertEquals(ServerFailure.UNSUPPORTED, unsupported.failure)
+    }
+
+    @Test
+    fun tellsAStreamLimitApartFromOtherRefusals() {
+        fun refusal(provider: MediaBrowserProvider, code: String) = assertThrows(ServerException::class.java) {
+            provider.playbackSession(session, request, json.decodeFromString(PlaybackInfoResult.serializer(), """{"ErrorCode": "$code"}"""), "d1")
+        }.failure
+
+        for (provider in listOf(jellyfin, emby)) {
+            assertEquals(ServerFailure.STREAM_LIMIT, refusal(provider, "RateLimitExceeded"))
+            assertEquals(ServerFailure.UNSUPPORTED, refusal(provider, "NoCompatibleStream"))
+            assertEquals(ServerFailure.FORBIDDEN, refusal(provider, "NotAllowed"))
+        }
     }
 
     private val embySession = ServerSession(

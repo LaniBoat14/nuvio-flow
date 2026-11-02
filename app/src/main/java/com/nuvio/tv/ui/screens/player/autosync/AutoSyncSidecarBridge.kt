@@ -3,6 +3,7 @@ package com.nuvio.tv.ui.screens.player.autosync
 import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.extractor.text.CuesWithTiming
+import com.nuvio.tv.core.logging.redactedUrlForLog
 import com.nuvio.tv.ui.screens.player.PlayerRuntimeController
 import com.nuvio.tv.ui.screens.player.canAttachAddonSubtitleViaSidecar
 import com.nuvio.tv.ui.screens.player.commitPreparedSidecarSubtitle
@@ -77,14 +78,14 @@ internal suspend fun replaceAutoSyncSidecarSubtitle(
             sidecar.downloadSubtitleBody(url = url, headers = headers)
         }
         if (rawBody != null) {
-            Log.d(TAG, "replacement using AutoSync cached body url=$url")
+            Log.d(TAG, "replacement using AutoSync cached body url=${url.redactedUrlForLog()}")
         }
 
         val parsed = withContext(AutomaticSubtitleSync.autoSyncDispatcher) {
             parseSidecarTimedCuesRobust(body, url).cues
         }
         if (parsed.isEmpty()) {
-            Log.w(TAG, "replacement parse empty url=$url; keeping $expectedCurrentUrl")
+            Log.w(TAG, "replacement parse empty url=${url.redactedUrlForLog()}; keeping ${expectedCurrentUrl.redactedUrlForLog()}")
             return false
         }
 
@@ -97,8 +98,8 @@ internal suspend fun replaceAutoSyncSidecarSubtitle(
     } catch (error: Exception) {
         Log.w(
             TAG,
-            "replacement preparation failed url=$url: ${error.message}; " +
-                "keeping $expectedCurrentUrl",
+            "replacement preparation failed url=${url.redactedUrlForLog()}: ${error.message}; " +
+                "keeping ${expectedCurrentUrl.redactedUrlForLog()}",
         )
         return false
     }

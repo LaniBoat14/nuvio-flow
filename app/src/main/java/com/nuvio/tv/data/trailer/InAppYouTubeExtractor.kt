@@ -1,9 +1,11 @@
 package com.nuvio.tv.data.trailer
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import com.google.gson.Gson
 import com.nuvio.tv.BuildConfig
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +21,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URL
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
@@ -29,7 +32,6 @@ private const val EXTRACTOR_TIMEOUT_MS = 30_000L
 private const val DEFAULT_USER_AGENT =
     "Mozilla/5.0 (Linux; Android 12; Android TV) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-private const val PREFERRED_SEPARATE_CLIENT = "visionos"
 private const val FALLBACK_API_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
 
 private val VIDEO_ID_REGEX = Regex("^[a-zA-Z0-9_-]{11}$")
@@ -37,14 +39,10 @@ private val API_KEY_REGEX = Regex("\"INNERTUBE_API_KEY\":\"([^\"]+)\"")
 private val VISITOR_DATA_REGEX = Regex("\"VISITOR_DATA\":\"([^\"]+)\"")
 private val QUALITY_LABEL_REGEX = Regex("(\\d{2,4})p")
 private val BOT_CHECK_REGEX = Regex("\\bbot\\b", RegexOption.IGNORE_CASE)
-private val AGE_CHECK_REGEX = Regex("\\bage\\b", RegexOption.IGNORE_CASE)
 private const val HTTP_TOO_MANY_REQUESTS = 429
 
 /** YouTube is refusing requests from this device; see [YouTubeRateLimitGate]. */
 private class RateLimitedException(message: String) : Exception(message)
-
-/** Every client asked to sign in, which a fresh visitor id from the watch page can fix. */
-private class StaleConfigException : Exception()
 
 private data class YouTubeClient(
     val key: String,
@@ -70,15 +68,13 @@ internal data class StreamCandidate(
     val height: Int,
     val fps: Int,
     val ext: String,
-    // 0 when unknown. Widescreen trailers are shorter than their quality class (2560x1072 is
-    // "1440p"), so the size cap needs the width too.
-    val width: Int = 0,
     // Only meaningful for audio candidates: false means this format is an
     // alternate-language dub track, not the video's original/default audio.
     // Always true for video/progressive candidates, so it never affects them.
     val isDefaultAudioTrack: Boolean = true,
-    // Adaptive video only: the format's codecs string (e.g. "av01.0.12M.10"), null when unknown,
-    // and whether it is HDR (PQ or HLG).
+    val width: Int = 0,
+    val codec: TrailerVideoCodec? = null,
+    // Adaptive video only: the format's codecs string (e.g. "av01.0.12M.10"), null when unknown.
     val codecs: String? = null,
     val isHdr: Boolean = false
 )
@@ -88,6 +84,13 @@ internal enum class PlaybackSourceKind {
     HLS_MANIFEST,
     PROGRESSIVE
 }
+
+private data class ExtractionAttempt(
+    val source: TrailerPlaybackSource?,
+    val unplayable: YouTubeUnplayableReason? = null,
+    // Every client asked to sign in, which a fresh visitor id from the watch page can fix.
+    val staleConfig: Boolean = false
+)
 
 private data class ManifestBestVariant(
     val url: String,
@@ -104,27 +107,6 @@ private data class ManifestCandidate(
     val height: Int,
     val bandwidth: Long
 )
-
-/** Streams collected from the clients asked so far. */
-private class ClientStreams {
-    val progressive = mutableListOf<StreamCandidate>()
-    val adaptiveVideo = mutableListOf<StreamCandidate>()
-    val adaptiveAudio = mutableListOf<StreamCandidate>()
-    val manifestUrls = mutableListOf<Triple<String, Int, String>>()
-
-    fun isEmpty(): Boolean =
-        manifestUrls.isEmpty() && progressive.isEmpty() && adaptiveVideo.isEmpty() && adaptiveAudio.isEmpty()
-
-    /** [playableVideo] drops the adaptive video streams this device can't show. */
-    fun covers(
-        kind: PlaybackSourceKind,
-        playableVideo: (List<StreamCandidate>) -> List<StreamCandidate>
-    ): Boolean = when (kind) {
-        PlaybackSourceKind.ADAPTIVE -> playableVideo(adaptiveVideo).isNotEmpty() && adaptiveAudio.isNotEmpty()
-        PlaybackSourceKind.HLS_MANIFEST -> manifestUrls.isNotEmpty()
-        PlaybackSourceKind.PROGRESSIVE -> progressive.isNotEmpty()
-    }
-}
 
 private val DEFAULT_HEADERS = mapOf(
     "accept-language" to "en-US,en;q=0.9",
@@ -188,12 +170,13 @@ private val CLIENTS = listOf(
 
 @Singleton
 class InAppYouTubeExtractor internal constructor(
-    private val canDecodeVideo: (codecs: String, width: Int, height: Int, fps: Int) -> Boolean
+    videoLimits: () -> TrailerVideoLimits = { TrailerVideoLimits() }
 ) {
     @Inject
-    constructor() : this(VideoDecoderSupport::canDecode)
+    constructor(@ApplicationContext context: Context) : this({ deviceTrailerVideoLimits(context) })
 
     private val gson = Gson()
+    private val trailerVideoLimits by lazy(videoLimits)
 
     private val httpClient by lazy {
         OkHttpClient.Builder()
@@ -217,7 +200,7 @@ class InAppYouTubeExtractor internal constructor(
 
     private val cachedConfig = AtomicReference<CachedConfig?>(null)
     private val configMutex = Mutex()
-
+    private val unplayableReasons = ConcurrentHashMap<String, YouTubeUnplayableReason>()
     private val rateLimitGate = YouTubeRateLimitGate()
 
     companion object {
@@ -311,15 +294,12 @@ class InAppYouTubeExtractor internal constructor(
         Log.d(TAG, "Watch config invalidated")
     }
 
-    /**
-     * [maxVideoHeight] caps the adaptive video stream; when no stream fits, the tallest one is
-     * still used rather than returning nothing.
-     */
-    suspend fun extractPlaybackSource(
-        youtubeUrl: String,
-        maxVideoHeight: Int = Int.MAX_VALUE
-    ): TrailerPlaybackSource? =
-        extract(youtubeUrl, singleUrl = false, maxVideoHeight = maxVideoHeight)
+    suspend fun extractPlaybackSource(youtubeUrl: String): TrailerPlaybackSource? =
+        extract(youtubeUrl, singleUrl = false)
+
+    /** Why the last extraction of this video found nothing, when YouTube itself refused it. */
+    fun unplayableReason(youtubeUrl: String): YouTubeUnplayableReason? =
+        extractVideoId(youtubeUrl)?.let(unplayableReasons::get)
 
     /**
      * Returns one URL that carries both video and audio, for players that take a single URL
@@ -331,8 +311,7 @@ class InAppYouTubeExtractor internal constructor(
 
     private suspend fun extract(
         youtubeUrl: String,
-        singleUrl: Boolean,
-        maxVideoHeight: Int = Int.MAX_VALUE
+        singleUrl: Boolean
     ): TrailerPlaybackSource? = withContext(Dispatchers.IO) {
         if (youtubeUrl.isBlank()) return@withContext null
         if (rateLimitGate.isBlocked()) {
@@ -345,15 +324,18 @@ class InAppYouTubeExtractor internal constructor(
         }
 
         Log.d(TAG, "Starting Kotlin extraction for ${summarizeUrl(youtubeUrl)}")
-        var source: TrailerPlaybackSource? = null
+        var attempt: ExtractionAttempt? = null
         try {
-            source = try {
-                attemptExtraction(youtubeUrl, forceRefreshConfig = false, singleUrl, maxVideoHeight)
-            } catch (e: StaleConfigException) {
-                // Only a stale visitor id is fixed by a fresh watch page. Other failures would
-                // fail the same way again, and every extra request counts toward YouTube's limit.
+            attempt = withTimeout(EXTRACTOR_TIMEOUT_MS) {
+                extractPlaybackSourceInternal(youtubeUrl, forceRefreshConfig = false, singleUrl = singleUrl)
+            }
+            // Only a stale visitor id is fixed by a fresh watch page. Other failures would fail the
+            // same way again, and every extra request counts toward YouTube's limit.
+            if (attempt?.source == null && attempt?.staleConfig == true) {
                 Log.d(TAG, "Every client asked to sign in, retrying with a fresh watch config")
-                attemptExtraction(youtubeUrl, forceRefreshConfig = true, singleUrl, maxVideoHeight)
+                attempt = withTimeout(EXTRACTOR_TIMEOUT_MS) {
+                    extractPlaybackSourceInternal(youtubeUrl, forceRefreshConfig = true, singleUrl = singleUrl)
+                }
             }
         } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
             // A timeout is a failed attempt, not a cancellation of the caller.
@@ -363,14 +345,26 @@ class InAppYouTubeExtractor internal constructor(
         } catch (e: RateLimitedException) {
             val cooldownMs = rateLimitGate.onRateLimited()
             Log.w(TAG, "YouTube is rate limiting (${e.message}), pausing extraction for ${cooldownMs / 1000}s")
-        } catch (e: StaleConfigException) {
-            Log.w(TAG, "Every client still asks to sign in with a fresh watch config for $youtubeUrl")
         } catch (error: Exception) {
             Log.w(TAG, "Kotlin extractor failed for $youtubeUrl: ${error.message}")
         }
 
+        val source = attempt?.source
+        val unplayable = attempt?.unplayable
+        extractVideoId(youtubeUrl)?.let { videoId ->
+            if (source == null && unplayable != null) {
+                unplayableReasons[videoId] = unplayable
+            } else {
+                unplayableReasons.remove(videoId)
+            }
+        }
+
         if (source == null) {
-            Log.w(TAG, "Kotlin extraction returned no playable source for ${summarizeUrl(youtubeUrl)}")
+            Log.w(
+                TAG,
+                "Kotlin extraction returned no playable source for ${summarizeUrl(youtubeUrl)}" +
+                    (unplayable?.let { " ($it)" } ?: "")
+            )
         } else {
             rateLimitGate.onSuccess()
             Log.d(
@@ -383,35 +377,28 @@ class InAppYouTubeExtractor internal constructor(
         source
     }
 
-    private suspend fun attemptExtraction(
-        youtubeUrl: String,
-        forceRefreshConfig: Boolean,
-        singleUrl: Boolean,
-        maxVideoHeight: Int
-    ): TrailerPlaybackSource? = withTimeout(EXTRACTOR_TIMEOUT_MS) {
-        extractPlaybackSourceInternal(youtubeUrl, forceRefreshConfig, singleUrl, maxVideoHeight)
-    }
-
     private suspend fun extractPlaybackSourceInternal(
         youtubeUrl: String,
         forceRefreshConfig: Boolean,
-        singleUrl: Boolean,
-        maxVideoHeight: Int
-    ): TrailerPlaybackSource? {
-        val videoId = extractVideoId(youtubeUrl) ?: return null
+        singleUrl: Boolean
+    ): ExtractionAttempt {
+        val videoId = extractVideoId(youtubeUrl) ?: return ExtractionAttempt(null)
 
         // Use cached config instead of fetching watch page every time
         val config = ensureWatchConfig(forceRefresh = forceRefreshConfig)
         Log.d(TAG, "Using config: apiKey=${config.apiKey.take(10)}... visitor=${!config.visitorData.isNullOrBlank()}")
 
-        val streams = ClientStreams()
-        val pendingClients = CLIENTS.iterator()
+        val progressive = mutableListOf<StreamCandidate>()
+        val adaptiveVideo = mutableListOf<StreamCandidate>()
+        val adaptiveAudio = mutableListOf<StreamCandidate>()
+        val manifestUrls = mutableListOf<Triple<String, Int, String>>()
         var loginRequiredCount = 0
         var botCheckCount = 0
+        var playableCount = 0
+        val refusals = mutableListOf<YouTubeUnplayableReason>()
 
-        suspend fun queryNextClient() {
+        for (client in CLIENTS) {
             kotlinx.coroutines.yield()
-            val client = pendingClients.next()
             try {
                 val playerResponse = fetchPlayerResponse(
                     apiKey = config.apiKey,
@@ -421,30 +408,120 @@ class InAppYouTubeExtractor internal constructor(
                     cookieHeader = null
                 )
 
+                // Check for LOGIN_REQUIRED which means visitor_data is stale
                 val playabilityStatus = playerResponse.mapValue("playabilityStatus")
                 val status = playabilityStatus?.stringValue("status")
+                youTubeUnplayableReasonOf(status, playabilityStatus?.stringValue("reason"))?.let { refusals += it }
                 if (status == "LOGIN_REQUIRED") {
                     val reason = playabilityStatus?.stringValue("reason").orEmpty()
-                    when {
-                        // "Sign in to confirm you're not a bot": YouTube is throttling this IP.
-                        BOT_CHECK_REGEX.containsMatchIn(reason) -> {
-                            botCheckCount++
-                            Log.w(TAG, "Client ${client.key}: bot check ($reason)")
-                        }
-                        // Age-restricted: a property of the video, a fresh config won't help.
-                        AGE_CHECK_REGEX.containsMatchIn(reason) ->
-                            Log.d(TAG, "Client ${client.key}: age restricted")
-                        else -> {
-                            loginRequiredCount++
-                            Log.w(TAG, "Client ${client.key}: LOGIN_REQUIRED (visitor may be stale)")
-                        }
+                    if (BOT_CHECK_REGEX.containsMatchIn(reason)) {
+                        // "Sign in to confirm you're not a bot": YouTube is throttling this device.
+                        botCheckCount++
+                        Log.w(TAG, "Client ${client.key}: bot check ($reason)")
+                    } else {
+                        loginRequiredCount++
+                        Log.w(TAG, "Client ${client.key}: LOGIN_REQUIRED (visitor may be stale)")
                     }
-                    return
+                    continue
                 }
-                if (status != null && status != "OK") return
+                if (status != null && status != "OK") {
+                    continue
+                }
+                playableCount++
 
-                val streamingData = playerResponse.mapValue("streamingData") ?: return
-                addClientStreams(client, streamingData, streams)
+                val streamingData = playerResponse.mapValue("streamingData") ?: continue
+                val hlsManifestUrl = streamingData.stringValue("hlsManifestUrl")
+                if (!hlsManifestUrl.isNullOrBlank()) {
+                    manifestUrls += Triple(client.key, client.priority, hlsManifestUrl)
+                }
+
+                for (format in streamingData.listMapValue("formats")) {
+                    val url = format.stringValue("url") ?: continue
+                    val mimeType = format.stringValue("mimeType").orEmpty()
+                    if (!mimeType.contains("video/") && mimeType.isNotBlank()) continue
+
+                    val height = (format.numberValue("height")
+                        ?: parseQualityLabel(format.stringValue("qualityLabel"))?.toDouble()
+                        ?: 0.0).toInt()
+                    val fps = (format.numberValue("fps") ?: 0.0).toInt()
+                    val bitrate = format.numberValue("bitrate")
+                        ?: format.numberValue("averageBitrate")
+                        ?: 0.0
+
+                    progressive += StreamCandidate(
+                        client = client.key,
+                        priority = client.priority,
+                        url = url,
+                        score = videoScore(height, fps, bitrate),
+                        hasN = hasNParam(url),
+                        itag = format.stringValue("itag").orEmpty(),
+                        height = height,
+                        fps = fps,
+                        ext = if (mimeType.contains("webm")) "webm" else "mp4"
+                    )
+                }
+
+                for (format in streamingData.listMapValue("adaptiveFormats")) {
+                    val url = format.stringValue("url") ?: continue
+                    val mimeType = format.stringValue("mimeType").orEmpty()
+                    val hasVideo = mimeType.contains("video/")
+                    val hasAudio = mimeType.contains("audio/") || mimeType.startsWith("audio/")
+
+                    if (hasVideo) {
+                        val height = (format.numberValue("height")
+                            ?: parseQualityLabel(format.stringValue("qualityLabel"))?.toDouble()
+                            ?: 0.0).toInt()
+                        val fps = (format.numberValue("fps") ?: 0.0).toInt()
+                        val bitrate = format.numberValue("bitrate")
+                            ?: format.numberValue("averageBitrate")
+                            ?: 0.0
+
+                        adaptiveVideo += StreamCandidate(
+                            client = client.key,
+                            priority = client.priority,
+                            url = url,
+                            score = videoScore(height, fps, bitrate),
+                            hasN = hasNParam(url),
+                            itag = format.stringValue("itag").orEmpty(),
+                            height = height,
+                            fps = fps,
+                            ext = if (mimeType.contains("webm")) "webm" else "mp4",
+                            width = (format.numberValue("width") ?: 0.0).toInt(),
+                            codec = trailerVideoCodecOf(mimeType),
+                            codecs = videoCodecsParam(mimeType),
+                            isHdr = isHdrTrailerFormat(
+                                mimeType = mimeType,
+                                qualityLabel = format.stringValue("qualityLabel"),
+                                transferCharacteristics = format.mapValue("colorInfo")
+                                    ?.stringValue("transferCharacteristics")
+                            )
+                        )
+                    } else if (hasAudio) {
+                        val bitrate = format.numberValue("bitrate")
+                            ?: format.numberValue("averageBitrate")
+                            ?: 0.0
+                        val asr = format.numberValue("audioSampleRate") ?: 0.0
+                        // Multi-language uploads (common for major-studio trailers)
+                        // expose each dub as a separate adaptiveFormats entry with an
+                        // audioTrack.audioIsDefault flag. Formats with no audioTrack
+                        // are the only audio for that video, so treat them as default.
+                        val isDefaultAudioTrack = format.mapValue("audioTrack")
+                            ?.booleanValue("audioIsDefault") ?: true
+
+                        adaptiveAudio += StreamCandidate(
+                            client = client.key,
+                            priority = client.priority,
+                            url = url,
+                            score = audioScore(bitrate, asr),
+                            hasN = hasNParam(url),
+                            itag = format.stringValue("itag").orEmpty(),
+                            height = 0,
+                            fps = 0,
+                            ext = if (mimeType.contains("webm")) "webm" else "m4a",
+                            isDefaultAudioTrack = isDefaultAudioTrack
+                        )
+                    }
+                }
             } catch (e: RateLimitedException) {
                 throw e
             } catch (error: Exception) {
@@ -452,165 +529,26 @@ class InAppYouTubeExtractor internal constructor(
                     Log.w(TAG, "Client ${client.key} failed: ${error.message}")
                 }
             }
+
         }
 
-        // Ask the clients one at a time and stop once the first source kind we'd use is
-        // covered. The rest are only asked if that source turns out to be unplayable.
-        val preferredKind = sourcePreference(singleUrl).first()
-        while (pendingClients.hasNext() && !streams.covers(preferredKind, ::playableVideo)) {
-            queryNextClient()
+        // If all clients returned LOGIN_REQUIRED, invalidate config for next attempt
+        if (loginRequiredCount == CLIENTS.size) {
+            Log.w(TAG, "All ${CLIENTS.size} clients returned LOGIN_REQUIRED, invalidating config")
+            invalidateConfig()
+            return ExtractionAttempt(null, combineYouTubeUnplayableReasons(refusals), staleConfig = true)
         }
 
-        if (streams.isEmpty()) {
-            // Every client was asked and none returned anything.
+        if (manifestUrls.isEmpty() && progressive.isEmpty() && adaptiveVideo.isEmpty() && adaptiveAudio.isEmpty()) {
             if (botCheckCount > 0) {
                 throw RateLimitedException("$botCheckCount of ${CLIENTS.size} clients hit the bot check")
             }
-            if (loginRequiredCount == CLIENTS.size) {
-                Log.w(TAG, "All ${CLIENTS.size} clients returned LOGIN_REQUIRED, invalidating config")
-                invalidateConfig()
-                throw StaleConfigException()
-            }
-            return null
-        }
-
-        pickPlaybackSource(streams, singleUrl, maxVideoHeight)?.let { return it }
-        if (!pendingClients.hasNext()) return null
-
-        Log.d(TAG, "No playable source from the first clients, asking the rest")
-        while (pendingClients.hasNext()) {
-            queryNextClient()
-        }
-        return pickPlaybackSource(streams, singleUrl, maxVideoHeight)
-    }
-
-    private fun addClientStreams(client: YouTubeClient, streamingData: Map<*, *>, streams: ClientStreams) {
-        val hlsManifestUrl = streamingData.stringValue("hlsManifestUrl")
-        if (!hlsManifestUrl.isNullOrBlank()) {
-            streams.manifestUrls += Triple(client.key, client.priority, hlsManifestUrl)
-        }
-
-        for (format in streamingData.listMapValue("formats")) {
-            val url = format.stringValue("url") ?: continue
-            val mimeType = format.stringValue("mimeType").orEmpty()
-            if (!mimeType.contains("video/") && mimeType.isNotBlank()) continue
-
-            val height = (format.numberValue("height")
-                ?: parseQualityLabel(format.stringValue("qualityLabel"))?.toDouble()
-                ?: 0.0).toInt()
-            val fps = (format.numberValue("fps") ?: 0.0).toInt()
-            val bitrate = format.numberValue("bitrate")
-                ?: format.numberValue("averageBitrate")
-                ?: 0.0
-
-            streams.progressive += StreamCandidate(
-                client = client.key,
-                priority = client.priority,
-                url = url,
-                score = videoScore(height, fps, bitrate),
-                hasN = hasNParam(url),
-                itag = format.stringValue("itag").orEmpty(),
-                height = height,
-                fps = fps,
-                ext = if (mimeType.contains("webm")) "webm" else "mp4"
+            return ExtractionAttempt(
+                null,
+                combineYouTubeUnplayableReasons(refusals).takeIf { playableCount == 0 }
             )
         }
 
-        for (format in streamingData.listMapValue("adaptiveFormats")) {
-            val url = format.stringValue("url") ?: continue
-            val mimeType = format.stringValue("mimeType").orEmpty()
-            val hasVideo = mimeType.contains("video/")
-            val hasAudio = mimeType.contains("audio/") || mimeType.startsWith("audio/")
-
-            if (hasVideo) {
-                val height = (format.numberValue("height")
-                    ?: parseQualityLabel(format.stringValue("qualityLabel"))?.toDouble()
-                    ?: 0.0).toInt()
-                val fps = (format.numberValue("fps") ?: 0.0).toInt()
-                val bitrate = format.numberValue("bitrate")
-                    ?: format.numberValue("averageBitrate")
-                    ?: 0.0
-
-                streams.adaptiveVideo += StreamCandidate(
-                    client = client.key,
-                    priority = client.priority,
-                    url = url,
-                    score = videoScore(height, fps, bitrate),
-                    hasN = hasNParam(url),
-                    itag = format.stringValue("itag").orEmpty(),
-                    height = height,
-                    width = (format.numberValue("width") ?: 0.0).toInt(),
-                    fps = fps,
-                    ext = if (mimeType.contains("webm")) "webm" else "mp4",
-                    codecs = videoCodecsParam(mimeType),
-                    isHdr = isHdrFormat(format)
-                )
-            } else if (hasAudio) {
-                val bitrate = format.numberValue("bitrate")
-                    ?: format.numberValue("averageBitrate")
-                    ?: 0.0
-                val asr = format.numberValue("audioSampleRate") ?: 0.0
-                // Multi-language uploads (common for major-studio trailers)
-                // expose each dub as a separate adaptiveFormats entry with an
-                // audioTrack.audioIsDefault flag. Formats with no audioTrack
-                // are the only audio for that video, so treat them as default.
-                val isDefaultAudioTrack = format.mapValue("audioTrack")
-                    ?.booleanValue("audioIsDefault") ?: true
-
-                streams.adaptiveAudio += StreamCandidate(
-                    client = client.key,
-                    priority = client.priority,
-                    url = url,
-                    score = audioScore(bitrate, asr),
-                    hasN = hasNParam(url),
-                    itag = format.stringValue("itag").orEmpty(),
-                    height = 0,
-                    fps = 0,
-                    ext = if (mimeType.contains("webm")) "webm" else "m4a",
-                    isDefaultAudioTrack = isDefaultAudioTrack
-                )
-            }
-        }
-    }
-
-    private suspend fun pickPlaybackSource(
-        streams: ClientStreams,
-        singleUrl: Boolean,
-        maxVideoHeight: Int
-    ): TrailerPlaybackSource? {
-        for (kind in sourcePreference(singleUrl)) {
-            kotlinx.coroutines.yield()
-            val source = when (kind) {
-                // Adaptive video + audio (best quality, separate streams)
-                PlaybackSourceKind.ADAPTIVE -> {
-                    val bestVideo = pickBestForClient(
-                        capVideoHeight(playableVideo(streams.adaptiveVideo), maxVideoHeight),
-                        PREFERRED_SEPARATE_CLIENT
-                    )
-                    if (bestVideo != null) {
-                        Log.d(TAG, "Adaptive video: ${bestVideo.width}x${bestVideo.height} itag=${bestVideo.itag} codecs=${bestVideo.codecs} (maxHeight=$maxVideoHeight)")
-                    }
-                    val bestAudio = pickBestForClient(streams.adaptiveAudio, PREFERRED_SEPARATE_CLIENT)
-                    val resolvedVideo = bestVideo?.url?.let { resolveReachableUrl(it) }
-                    val resolvedAudio = if (resolvedVideo != null) bestAudio?.url?.let { resolveReachableUrl(it) } else null
-                    resolvedVideo?.let { TrailerPlaybackSource(videoUrl = it, audioUrl = resolvedAudio) }
-                }
-                // HLS manifest (1080p, always works for COPPA/kids content). The manifests are
-                // only downloaded here, once the adaptive streams have failed.
-                PlaybackSourceKind.HLS_MANIFEST ->
-                    pickBestManifest(streams.manifestUrls)
-                        ?.let { TrailerPlaybackSource(videoUrl = it.manifestUrl, audioUrl = null) }
-                // Progressive (combined video+audio, usually low quality)
-                PlaybackSourceKind.PROGRESSIVE ->
-                    sortCandidates(streams.progressive).firstOrNull()?.url?.let { resolveReachableUrl(it) }
-                        ?.let { TrailerPlaybackSource(videoUrl = it, audioUrl = null) }
-            }
-            if (source != null) return source
-        }
-        return null
-    }
-
-    private fun pickBestManifest(manifestUrls: List<Triple<String, Int, String>>): ManifestCandidate? {
         var bestManifest: ManifestCandidate? = null
         for ((clientKey, priority, manifestUrl) in manifestUrls) {
             try {
@@ -636,7 +574,44 @@ class InAppYouTubeExtractor internal constructor(
                 }
             }
         }
-        return bestManifest
+
+        val bestProgressive = sortCandidates(progressive).firstOrNull()
+
+        var videoOnly: TrailerPlaybackSource? = null
+        for (kind in sourcePreference(singleUrl)) {
+            kotlinx.coroutines.yield()
+            val source = when (kind) {
+                // Probe every client's top candidates in parallel and take the best reachable
+                // pair. Token-free clients (visionos) win here even when gated clients score
+                // higher, because gated URLs fail the reachability probe.
+                PlaybackSourceKind.ADAPTIVE -> {
+                    val chosenVideo = probeBestPerClient(
+                        trailerVideoCandidates(adaptiveVideo, trailerVideoLimits)
+                    )
+                    val chosenAudio = if (chosenVideo != null) {
+                        probeBestPerClient(adaptiveAudio, preferClient = chosenVideo.client)
+                    } else null
+                    chosenVideo?.let {
+                        Log.d(TAG, "Trailer adaptive: ${it.client}/${it.height}p/${it.codec} " +
+                            "audio=${chosenAudio?.client ?: "none"}")
+                        val adaptive = TrailerPlaybackSource(videoUrl = it.url, audioUrl = chosenAudio?.url)
+                        if (chosenAudio == null) videoOnly = adaptive
+                        adaptive.takeIf { chosenAudio != null }
+                    }
+                }
+                // HLS manifest (1080p, always works for COPPA/kids content)
+                PlaybackSourceKind.HLS_MANIFEST ->
+                    bestManifest?.let { TrailerPlaybackSource(videoUrl = it.manifestUrl, audioUrl = null) }
+                // Progressive (combined video+audio, usually low quality)
+                PlaybackSourceKind.PROGRESSIVE ->
+                    bestProgressive?.url?.let { resolveReachableUrl(it) }
+                        ?.let { TrailerPlaybackSource(videoUrl = it, audioUrl = null) }
+            }
+            if (source != null) return ExtractionAttempt(source)
+        }
+        videoOnly?.let { return ExtractionAttempt(it) }
+
+        return ExtractionAttempt(null)
     }
 
     private fun extractVideoId(input: String): String? {
@@ -874,6 +849,8 @@ class InAppYouTubeExtractor internal constructor(
     internal fun sortCandidates(items: List<StreamCandidate>): List<StreamCandidate> {
         return items.sortedWith(
             compareBy<StreamCandidate> { if (it.isDefaultAudioTrack) 0 else 1 }
+                .thenByDescending { it.height }
+                .thenBy { trailerVideoCodecRank(it.codec) }
                 .thenByDescending { it.score }
                 .thenBy { if (it.hasN) 1 else 0 }
                 .thenBy { containerPreference(it.ext) }
@@ -889,44 +866,33 @@ class InAppYouTubeExtractor internal constructor(
         }
     }
 
-    /**
-     * Drops the streams the trailer player can't show, which it would play as audio over a black
-     * screen:
-     *  - HDR. Trailers render through a TextureView, which has no HDR output, and the SHIELD's
-     *    VP9 decoder fails outright on YouTube's 10-bit HDR streams. YouTube also serves an SDR
-     *    version, so nothing is lost.
-     *  - Codecs, profiles or sizes this device has no decoder for, such as 4K AV1 on most TV boxes.
-     * When none is left, the adaptive source is skipped and the HLS manifest or a progressive file
-     * is used instead.
-     */
-    internal fun playableVideo(items: List<StreamCandidate>): List<StreamCandidate> =
-        items.filter { candidate ->
-            if (candidate.isHdr) return@filter false
-            val codecs = candidate.codecs ?: return@filter true
-            canDecodeVideo(codecs, candidate.width, candidate.height, candidate.fps)
+    private suspend fun probeBestPerClient(
+        candidates: List<StreamCandidate>,
+        preferClient: String? = null,
+        perClientDepth: Int = 2
+    ): StreamCandidate? {
+        val toProbe = candidates.groupBy { it.client }
+            .flatMap { (_, list) -> sortCandidates(list).take(perClientDepth) }
+        if (toProbe.isEmpty()) return null
+        val results = java.util.Collections.synchronizedList(mutableListOf<StreamCandidate>())
+        val probeScope = CoroutineScope(Dispatchers.IO)
+        try {
+            val jobs = toProbe.map { cand ->
+                probeScope.launch {
+                    val resolved = resolveReachableUrl(cand.url)
+                    if (resolved != null) results.add(cand.copy(url = resolved))
+                }
+            }
+            withTimeoutOrNull(2_500L) { jobs.forEach { it.join() } }
+        } finally {
+            probeScope.cancel()
         }
-
-    /** HDR by its transfer function (PQ or HLG), or by YouTube's "HDR" quality label. */
-    private fun isHdrFormat(format: Map<*, *>): Boolean {
-        val transfer = format.mapValue("colorInfo")?.stringValue("transferCharacteristics").orEmpty()
-        return transfer.contains("SMPTEST2084") ||
-            transfer.contains("ARIB_STD_B67") ||
-            format.stringValue("qualityLabel").orEmpty().contains("HDR", ignoreCase = true)
-    }
-
-    /** Streams within the 16:9 box of [maxHeight], or all of them when none fits. */
-    internal fun capVideoHeight(items: List<StreamCandidate>, maxHeight: Int): List<StreamCandidate> {
-        if (maxHeight == Int.MAX_VALUE) return items
-        val maxWidth = maxHeight * 16 / 9
-        return items.filter { it.height <= maxHeight && it.width <= maxWidth }.ifEmpty { items }
-    }
-
-    private fun pickBestForClient(items: List<StreamCandidate>, clientKey: String): StreamCandidate? {
-        val sameClient = items.filter { it.client == clientKey }
-        if (sameClient.isNotEmpty()) {
-            return sortCandidates(sameClient).firstOrNull()
+        val reachable = results.toList()
+        if (reachable.isEmpty()) return null
+        if (preferClient != null) {
+            sortCandidates(reachable.filter { it.client == preferClient }).firstOrNull()?.let { return it }
         }
-        return sortCandidates(items).firstOrNull()
+        return sortCandidates(reachable).firstOrNull()
     }
 
     /**

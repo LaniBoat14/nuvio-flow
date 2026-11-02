@@ -224,10 +224,15 @@ class StreamRepositoryPluginIsolationTest {
                 tmdbService = tmdbService,
                 debridStreamPresentation = presentation,
                 localDebridAvailabilityService = availability,
+                healthStore = mockk(relaxed = true),
                 serverStreams = mockk {
                     every { isNativeRequest(any()) } returns false
                     every { revision } returns 0
                     every { sources(any(), any(), any(), any(), any()) } returns emptyList()
+                    every { logSkippedSources(any(), any(), any(), any()) } returns Unit
+                },
+                playerSettingsDataStore = mockk {
+                    every { playerSettings } returns flowOf(com.nuvio.tv.data.local.PlayerSettings())
                 }
             ),
             api = api,

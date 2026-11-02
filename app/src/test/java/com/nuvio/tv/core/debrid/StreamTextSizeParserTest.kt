@@ -28,6 +28,39 @@ class StreamTextSizeParserTest {
     }
 
     @Test
+    fun `parses binary unit spellings like AIOStreams writes them`() {
+        assertEquals(
+            (1.44 * 1024 * 1024 * 1024).toLong(),
+            StreamTextSizeParser.sizeBytesFromText("📦 1.44 GiB 📊 3.81 Mbps")
+        )
+        assertEquals(
+            (5.71 * 1024 * 1024 * 1024).toLong(),
+            StreamTextSizeParser.sizeBytesFromText("5.71GiB")
+        )
+        assertEquals(700L * 1024 * 1024, StreamTextSizeParser.sizeBytesFromText("700 MiB"))
+        assertEquals(
+            (1.2 * 1024 * 1024 * 1024 * 1024).toLong(),
+            StreamTextSizeParser.sizeBytesFromText("1.2 tib")
+        )
+        assertEquals(512L * 1024, StreamTextSizeParser.sizeBytesFromText("512 KiB"))
+    }
+
+    @Test
+    fun `GB and GiB give the same size`() {
+        assertEquals(
+            StreamTextSizeParser.sizeBytesFromText("5.9 GB"),
+            StreamTextSizeParser.sizeBytesFromText("5.9 GiB")
+        )
+    }
+
+    @Test
+    fun `bitrates are not read as sizes`() {
+        assertNull(StreamTextSizeParser.sizeBytesFromText("15.2 Mbps"))
+        assertNull(StreamTextSizeParser.sizeBytesFromText("15.2 MiBps"))
+        assertNull(StreamTextSizeParser.sizeBytesFromText("640 kbit"))
+    }
+
+    @Test
     fun `parses comma decimal separator`() {
         assertEquals(
             (2.4 * 1024 * 1024 * 1024).toLong(),

@@ -87,6 +87,7 @@ class HomeEnrichmentRetryTest {
 
         viewModel.onItemFocusPipeline(item(itemId))
         awaitCalls(calls, expected = 1, what = "the first focus should have attempted one fetch")
+        awaitCalls(backgroundCalls, expected = 1, what = "a failed enrichment still warms the detail cache")
 
         // The addon comes back. Focus has to move away and back, which is what a remote does.
         reachable.set(true)
@@ -112,9 +113,11 @@ class HomeEnrichmentRetryTest {
         focusAndSettle(viewModel, item(otherId))
         focusAndSettle(viewModel, item(itemId))
         assertEquals("a resolved item must not be refetched", 2, calls.get())
+        // Reuse belongs to the repository's cache, so the pipeline asks it again on each settled
+        // focus: five focuses here, five requests, and never more than one per focus.
         assertEquals(
-            "the background detail prefetch runs once per distinct item, not once per focus",
-            2,
+            "the background detail prefetch asks the repository once per settled focus",
+            5,
             backgroundCalls.get()
         )
     }
@@ -138,6 +141,7 @@ class HomeEnrichmentRetryTest {
         }
         val tmdbMetadataService = mockk<TmdbMetadataService>(relaxed = true) {
             coEvery { fetchEnrichment(any(), any(), any()) } returns mockk<TmdbEnrichment>(relaxed = true)
+            coEvery { fetchHomeHero(any(), any(), any()) } returns mockk<TmdbEnrichment>(relaxed = true)
         }
         val viewModel = newViewModel(repository, tmdbService, tmdbMetadataService)
         viewModel.currentTmdbSettings = TmdbSettings(enabled = true, modernHomeEnabled = true)
@@ -162,7 +166,7 @@ class HomeEnrichmentRetryTest {
             "the external retry resolved, so it should now be cached too",
             itemId in viewModel.prefetchedExternalMetaIds
         )
-        coVerify(exactly = 1) { tmdbMetadataService.fetchEnrichment(eq("1399"), any(), any()) }
+        coVerify(exactly = 1) { tmdbMetadataService.fetchHomeHero(eq("1399"), any(), any()) }
     }
 
     /**
@@ -254,6 +258,7 @@ class HomeEnrichmentRetryTest {
         }
         val tmdbMetadataService = mockk<TmdbMetadataService>(relaxed = true) {
             coEvery { fetchEnrichment(any(), any(), any()) } returns mockk<TmdbEnrichment>(relaxed = true)
+            coEvery { fetchHomeHero(any(), any(), any()) } returns mockk<TmdbEnrichment>(relaxed = true)
         }
         val viewModel = newViewModel(repository, tmdbService, tmdbMetadataService)
         viewModel.currentTmdbSettings = TmdbSettings(enabled = true, modernHomeEnabled = true)
@@ -263,7 +268,7 @@ class HomeEnrichmentRetryTest {
         focusAndSettle(viewModel, item(itemId))
 
         assertEquals("external already resolved, so it is not fetched again", 0, calls.get())
-        coVerify(exactly = 0) { tmdbMetadataService.fetchEnrichment(any(), any(), any()) }
+        coVerify(exactly = 0) { tmdbMetadataService.fetchHomeHero(any(), any(), any()) }
     }
 
     @Test
@@ -334,12 +339,16 @@ class HomeEnrichmentRetryTest {
     }
 
     /**
-     * The background detail prefetch calls the same method with the parameter's default. It is not
-     * counted, but it still needs a flow that terminates, or its first {} throws into the view
-     * model scope and kotlinx-coroutines-test reports it against the next test to run.
+     * The background detail prefetch asks the item's own addon first when external enrichment is
+     * off, and otherwise calls getMetaFromAllAddons with the parameter's default. Both need a flow
+     * that terminates, or the prefetch's first {} throws into the view model scope and
+     * kotlinx-coroutines-test reports it against the next test to run.
      */
     private fun newMetaRepository(backgroundCalls: AtomicInteger = AtomicInteger()): MetaRepository =
         mockk(relaxed = true) {
+            every { getMeta(any(), any(), any()) } answers {
+                flowOf(NetworkResult.Error("source prefetch, not part of this test"))
+            }
             coEvery { getMetaFromAllAddons(any(), any(), isNull()) } answers {
                 backgroundCalls.incrementAndGet()
                 flowOf(NetworkResult.Error("background prefetch, not part of this test"))
@@ -466,6 +475,10 @@ class HomeEnrichmentRetryTest {
             cwEnrichmentCache = cwEnrichmentCache,
             profileManager = profileManager,
             tvRecommendationManager = mockk(relaxed = true),
+            homeRefreshSignal = mockk(relaxed = true),
+            prefetchSelectionSupplier = mockk(relaxed = true),
+            streamRepository = mockk(relaxed = true),
+            trailerSettingsDataStore = mockk(relaxed = true),
             serverCatalog = mockk(relaxed = true)
         )
         // The pipeline defers everything while the startup grace period is active, and TMDB is

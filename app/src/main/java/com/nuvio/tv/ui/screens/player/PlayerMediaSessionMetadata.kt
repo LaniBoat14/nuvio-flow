@@ -6,6 +6,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
+import com.nuvio.tv.core.logging.redactedUrlForLog
 
 /**
  * Builds a [MediaMetadata] from the current playback information so that
@@ -91,7 +92,7 @@ internal fun PlayerRuntimeController.updateMediaSessionMetadata() {
         Log.d(
             PlayerRuntimeController.TAG,
             "MediaSession metadata updated: title=${metadata.title}, " +
-                "artist=${metadata.artist}, mediaId=$mediaId, artworkUri=${metadata.artworkUri}"
+                "artist=${metadata.artist}, mediaId=$mediaId, artworkUri=${metadata.artworkUri?.toString().redactedUrlForLog()}"
         )
     } catch (e: Exception) {
         Log.w(PlayerRuntimeController.TAG, "Failed to update MediaSession metadata", e)
@@ -109,7 +110,7 @@ internal fun PlayerRuntimeController.releaseMediaSession() {
 internal fun PlayerRuntimeController.installExoMediaSession(player: ExoPlayer) {
     releaseMediaSession()
     if (player.canAdvertiseSession()) {
-        currentMediaSession = MediaSession.Builder(context, SafeMediaSessionPlayer(player)).build()
+        currentMediaSession = MediaSession.Builder(context, SafeMediaSessionPlayer(player, onSessionPlayPause)).build()
         updateMediaSessionMetadata()
     }
 }
@@ -128,6 +129,7 @@ internal fun PlayerRuntimeController.installMpvMediaSession() {
             commandTarget = object : MpvMediaSessionCommandTarget {
                 override fun setPlayWhenReady(playWhenReady: Boolean) {
                     if (!isUsingMpvEngine() || isInBackground) return
+                    onSessionPlayPause(playWhenReady)
                     if (isPlaybackCurrentlyPlaying() != playWhenReady) {
                         // MediaSession commands should behave like ExoPlayer's session controls:
                         // change playback without treating the button press as an in-player gesture.

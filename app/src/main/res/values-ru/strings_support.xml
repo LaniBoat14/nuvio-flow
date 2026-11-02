@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="support_nuvio_button">Поддержать команду Nuvio</string>
+    <string name="support_nuvio_title">Поддержать команду Nuvio</string>
+    <string name="support_nuvio_subtitle">Nuvio Arc создан на основе официального приложения Nuvio. Членство идёт команде Nuvio, помогает оплачивать серверы и разработку и сохраняет основное приложение бесплатным для всех.</string>
+    <string name="support_nuvio_perk_themes">Градиентные темы</string>
+    <string name="support_nuvio_perk_themes_desc">Дополнительные градиентные темы или своя собственная.</string>
+    <string name="support_nuvio_perk_backgrounds">Фоны профиля</string>
+    <string name="support_nuvio_perk_backgrounds_desc">Из коллекции спонсоров или своё изображение.</string>
+    <string name="support_nuvio_perk_avatars">Аватары участников</string>
+    <string name="support_nuvio_perk_avatars_desc">Дополнительные наборы аватаров для ваших профилей.</string>
+    <string name="support_nuvio_perk_badge">Значок спонсора</string>
+    <string name="support_nuvio_perk_badge_desc">Небольшой значок на аккаунте и профилях.</string>
+    <string name="support_nuvio_perk_discord">Роль в Discord</string>
+    <string name="support_nuvio_perk_discord_desc">Подключите Discord на сайте, чтобы получить роль.</string>
+    <string name="support_nuvio_perk_votes">Голос в решениях о приложении</string>
+    <string name="support_nuvio_perk_votes_desc">Только для уровня Спонсор Plus.</string>
+    <string name="support_nuvio_perk_votes_chip">Голосования (Спонсор Plus)</string>
+    <string name="support_nuvio_plus_tag">Plus</string>
+    <string name="support_nuvio_on_tag">Вкл</string>
+    <string name="support_nuvio_already_title">Уже спонсор?</string>
+    <string name="support_nuvio_already_body">Войдите на этом телевизоре с тем же аккаунтом Nuvio. Привилегии включатся сами.</string>
+    <string name="support_nuvio_scan_title">Отсканируйте, чтобы открыть nuvio.tv/support</string>
+    <string name="support_nuvio_scan_body">Откроется на телефоне. На этом телевизоре ничего не оплачивается.</string>
+    <string name="support_nuvio_patreon_manage">Отсканируйте, чтобы изменить или отменить в Patreon</string>
+    <string name="support_nuvio_pass_until">Ваше членство действует до %1$s.</string>
+    <string name="support_nuvio_sign_in">Войти на этом телевизоре</string>
+    <string name="support_nuvio_close">Закрыть</string>
+    <string name="support_nuvio_checking">Проверка членства…</string>
+    <string name="support_nuvio_thanks_title">Спасибо за поддержку команды Nuvio</string>
+    <string name="support_nuvio_thanks_subtitle">Привилегии привязаны к аккаунту Nuvio, поэтому работают и в Nuvio Arc, и в официальном приложении.</string>
+    <string name="support_nuvio_gentle_eyebrow">Спонсор Nuvio</string>
+    <string name="support_nuvio_gentle_title">В Nuvio Arc всё работает без членства</string>
+    <string name="support_nuvio_gentle_body">У этого аккаунта нет членства спонсора Nuvio, и это совершенно нормально. Если когда-нибудь захотите помочь команде Nuvio, членство даёт несколько бонусов:</string>
+    <string name="support_nuvio_gentle_unavailable">Сейчас не удалось проверить членство. В Nuvio Arc всё работает и без него. Если хотите помочь команде Nuvio, членство даёт несколько бонусов:</string>
+    <string name="support_nuvio_gentle_scan">Посмотреть варианты на телефоне</string>
+    <string name="support_nuvio_paid_check_again">Только что оплатили? Проверить снова</string>
+    <string name="support_nuvio_no_thanks">Нет, спасибо</string>
+    <string name="support_nuvio_no_thanks_hint">«Нет, спасибо» скрывает кнопку поддержки и закрытые темы спонсоров на этом телевизоре. Вернуть их можно в Настройки › О приложении.</string>
+    <string name="support_nuvio_thanks_note_title">Привилегии уровня %1$s включены</string>
+    <string name="support_nuvio_thanks_note_body">Спасибо за поддержку команды Nuvio.</string>
+    <string name="support_nuvio_theme_locked">Спонсор</string>
+    <string name="support_nuvio_suggestions_setting">Предложения поддержать команду Nuvio</string>
+    <string name="support_nuvio_suggestions_setting_subtitle">Показывать кнопку «Поддержать команду Nuvio» и закрытые темы спонсоров.</string>
+    <string name="cd_support_nuvio_qr">QR-код для nuvio.tv/support</string>
+</resources>

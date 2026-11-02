@@ -22,7 +22,6 @@ val ffmpegBuildDir = localPath("FFMPEG_BUILD_DIR")
 android {
     namespace = "androidx.media3.decoder.ffmpeg"
     compileSdk = 36
-    buildToolsVersion = "36.0.0"
     ndkVersion = "29.0.14206865"
 
     defaultConfig {
@@ -49,10 +48,12 @@ android {
         buildConfig = false
     }
 
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/jni/CMakeLists.txt")
-            version = "3.22.1"
+    if (!ffmpegSourceDir.isNullOrBlank() && !ffmpegBuildDir.isNullOrBlank()) {
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/jni/CMakeLists.txt")
+                version = "3.22.1"
+            }
         }
     }
 }

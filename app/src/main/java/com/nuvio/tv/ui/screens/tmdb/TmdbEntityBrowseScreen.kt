@@ -84,8 +84,8 @@ import com.nuvio.tv.ui.components.EmptyScreenState
 import com.nuvio.tv.ui.components.ErrorState
 import com.nuvio.tv.ui.components.GridContentCard
 import com.nuvio.tv.ui.components.LoadingIndicator
-import com.nuvio.tv.ui.components.PosterCardDefaults
 import com.nuvio.tv.ui.components.PosterCardStyle
+import com.nuvio.tv.ui.components.rememberPosterCardStyle
 import com.nuvio.tv.ui.screens.detail.requestFocusAfterFrames
 import kotlinx.coroutines.flow.distinctUntilChanged
 
@@ -138,6 +138,7 @@ fun TmdbEntityBrowseScreen(
                         watchedMovieIds = watchedMovieIds,
                         watchedSeriesIds = watchedSeriesIds,
                         posterCardCornerRadiusDp = viewModel.posterCardCornerRadiusDp.collectAsStateWithLifecycle().value,
+                        posterCardWidthDp = viewModel.posterCardWidthDp.collectAsStateWithLifecycle().value,
                         onNavigateToDetail = onNavigateToDetail,
                         onItemLongPress = { item ->
                             viewModel.posterOptions.show(item, null)
@@ -169,6 +170,7 @@ private fun TmdbEntityBrowseContent(
     watchedMovieIds: Set<String>,
     watchedSeriesIds: Set<String>,
     posterCardCornerRadiusDp: Int = 12,
+    posterCardWidthDp: Int = 126,
     onNavigateToDetail: (itemId: String, itemType: String, addonBaseUrl: String?) -> Unit,
     onItemLongPress: (MetaPreview) -> Unit = {},
     onLoadMoreRail: (TmdbEntityMediaType, TmdbEntityRailType) -> Unit
@@ -190,9 +192,7 @@ private fun TmdbEntityBrowseContent(
         }
     }
 
-    val posterCardStyle = PosterCardDefaults.Style.copy(
-        cornerRadius = posterCardCornerRadiusDp.dp
-    )
+    val posterCardStyle = rememberPosterCardStyle(posterCardWidthDp, posterCardCornerRadiusDp)
     val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
     val localDensity = LocalDensity.current
     val focusedItemIndexByRail = remember { mutableMapOf<String, Int>() }

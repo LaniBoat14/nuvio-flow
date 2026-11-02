@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="arc_card_clear_original" type="drawable">@mipmap/banner_card_clear_original</item>
+    <item name="arc_card_clear_arctic_blue" type="drawable">@mipmap/banner_card_clear_arctic_blue</item>
+    <item name="arc_card_clear_emerald" type="drawable">@mipmap/banner_card_clear_emerald</item>
+    <item name="arc_card_clear_rose_gold" type="drawable">@mipmap/banner_card_clear_rose_gold</item>
+    <item name="arc_card_clear_copper" type="drawable">@mipmap/banner_card_clear_copper</item>
+    <item name="arc_card_clear_graphite" type="drawable">@mipmap/banner_card_clear_graphite</item>
+    <item name="arc_card_clear_gold" type="drawable">@mipmap/banner_card_clear_gold</item>
+    <item name="arc_card_clear_jade" type="drawable">@mipmap/banner_card_clear_jade</item>
+    <item name="arc_card_clear_glass" type="drawable">@mipmap/banner_card_clear_glass</item>
+    <item name="arc_card_clear_crimson" type="drawable">@mipmap/banner_card_clear_crimson</item>
+    <item name="arc_card_clear_ocean" type="drawable">@mipmap/banner_card_clear_ocean</item>
+    <item name="arc_card_clear_violet" type="drawable">@mipmap/banner_card_clear_violet</item>
+    <item name="arc_card_clear_emerald_green" type="drawable">@mipmap/banner_card_clear_emerald_green</item>
+    <item name="arc_card_clear_amber" type="drawable">@mipmap/banner_card_clear_amber</item>
+    <item name="arc_card_clear_rose" type="drawable">@mipmap/banner_card_clear_rose</item>
+    <item name="arc_card_clear_white" type="drawable">@mipmap/banner_card_clear_white</item>
+    <item name="arc_lettering_clear_original" type="drawable">@mipmap/banner_lettering_clear_original</item>
+    <item name="arc_lettering_clear_arctic_blue" type="drawable">@mipmap/banner_lettering_clear_arctic_blue</item>
+    <item name="arc_lettering_clear_emerald" type="drawable">@mipmap/banner_lettering_clear_emerald</item>
+    <item name="arc_lettering_clear_rose_gold" type="drawable">@mipmap/banner_lettering_clear_rose_gold</item>
+    <item name="arc_lettering_clear_copper" type="drawable">@mipmap/banner_lettering_clear_copper</item>
+    <item name="arc_lettering_clear_graphite" type="drawable">@mipmap/banner_lettering_clear_graphite</item>
+    <item name="arc_lettering_clear_gold" type="drawable">@mipmap/banner_lettering_clear_gold</item>
+    <item name="arc_lettering_clear_jade" type="drawable">@mipmap/banner_lettering_clear_jade</item>
+    <item name="arc_lettering_clear_glass" type="drawable">@mipmap/banner_lettering_clear_glass</item>
+    <item name="arc_lettering_clear_crimson" type="drawable">@mipmap/banner_lettering_clear_crimson</item>
+    <item name="arc_lettering_clear_ocean" type="drawable">@mipmap/banner_lettering_clear_ocean</item>
+    <item name="arc_lettering_clear_violet" type="drawable">@mipmap/banner_lettering_clear_violet</item>
+    <item name="arc_lettering_clear_emerald_green" type="drawable">@mipmap/banner_lettering_clear_emerald_green</item>
+    <item name="arc_lettering_clear_amber" type="drawable">@mipmap/banner_lettering_clear_amber</item>
+    <item name="arc_lettering_clear_rose" type="drawable">@mipmap/banner_lettering_clear_rose</item>
+    <item name="arc_lettering_clear_white" type="drawable">@mipmap/banner_lettering_clear_white</item>
+</resources>

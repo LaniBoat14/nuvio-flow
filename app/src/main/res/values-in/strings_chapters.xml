@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="player_chapters">Bab</string>
+    <string name="player_chapter_number">Bab %1$d</string>
+    <string name="player_chapter_named">Bab %1$d: %2$s</string>
+    <string name="player_chapter_now_playing">Sedang diputar</string>
+    <string name="playback_chapters">Bab di Pemutar</string>
+    <string name="playback_chapters_sub">Untuk film yang punya bab: tombol Bab, penanda di linimasa, dan nama bab</string>
+</resources>

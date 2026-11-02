@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.player
 
+import androidx.compose.runtime.withFrameMillis
 import com.nuvio.tv.data.repository.SkipInterval
 
 internal const val SKIP_INTRO_AUTO_HIDE_TIMEOUT_MS = 10_000
@@ -75,3 +76,31 @@ internal fun skipIntroAutoHideRemainingMs(
     progress: Float,
     totalTimeoutMs: Int = SKIP_INTRO_AUTO_HIDE_TIMEOUT_MS,
 ): Int = ((1f - progress.coerceIn(0f, 1f)) * totalTimeoutMs).toInt().coerceAtLeast(1)
+
+internal fun skipIntroAutoHideProgress(
+    startProgress: Float,
+    elapsedMs: Long,
+    totalTimeoutMs: Int = SKIP_INTRO_AUTO_HIDE_TIMEOUT_MS,
+): Float = (startProgress.coerceIn(0f, 1f) + elapsedMs.toFloat() / totalTimeoutMs).coerceIn(0f, 1f)
+
+/**
+ * Counts the auto-hide down from [startProgress] on the frame clock and reports every step through
+ * [onProgress]; returns once the timeout has passed. Plain frame time, so the system's animator
+ * duration scale (Off, 0.5x, 10x) cannot shorten or stretch it.
+ */
+internal suspend fun runSkipIntroAutoHide(
+    startProgress: Float,
+    totalTimeoutMs: Int = SKIP_INTRO_AUTO_HIDE_TIMEOUT_MS,
+    onProgress: (Float) -> Unit,
+) {
+    val remainingMs = skipIntroAutoHideRemainingMs(startProgress, totalTimeoutMs)
+    val startedAtMs = withFrameMillis { it }
+    while (true) {
+        val elapsedMs = withFrameMillis { it } - startedAtMs
+        if (elapsedMs >= remainingMs) {
+            onProgress(1f)
+            return
+        }
+        onProgress(skipIntroAutoHideProgress(startProgress, elapsedMs, totalTimeoutMs))
+    }
+}

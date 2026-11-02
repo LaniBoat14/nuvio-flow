@@ -16,7 +16,7 @@ internal object PlaybackStatsDv {
 
     /** True when the last video decoder was the Amlogic dual-layer port (native FEL route), not a fallback. */
     fun isNativeFelDecoder(decoderName: String?): Boolean =
-        decoderName?.startsWith("amstream_dves_hevc") == true
+        decoderName?.startsWith(com.nuvio.tv.core.player.amlfel.AmlDvFelVideoRenderer.DECODER_NAME) == true
 
     /** Which layers of a Profile 7 stream reached the picture, or null when the playback does not say. */
     fun dv7LayersUsed(modeEffective: String?, decoderName: String?, converted: Boolean): Dv7Layers? = when {

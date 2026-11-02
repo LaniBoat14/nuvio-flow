@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="player_chapters">Hoofdstukken</string>
+    <string name="player_chapter_number">Hoofdstuk %1$d</string>
+    <string name="player_chapter_named">Hoofdstuk %1$d: %2$s</string>
+    <string name="player_chapter_now_playing">Wordt afgespeeld</string>
+    <string name="playback_chapters">Hoofdstukken in de speler</string>
+    <string name="playback_chapters_sub">Voor films met hoofdstukken: een knop Hoofdstukken, markeringen op de tijdlijn en de naam van het hoofdstuk</string>
+</resources>

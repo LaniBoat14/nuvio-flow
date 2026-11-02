@@ -63,6 +63,10 @@ private val badgeImageRequestCache = HashMap<String, ImageRequest>(32)
 
 private var badgeImageLoader: ImageLoader? = null
 
+internal fun releaseBadgeImageMemory() {
+    badgeImageLoader?.memoryCache?.clear()
+}
+
 private fun getBadgeImageLoader(context: android.content.Context): ImageLoader {
     badgeImageLoader?.let { return it }
     val loader = ImageLoader.Builder(context.applicationContext)
@@ -118,31 +122,40 @@ fun StreamBadgeChips(
         1f
     }
 
-    Box(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .clipToBounds()
-            .then(if (focused) Modifier.basicMarquee(iterations = Int.MAX_VALUE, velocity = MarqueeVelocity, spacing = MarqueeSpacing(36.dp)) else Modifier)
             .then(if (chipAlpha < 1f) Modifier.alpha(chipAlpha) else Modifier),
-        contentAlignment = Alignment.CenterStart
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
     ) {
-        Row(
-            modifier = Modifier.wrapContentWidth(align = Alignment.Start, unbounded = true),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
-        ) {
-            imageBadges.forEach { badge ->
-                StreamImportedBadgeChip(badge = badge)
+        if (imageBadges.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .clipToBounds()
+                    .then(if (focused) Modifier.basicMarquee(iterations = Int.MAX_VALUE, velocity = MarqueeVelocity, spacing = MarqueeSpacing(36.dp)) else Modifier),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Row(
+                    modifier = Modifier.wrapContentWidth(align = Alignment.Start, unbounded = true),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
+                ) {
+                    imageBadges.forEach { badge ->
+                        StreamImportedBadgeChip(badge = badge)
+                    }
+                }
             }
-            if (sizeBytes != null) {
-                StreamFileSizeBadge(bytes = sizeBytes)
-            }
+        }
+        if (sizeBytes != null) {
+            StreamFileSizeBadge(bytes = sizeBytes)
         }
     }
 }
 
 @Composable
-private fun StreamFileSizeBadge(bytes: Long) {
+internal fun StreamFileSizeBadge(bytes: Long, sourceLine: Boolean = false) {
     val gbTemplate = stringResource(R.string.unit_size_gb)
     val mbTemplate = stringResource(R.string.unit_size_mb)
     val label = remember(bytes, gbTemplate, mbTemplate) {
@@ -154,6 +167,10 @@ private fun StreamFileSizeBadge(bytes: Long) {
             val mib = bytes.toDouble() / (1024.0 * 1024.0)
             mbTemplate.format(round(mib).toInt().toString())
         }
+    }
+    if (sourceLine) {
+        SourceMetadataChip(stringResource(R.string.streams_size, label))
+        return
     }
     Box(
         modifier = Modifier

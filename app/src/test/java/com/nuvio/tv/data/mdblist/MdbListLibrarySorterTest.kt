@@ -189,6 +189,7 @@ class MdbListLibrarySorterTest {
         h.http.reply(body = """{"added":{"movies":1}}""")
         h.libraryService(backgroundScope).applyMembershipChanges(LibraryEntryInput("tmdb:1", "movie", "Movie"),
             ListMembershipChanges(mapOf(MDBLIST_TEST_LIST_KEY to true)))
+        runCurrent()
         assertEquals(mapOf(MDBLIST_WATCHLIST_KEY to orders), h.repository.currentSnapshot()!!.library!!.addedOrders)
     }
 

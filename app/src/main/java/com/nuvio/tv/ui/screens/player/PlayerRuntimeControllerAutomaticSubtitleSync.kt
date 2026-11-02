@@ -456,13 +456,14 @@ private fun Subtitle.toAutoSyncCandidate() = AutoSyncSubtitleCandidate(
 
 /** Why AutoSync kept the original timing, in the fewest words that still help the viewer. */
 private fun Context.buildAutoSyncFailureToast(analysisOutcome: AutoSyncAnalysisOutcome?): String =
-    getString(
-        when (analysisOutcome) {
-            AutoSyncAnalysisOutcome.NO_SUBTITLE_TRACKS,
-            AutoSyncAnalysisOutcome.NO_USABLE_REFERENCE,
-            -> R.string.autosync_toast_failed_no_reference
-            AutoSyncAnalysisOutcome.SUBTITLE_UNAVAILABLE,
-            null,
-            -> R.string.autosync_toast_failed
-        },
-    )
+    getString(autoSyncFailureMessage(analysisOutcome))
+
+/** "No embedded subtitles" only when the video's track list was read and has none. */
+internal fun autoSyncFailureMessage(analysisOutcome: AutoSyncAnalysisOutcome?): Int =
+    when (analysisOutcome) {
+        AutoSyncAnalysisOutcome.NO_SUBTITLE_TRACKS -> R.string.autosync_toast_failed_no_reference
+        AutoSyncAnalysisOutcome.NO_USABLE_REFERENCE,
+        AutoSyncAnalysisOutcome.SUBTITLE_UNAVAILABLE,
+        null,
+        -> R.string.autosync_toast_failed
+    }

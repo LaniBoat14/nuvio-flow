@@ -2,6 +2,7 @@
 
 package com.nuvio.tv.ui.screens.stream
 
+import com.nuvio.tv.core.util.TtffTrace
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -77,8 +78,6 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import com.nuvio.tv.core.party.PartySource
-import com.nuvio.tv.core.party.matches
 import com.nuvio.tv.ui.util.contentTextDirection
 import com.nuvio.tv.ui.util.toAbsoluteAlignment
 import com.nuvio.tv.ui.util.localizeEpisodeTitle
@@ -103,11 +102,21 @@ import com.nuvio.tv.ui.components.StreamsSkeletonList
 import com.nuvio.tv.ui.screens.player.LoadingOverlay
 import com.nuvio.tv.ui.screens.player.AddonFilterChips
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.v2.appearance.LocalV2Appearance
+import com.nuvio.tv.ui.v2.components.GlassRole
+import com.nuvio.tv.ui.v2.components.nuvioGlass
+import com.nuvio.tv.ui.v2.components.nuvioV2Focus
+import com.nuvio.tv.ui.v2.components.v2GlassSource
+import com.nuvio.tv.ui.v2.components.nuvioRemoteClick
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.nuvio.tv.ui.navigation.sourceSelectionRestoreTarget
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.delay as coroutineDelay
 import kotlinx.coroutines.launch as coroutineLaunch
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -144,8 +153,6 @@ fun StreamScreen(
         resumePercent != null -> stringResource(R.string.stream_resume_from_percent, (resumePercent * 100).toInt())
         else -> null
     }
-    val sharedStream by viewModel.sharedStream.collectAsStateWithLifecycle()
-    val partySource by viewModel.partySource.collectAsStateWithLifecycle()
     val playerPreference by viewModel.playerPreference.collectAsStateWithLifecycle(
         initialValue = null
     )
@@ -163,6 +170,7 @@ fun StreamScreen(
         initialValue = StreamBadgeSettings()
     )
     val scope = rememberCoroutineScope()
+    var streamSelectJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val streamHazeState = remember {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) HazeState() else null
     }
@@ -210,11 +218,15 @@ fun StreamScreen(
         onStreamSelected(playbackInfo)
     }
 
-    fun routePlayback(playbackInfo: StreamPlaybackInfo) {
+    suspend fun routePlayback(playbackInfo: StreamPlaybackInfo) {
         if (openExternalInBrowser(playbackInfo)) {
             return
         }
-        val preference = if (playbackInfo.isServerStream) PlayerPreference.INTERNAL else playerPreference ?: return
+        val preference = if (playbackInfo.isServerStream) {
+            PlayerPreference.INTERNAL
+        } else {
+            awaitPlayerPreference(playerPreference, viewModel.playerPreference)
+        }
         if (playbackInfo.isTorrent && !p2pEnabled) {
             pendingTorrentPlaybackInfo = playbackInfo
             showP2pConsentDialog = true
@@ -236,7 +248,7 @@ fun StreamScreen(
         }
     }
 
-    fun routeAutoPlay(playbackInfo: StreamPlaybackInfo) {
+    suspend fun routeAutoPlay(playbackInfo: StreamPlaybackInfo) {
         if (openExternalInBrowser(playbackInfo)) {
             viewModel.onEvent(StreamScreenEvent.OnAutoPlayConsumed)
             return
@@ -247,7 +259,11 @@ fun StreamScreen(
             showP2pConsentDialog = true
             return
         }
-        val preference = if (playbackInfo.isServerStream) PlayerPreference.INTERNAL else playerPreference ?: return
+        val preference = if (playbackInfo.isServerStream) {
+            PlayerPreference.INTERNAL
+        } else {
+            awaitPlayerPreference(playerPreference, viewModel.playerPreference)
+        }
         if (uiState.isDirectAutoPlayFlow) {
             // Respect player preference even in direct autoplay flow
             when (preference) {
@@ -304,6 +320,9 @@ fun StreamScreen(
             viewModel.onEvent(StreamScreenEvent.OnAutoPlayConsumed)
             return@LaunchedEffect
         }
+        // Warm the connection while the player is built. Placed after the
+        // abort check above so a cancelled auto-next chain fires no request.
+        viewModel.prewarmSelectedPlayback(playbackInfo)
         // Torrent streams have url == null but carry an infoHash; navigation
         // builds a torrent:// sentinel URL downstream.
         if (playbackInfo.url != null || (playbackInfo.isTorrent && playbackInfo.infoHash != null)) {
@@ -345,7 +364,7 @@ fun StreamScreen(
                 return@LaunchedEffect
             }
             // Respect player preference for cached links too
-            when (playerPreference ?: return@LaunchedEffect) {
+            when (awaitPlayerPreference(playerPreference, viewModel.playerPreference)) {
                 PlayerPreference.EXTERNAL -> {
                     val url = playbackInfo.url ?: if (playbackInfo.isTorrent) "torrent://${playbackInfo.infoHash}" else null
                     url?.let { urlString ->
@@ -461,6 +480,7 @@ fun StreamScreen(
                     resumeText = resumeText,
                     error = uiState.error,
                     streams = uiState.filteredStreams,
+                    partyFingerprint = viewModel.partyFingerprint,
                     availableAddons = uiState.availableAddons,
                     sourceChips = uiState.sourceChips,
                     selectedAddonFilter = uiState.selectedAddonFilter,
@@ -470,19 +490,9 @@ fun StreamScreen(
                     hasBadgeRules = streamBadgeSettings.rules.hasImport,
                     onAddonFilterSelected = { viewModel.onEvent(StreamScreenEvent.OnAddonFilterSelected(it)) },
                     onRefresh = { viewModel.onEvent(StreamScreenEvent.OnRefresh) },
-                    sharedStream = sharedStream,
-                    partySource = partySource,
-                    onSharedStreamSelected = { stream ->
-                        scope.coroutineLaunch {
-                            val playbackInfo = viewModel.resolveStreamForPlayback(stream, saveLastLink = false)
-                            if (playbackInfo != null) {
-                                pendingRestoreOnResume = true
-                                routePlayback(playbackInfo)
-                                viewModel.onEvent(StreamScreenEvent.OnAutoPlayConsumed)
-                            }
-                        }
-                    },
                     onStreamSelected = { stream ->
+                        if (streamSelectJob?.isActive == true) return@RightStreamSection
+                        TtffTrace.begin("press_manual")
                         val currentIndex = uiState.filteredStreams.indexOfFirst {
                             it.url == stream.url &&
                                 it.infoHash == stream.infoHash &&
@@ -493,16 +503,20 @@ fun StreamScreen(
                         if (currentIndex >= 0) {
                             focusedStreamIndex = currentIndex
                         }
-                        scope.coroutineLaunch {
+                        streamSelectJob = scope.coroutineLaunch {
                             val playbackInfo = viewModel.resolveStreamForPlayback(stream)
                             if (playbackInfo != null) {
                                 viewModel.persistBingeGroupForStream(stream)
+                                // Warm the connection while the player is built.
+                                viewModel.prewarmSelectedPlayback(playbackInfo)
                                 pendingRestoreOnResume = true
                                 routePlayback(playbackInfo)
                                 viewModel.onEvent(StreamScreenEvent.OnAutoPlayConsumed)
                             }
                         }
                     },
+                    // Focus is not playback consent. Even direct URLs may trigger a grab.
+                    onStreamFocused = {},
                     focusedStreamIndex = focusedStreamIndex,
                     shouldRestoreFocusedStream = restoreFocusedStream,
                     onRestoreFocusedStreamHandled = {
@@ -552,7 +566,7 @@ fun StreamScreen(
                     showP2pConsentDialog = false
                     val info = pendingTorrentPlaybackInfo!!
                     pendingTorrentPlaybackInfo = null
-                    routePlayback(info)
+                    scope.coroutineLaunch { routePlayback(info) }
                 },
                 onDismiss = {
                     showP2pConsentDialog = false
@@ -566,8 +580,13 @@ fun StreamScreen(
     }
 }
 
+internal suspend fun awaitPlayerPreference(
+    current: PlayerPreference?,
+    source: Flow<PlayerPreference>
+): PlayerPreference = current ?: source.first()
+
 @Composable
-internal fun StreamBackdrop(
+private fun StreamBackdrop(
     backdrop: String?,
     isLoading: Boolean,
     modifier: Modifier = Modifier
@@ -590,6 +609,8 @@ internal fun StreamBackdrop(
 
     Box(modifier = modifier
         .fillMaxSize()
+        .v2GlassSource()
+        .background(backgroundColor)
         .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
     ) {
         // Backdrop image
@@ -751,6 +772,8 @@ private fun LeftContentSection(
     }
 }
 
+private const val FOCUS_WARM_SETTLE_MS = 500L
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun RightStreamSection(
@@ -758,6 +781,7 @@ private fun RightStreamSection(
     resumeText: String?,
     error: String?,
     streams: List<Stream>,
+    partyFingerprint: com.nuvio.tv.core.party.PartyFingerprint? = null,
     availableAddons: List<String>,
     sourceChips: List<SourceChipItem>,
     selectedAddonFilter: String?,
@@ -767,10 +791,9 @@ private fun RightStreamSection(
     hasBadgeRules: Boolean = false,
     onAddonFilterSelected: (String?) -> Unit,
     onRefresh: () -> Unit,
-    sharedStream: SharedStream?,
-    partySource: PartySource?,
-    onSharedStreamSelected: (Stream) -> Unit,
     onStreamSelected: (Stream) -> Unit,
+    // Fired when a row has held focus past the settle debounce.
+    onStreamFocused: (Stream) -> Unit = {},
     focusedStreamIndex: Int,
     shouldRestoreFocusedStream: Boolean,
     onRestoreFocusedStreamHandled: () -> Unit,
@@ -838,6 +861,7 @@ private fun RightStreamSection(
             firstStreamFocusRequestId += 1
         }
     }
+    // When on "All" tab and new results arrive above the focused stream, move focus to the new first item.
     var trackedFirstStreamKey by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(firstStreamKey, selectedAddonFilter, listHasFocus) {
         if (selectedAddonFilter != null) {
@@ -868,6 +892,38 @@ private fun RightStreamSection(
         modifier = modifier
             .padding(top = NuvioTheme.spacing.xxxl, end = NuvioTheme.spacing.xxxl, bottom = NuvioTheme.spacing.xxxl)
     ) {
+        resumeText?.let { text ->
+            StreamResumePill(text = text, modifier = Modifier.padding(bottom = NuvioTheme.spacing.sm))
+        }
+        val chipRowHeight = NuvioTheme.spacing.huge
+
+        // Addon filter chips
+        Box(modifier = Modifier.height(chipRowHeight)) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = sourceChips.isNotEmpty() || (!isLoading && availableAddons.isNotEmpty()),
+                enter = fadeIn(animationSpec = tween(300)),
+                exit = fadeOut(animationSpec = tween(300))
+            ) {
+                AddonFilterChips(
+                    addons = availableAddons,
+                    sourceChips = sourceChips,
+                    selectedAddon = selectedAddonFilter,
+                    isStillFetching = sourceChips.any { it.status == SourceChipStatus.LOADING },
+                    onRefresh = {
+                        userMovedFromFirstResult = false
+                        firstResultFocusAssigned = false
+                        onRefresh()
+                    },
+                    onAddonSelected = { onAddonFilterSelected(it) },
+                    externalFocusRequesters = chipFocusRequesters,
+                    externalOrderedNames = orderedAddonNames,
+                    debugTag = "StreamScreen"
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
+
         androidx.compose.animation.AnimatedVisibility(
             visible = enter,
             enter = fadeIn(animationSpec = tween(260)) +
@@ -877,11 +933,12 @@ private fun RightStreamSection(
                 ),
             exit = fadeOut(animationSpec = tween(120))
         ) {
-            // Content area – resume pill, addon chips and streams all inside one card
-            Column(
+            // Content area
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .clip(RoundedCornerShape(NuvioTheme.radii.xl))
+                    .then(if (LocalV2Appearance.current != null) Modifier.nuvioGlass(GlassRole.PANEL) else Modifier
                     .then(
                         if (hazeState != null) {
                             Modifier.hazeEffect(state = hazeState) {
@@ -899,105 +956,84 @@ private fun RightStreamSection(
                         } else {
                             NuvioTheme.colors.BackgroundCard.copy(alpha = 0.5f)
                         }
-                    )
-                    .padding(NuvioTheme.spacing.lg)
+                    )                    ),
+                contentAlignment = Alignment.Center
             ) {
-                resumeText?.let { text ->
-                    Box(
-                        modifier = Modifier
-                            .padding(bottom = NuvioTheme.spacing.sm)
-                            .height(36.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(NuvioTheme.colors.BackgroundCard)
-                            .border(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border, RoundedCornerShape(20.dp))
-                            .padding(horizontal = NuvioTheme.spacing.lg),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = text,
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = NuvioTheme.colors.TextPrimary
+                when {
+                    isLoading -> {
+                        LoadingState(showAddonLogo = showAddonLogo)
+                    }
+                    error != null -> {
+                        ErrorState(
+                            message = error,
+                            onRetry = onRetry
                         )
                     }
-                }
-
-                // Addon filter chips
-                Box(modifier = Modifier.height(NuvioTheme.spacing.huge)) {
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = sourceChips.isNotEmpty() || (!isLoading && availableAddons.isNotEmpty()),
-                        enter = fadeIn(animationSpec = tween(300)),
-                        exit = fadeOut(animationSpec = tween(300))
-                    ) {
-                        AddonFilterChips(
-                            addons = availableAddons,
-                            sourceChips = sourceChips,
-                            selectedAddon = selectedAddonFilter,
-                            isStillFetching = sourceChips.any { it.status == SourceChipStatus.LOADING },
-                            onRefresh = {
-                                userMovedFromFirstResult = false
-                                firstResultFocusAssigned = false
-                                onRefresh()
+                    streams.isEmpty() -> {
+                        EmptyState()
+                    }
+                    else -> {
+                        StreamsList(
+                            streams = streams,
+                            partyFingerprint = partyFingerprint,
+                            onStreamSelected = onStreamSelected,
+                            onStreamFocused = onStreamFocused,
+                            focusedStreamIndex = focusedStreamIndex,
+                            shouldRestoreFocusedStream = shouldRestoreFocusedStream,
+                            onRestoreFocusedStreamHandled = onRestoreFocusedStreamHandled,
+                            firstStreamFocusRequestId = firstStreamFocusRequestId,
+                            availableAddons = availableAddons,
+                            selectedAddonFilter = selectedAddonFilter,
+                            showFileSizeBadges = showFileSizeBadges,
+                            showAddonLogo = showAddonLogo,
+                            badgePlacement = badgePlacement,
+                            hasBadgeRules = hasBadgeRules,
+                            onAddonFilterSelected = { onAddonFilterSelectedGuarded(it) },
+                            orderedAddonNames = orderedAddonNames,
+                            onRequestChipFocus = { requestChipFocus(it) },
+                            onUserNavigatedFromFirstResult = {
+                                userMovedFromFirstResult = true
                             },
-                            onAddonSelected = { onAddonFilterSelected(it) },
-                            externalFocusRequesters = chipFocusRequesters,
-                            externalOrderedNames = orderedAddonNames,
-                            debugTag = "StreamScreen"
+                            onFocusedStreamKeyChanged = { focusedStreamKeyInList = it },
+                            onFocusChanged = { listHasFocus = it },
+                            onExpandStreams = onExpandStreams
                         )
-                    }
-                }
-
-                // Streams / loading / error / empty
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    when {
-                        sharedStream == null && isLoading -> {
-                            LoadingState(showAddonLogo = showAddonLogo)
-                        }
-                        sharedStream == null && error != null -> {
-                            ErrorState(
-                                message = error,
-                                onRetry = onRetry
-                            )
-                        }
-                        sharedStream == null && streams.isEmpty() -> {
-                            EmptyState()
-                        }
-                        else -> {
-                            StreamsList(
-                                streams = streams,
-                                sharedStream = sharedStream,
-                                partySource = partySource,
-                                onSharedStreamSelected = onSharedStreamSelected,
-                                onStreamSelected = onStreamSelected,
-                                focusedStreamIndex = focusedStreamIndex,
-                                shouldRestoreFocusedStream = shouldRestoreFocusedStream,
-                                onRestoreFocusedStreamHandled = onRestoreFocusedStreamHandled,
-                                firstStreamFocusRequestId = firstStreamFocusRequestId,
-                                availableAddons = availableAddons,
-                                selectedAddonFilter = selectedAddonFilter,
-                                showFileSizeBadges = showFileSizeBadges,
-                                showAddonLogo = showAddonLogo,
-                                badgePlacement = badgePlacement,
-                                hasBadgeRules = hasBadgeRules,
-                                onAddonFilterSelected = { onAddonFilterSelectedGuarded(it) },
-                                orderedAddonNames = orderedAddonNames,
-                                onRequestChipFocus = { requestChipFocus(it) },
-                                onUserNavigatedFromFirstResult = {
-                                    userMovedFromFirstResult = true
-                                },
-                                onFocusedStreamKeyChanged = { focusedStreamKeyInList = it },
-                                onFocusChanged = { listHasFocus = it },
-                                onExpandStreams = onExpandStreams
-                            )
-                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun StreamResumePill(text: String, modifier: Modifier = Modifier) {
+    if (LocalV2Appearance.current != null) {
+        val shape = remember { RoundedCornerShape(12.dp) }
+        Box(
+            modifier = modifier
+                .nuvioGlass(GlassRole.CONTROL, shape = shape)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = text, style = MaterialTheme.typography.labelLarge, color = NuvioTheme.colors.TextPrimary)
+        }
+        return
+    }
+    val shape = RoundedCornerShape(20.dp)
+    Box(
+        modifier = modifier
+            .height(36.dp)
+            .clip(shape)
+            .background(NuvioTheme.colors.BackgroundCard)
+            .border(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border, shape)
+            .padding(horizontal = NuvioTheme.spacing.lg),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = NuvioTheme.colors.TextPrimary
+        )
     }
 }
 
@@ -1036,6 +1072,11 @@ private fun ErrorState(
 
         Spacer(modifier = Modifier.height(NuvioTheme.spacing.xl))
 
+        if (LocalV2Appearance.current != null) {
+            com.nuvio.tv.ui.v2.components.NuvioFilterPill(onClick = onRetry) {
+                Text(stringResource(R.string.stream_retry), color = NuvioTheme.colors.TextPrimary)
+            }
+        } else {
         var isFocused by remember { mutableStateOf(false) }
         Card(
             onClick = onRetry,
@@ -1059,6 +1100,7 @@ private fun ErrorState(
                 color = if (isFocused) NuvioTheme.colors.OnSecondary else NuvioTheme.colors.TextPrimary,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
             )
+        }
         }
     }
 }
@@ -1092,10 +1134,9 @@ private fun EmptyState() {
 @Composable
 private fun StreamsList(
     streams: List<Stream>,
-    sharedStream: SharedStream?,
-    partySource: PartySource?,
-    onSharedStreamSelected: (Stream) -> Unit,
+    partyFingerprint: com.nuvio.tv.core.party.PartyFingerprint? = null,
     onStreamSelected: (Stream) -> Unit,
+    onStreamFocused: (Stream) -> Unit = {},
     focusedStreamIndex: Int = 0,
     shouldRestoreFocusedStream: Boolean = false,
     onRestoreFocusedStreamHandled: () -> Unit = {},
@@ -1134,9 +1175,6 @@ private fun StreamsList(
         streamFocusRequesters.keys.retainAll(validKeys)
     }
     var firstCardHasFocus by remember(firstStreamKey) { mutableStateOf(false) }
-    val sharedFocusRequester = remember { FocusRequester() }
-    var sharedCardHasFocus by remember { mutableStateOf(false) }
-    val partySourceLabel = stringResource(R.string.party_source)
 
     var focusedStreamKey by remember { mutableStateOf<String?>(null) }
     val prevStreamKeysRef = remember { mutableStateOf(streamKeys) }
@@ -1172,22 +1210,8 @@ private fun StreamsList(
         streamListState.scrollToItem(0)
         repeat(30) {
             withFrameNanos { }
-            if (firstCardHasFocus || sharedCardHasFocus) return@LaunchedEffect
-            runCatching {
-                if (sharedStream != null) sharedFocusRequester.requestFocus()
-                else streamFocusRequesters.getValue(requestedKey).requestFocus()
-            }
-        }
-    }
-
-    val sharedStreamUrl = sharedStream?.stream?.url
-    LaunchedEffect(sharedStreamUrl) {
-        if (sharedStreamUrl == null || shouldRestoreFocusedStream) return@LaunchedEffect
-        streamListState.scrollToItem(0)
-        repeat(30) {
-            withFrameNanos { }
-            if (sharedCardHasFocus) return@LaunchedEffect
-            runCatching { sharedFocusRequester.requestFocus() }
+            if (firstCardHasFocus) return@LaunchedEffect
+            runCatching { streamFocusRequesters.getValue(requestedKey).requestFocus() }
         }
     }
 
@@ -1224,6 +1248,7 @@ private fun StreamsList(
         state = streamListState,
         modifier = Modifier
             .fillMaxSize()
+            .padding(NuvioTheme.spacing.lg)
             .onFocusChanged { onFocusChanged(it.hasFocus) }
             .onKeyEvent { event ->
                 if (event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onKeyEvent false
@@ -1263,49 +1288,19 @@ private fun StreamsList(
         verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
         contentPadding = PaddingValues(start = NuvioTheme.spacing.sm, end = NuvioTheme.spacing.sm, top = NuvioTheme.spacing.sm, bottom = NuvioTheme.spacing.xxl)
     ) {
-        sharedStream?.let { shared ->
-            item(key = "party_shared_stream") {
-                Column(
-                    modifier = Modifier.padding(vertical = NuvioTheme.spacing.xs),
-                    verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
-                ) {
-                    Text(
-                        text = stringResource(R.string.party_shared_by, shared.hostName),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = NuvioTheme.colors.TextSecondary,
-                        modifier = Modifier.padding(start = NuvioTheme.spacing.xs)
-                    )
-                    StreamCard(
-                        stream = shared.stream,
-                        showFileSizeBadges = showFileSizeBadges,
-                        showAddonLogo = showAddonLogo,
-                        badgePlacement = badgePlacement,
-                        onClick = { onSharedStreamSelected(shared.stream) },
-                        focusRequester = sharedFocusRequester,
-                        onFocusChanged = { focused -> sharedCardHasFocus = focused },
-                        onUpKey = {
-                            val idx = if (selectedAddonFilter == null) 1
-                                      else orderedAddonNames.indexOf(selectedAddonFilter) + 2
-                            onRequestChipFocus(idx)
-                        },
-                        outlined = true
-                    )
-                }
-            }
-        }
         itemsIndexed(streams, key = { index, _ ->
             streamKeys[index]
         }) { index, stream ->
             Box(modifier = Modifier.padding(vertical = NuvioTheme.spacing.xs)) {
-                val isPartySource = partySource?.matches(stream) == true
                 StreamCard(
                     stream = stream,
+                    partyLabel = partyFingerprint?.let { partyMatchLabel(it, stream) },
                     showFileSizeBadges = showFileSizeBadges,
                     showAddonLogo = showAddonLogo,
                     badgePlacement = badgePlacement,
                     reserveBadgeSpace = hasBadgeRules && stream.badges.isEmpty(),
-                    label = partySourceLabel.takeIf { isPartySource },
                     onClick = { onStreamSelected(stream) },
+                    onFocusSettled = { onStreamFocused(stream) },
                     focusRequester = when {
                         shouldRestoreFocusedStream && index == focusedStreamIndex.coerceIn(0, (streams.lastIndex).coerceAtLeast(0)) -> restoreFocusRequester
                         else -> streamFocusRequesters.getOrPut(streamKeys[index]) { FocusRequester() }
@@ -1319,7 +1314,7 @@ private fun StreamsList(
                             firstCardHasFocus = focused
                         }
                     },
-                    onUpKey = if (index == 0 && sharedStream == null) {{
+                    onUpKey = if (index == 0) {{
                         val idx = if (selectedAddonFilter == null) 1
                                   else orderedAddonNames.indexOf(selectedAddonFilter) + 2
                         onRequestChipFocus(idx)
@@ -1334,16 +1329,16 @@ private fun StreamsList(
 @Composable
 private fun StreamCard(
     stream: Stream,
+    partyLabel: String? = null,
     showFileSizeBadges: Boolean,
     showAddonLogo: Boolean,
     badgePlacement: StreamBadgePlacement,
     reserveBadgeSpace: Boolean = false,
     onClick: () -> Unit,
+    onFocusSettled: () -> Unit = {},
     focusRequester: FocusRequester? = null,
     onFocusChanged: ((Boolean) -> Unit)? = null,
-    onUpKey: (() -> Unit)? = null,
-    outlined: Boolean = false,
-    label: String? = null
+    onUpKey: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -1355,6 +1350,18 @@ private fun StreamCard(
     val hasGradientFocusRing = NuvioTheme.palette.focusRingGradient.size > 1
 
     var isFocused by remember { mutableStateOf(false) }
+
+    // When this row holds focus past the settle debounce, warm its
+    // connection. The effect is keyed on isFocused, so moving focus away
+    // cancels the pending delay before it fires -- arrowing through the list
+    // warms nothing; settling on a row for 500 ms warms it. The warm itself
+    // (and its direct-only scoping) is decided by the screen-level handler.
+    LaunchedEffect(isFocused) {
+        if (isFocused) {
+            kotlinx.coroutines.delay(FOCUS_WARM_SETTLE_MS)
+            onFocusSettled()
+        }
+    }
 
     // Track whether badges transitioned from empty to non-empty while this
     // card was composed. If they did, we animate. If the card enters
@@ -1377,8 +1384,9 @@ private fun StreamCard(
         }
     }
 
-    Card(
+    StreamResultSurface(
         onClick = onClick,
+        focused = isFocused,
         modifier = Modifier
             .fillMaxWidth()
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
@@ -1390,24 +1398,7 @@ private fun StreamCard(
                 if (event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN && event.key == Key.DirectionUp) {
                     onUpKey(); true
                 } else false
-            } else Modifier),
-        colors = CardDefaults.colors(
-            containerColor = NuvioTheme.colors.BackgroundElevated,
-            focusedContainerColor = NuvioTheme.colors.BackgroundElevated
-        ),
-        shape = CardDefaults.shape(shape = cardShape),
-        border = if (hasGradientFocusRing) {
-            CardDefaults.border(
-                border = outlineBorder(outlined, cardShape),
-                focusedBorder = Border(
-                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                    shape = cardShape
-                )
-            )
-        } else {
-            CardDefaults.border(border = outlineBorder(outlined, cardShape))
-        },
-        scale = CardDefaults.scale(focusedScale = 1f)
+            } else Modifier)
     ) {
         Row(
             modifier = Modifier
@@ -1420,6 +1411,13 @@ private fun StreamCard(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
             ) {
+                if (partyLabel != null) {
+                    Text(
+                        text = partyLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NuvioTheme.extendedColors.textSecondary
+                    )
+                }
                 if (hasBadges && badgePlacement == StreamBadgePlacement.TOP) {
                     if (stream.badges.isNotEmpty() || (showFileSizeBadges && stream.behaviorHints?.videoSize != null)) {
                         StreamBadgeChips(
@@ -1435,32 +1433,19 @@ private fun StreamCard(
                     Spacer(modifier = Modifier.height(NuvioTheme.spacing.xxs))
                 }
 
-                Row(
+                Text(
+                    text = streamName,
                     modifier = Modifier.align(streamName.contentTextDirection().toAbsoluteAlignment()),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
-                ) {
-                    Text(
-                        text = streamName,
-                        modifier = Modifier.weight(1f, fill = false),
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            textDirection = streamName.contentTextDirection()
-                        ),
-                        color = NuvioTheme.colors.TextPrimary
-                    )
-                    if (label != null) {
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = NuvioTheme.colors.Secondary,
-                            maxLines = 1
-                        )
-                    }
-                }
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        textDirection = streamName.contentTextDirection()
+                    ),
+                    color = NuvioTheme.colors.TextPrimary
+                )
 
                 stream.pluginSourceName?.takeIf { it.isNotBlank() && it != stream.addonName }?.let { sourceName ->
                     Text(
                         text = sourceName,
+                        modifier = Modifier.align(sourceName.contentTextDirection().toAbsoluteAlignment()),
                         style = MaterialTheme.typography.labelSmall.copy(
                             textDirection = sourceName.contentTextDirection()
                         ),
@@ -1530,16 +1515,35 @@ private fun StreamCard(
     }
 }
 
+@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun outlineBorder(outlined: Boolean, shape: RoundedCornerShape): Border =
-    if (outlined) {
-        Border(
-            border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Primary.copy(alpha = 0.65f)),
-            shape = shape
-        )
+private fun StreamResultSurface(
+    onClick: () -> Unit,
+    focused: Boolean,
+    modifier: Modifier,
+    content: @Composable () -> Unit
+) {
+    if (LocalV2Appearance.current != null) {
+        val shape = remember { RoundedCornerShape(18.dp) }
+        Box(
+            modifier.nuvioV2Focus(focused, shape, stationary = true)
+                .nuvioGlass(GlassRole.CONTROL, focused, shape)
+                .nuvioRemoteClick(onClick)
+                .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+        ) { content() }
     } else {
-        Border.None
+        Card(
+            onClick = onClick,
+            modifier = modifier,
+            colors = CardDefaults.colors(
+                containerColor = NuvioTheme.colors.BackgroundElevated,
+                focusedContainerColor = NuvioTheme.colors.BackgroundElevated
+            ),
+            shape = CardDefaults.shape(shape = RoundedCornerShape(NuvioTheme.radii.md)),
+            scale = CardDefaults.scale(focusedScale = 1f)
+        ) { content() }
     }
+}
 
 @Composable
 internal fun PlayerChoiceDialog(
@@ -1551,6 +1555,31 @@ internal fun PlayerChoiceDialog(
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
+    }
+
+    if (LocalV2Appearance.current != null) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+            Column(
+                Modifier.width(400.dp).nuvioGlass(GlassRole.MODAL).padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    stringResource(R.string.stream_player_picker_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = NuvioTheme.colors.TextPrimary
+                )
+                com.nuvio.tv.ui.components.PanelActionRow(
+                    label = stringResource(R.string.stream_player_internal),
+                    onClick = onInternalSelected,
+                    focusRequester = focusRequester
+                )
+                com.nuvio.tv.ui.components.PanelActionRow(
+                    label = stringResource(R.string.stream_player_external),
+                    onClick = onExternalSelected
+                )
+            }
+        }
+        return
     }
 
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {

@@ -1,5 +1,6 @@
 package com.nuvio.tv.data.mediaserver.mediabrowser
 
+import com.nuvio.tv.core.tracking.TrackingExternalIds
 import com.nuvio.tv.data.mediaserver.ServerCandidate
 import com.nuvio.tv.data.mediaserver.ServerCapability
 import com.nuvio.tv.data.mediaserver.ServerEpisode
@@ -8,6 +9,7 @@ import com.nuvio.tv.data.mediaserver.ServerFailure
 import com.nuvio.tv.data.mediaserver.ServerIndexEntry
 import com.nuvio.tv.data.mediaserver.ServerItemDetails
 import com.nuvio.tv.data.mediaserver.ServerLibrary
+import com.nuvio.tv.data.mediaserver.ServerLocation
 import com.nuvio.tv.data.mediaserver.ServerMediaKind
 import com.nuvio.tv.data.mediaserver.ServerPage
 import com.nuvio.tv.data.mediaserver.ServerPlayMethod
@@ -15,13 +17,26 @@ import com.nuvio.tv.data.mediaserver.ServerPlaybackEvent
 import com.nuvio.tv.data.mediaserver.ServerPlaybackEventType
 import com.nuvio.tv.data.mediaserver.ServerPlaybackRequest
 import com.nuvio.tv.data.mediaserver.ServerPlaybackSession
+import com.nuvio.tv.data.mediaserver.ServerPlaybackTarget
 import com.nuvio.tv.data.mediaserver.ServerPlayerCapabilities
 import com.nuvio.tv.data.mediaserver.ServerProvider
+import com.nuvio.tv.data.mediaserver.ServerQuickConnect
+import com.nuvio.tv.data.mediaserver.ServerResumeEntry
+import com.nuvio.tv.data.mediaserver.ServerChapter
+import com.nuvio.tv.data.mediaserver.ServerSegment
+import com.nuvio.tv.data.mediaserver.ServerSegmentKind
+import com.nuvio.tv.data.mediaserver.ServerBytes
 import com.nuvio.tv.data.mediaserver.ServerSession
 import com.nuvio.tv.data.mediaserver.ServerSignIn
+import com.nuvio.tv.data.mediaserver.ServerSignInIssue
+import com.nuvio.tv.data.mediaserver.ServerThumbnailFormat
 import com.nuvio.tv.data.mediaserver.ServerTitle
 import com.nuvio.tv.data.mediaserver.ServerTitleQuery
 import com.nuvio.tv.data.mediaserver.ServerTrack
+import com.nuvio.tv.data.mediaserver.searchEach
+import com.nuvio.tv.data.mediaserver.ServerTrickplay
+import com.nuvio.tv.data.mediaserver.ServerTrickplaySet
+import com.nuvio.tv.data.mediaserver.ServerUserState
 import com.nuvio.tv.data.mediaserver.verifiedTitleMatches
 import com.nuvio.tv.domain.model.Subtitle
 import java.net.URLDecoder
@@ -29,9 +44,6 @@ import java.util.concurrent.ConcurrentHashMap
 import okhttp3.OkHttpClient
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.DeserializationStrategy
 
 internal data class Endpoint(
@@ -45,11 +57,11 @@ internal abstract class MediaBrowserProvider(
     http: OkHttpClient,
     identity: ServerClientIdentity
 ) : ServerProvider {
-    override val capabilities: Set<ServerCapability> = ServerCapability.entries.toSet()
+    override val capabilities: Set<ServerCapability> = ServerCapability.entries.toSet() - ServerCapability.HOME_ROWS
 
-    private val client = MediaBrowserClient(authorizationHeader, http, identity)
-    private val aioStreamsServers = ConcurrentHashMap<String, Boolean>()
+    protected val client = MediaBrowserClient(authorizationHeader, http, identity)
     private val libraryGenres = ConcurrentHashMap<String, String>()
+    private val aioStreamsServers = ConcurrentHashMap<String, Boolean>()
 
     protected abstract fun viewsEndpoint(userId: String): Endpoint
 
@@ -63,29 +75,108 @@ internal abstract class MediaBrowserProvider(
 
     internal open fun isSupported(info: PublicInfo): Boolean = isSupportedVersion(info.version)
 
+    protected open fun transcodingProfiles(): List<TranscodingProfile> = listOf(
+        TranscodingProfile(
+            container = "ts",
+            videoCodec = "hevc,h264",
+            audioCodec = "ac3,eac3,aac,mp3",
+            protocol = "hls"
+        )
+    )
+
+    protected open fun codecProfiles(): List<CodecProfile> = emptyList()
+
+    protected open val tokenQueryName: String = "api_key"
+
     override suspend fun signIn(address: String, username: String, password: String): ServerSignIn {
         val normalized = normalizeServerAddress(address, apiPath) ?: throw ServerException(ServerFailure.NOT_FOUND)
         val (baseUrl, info) = publicInfo(normalized)
         if (!isSupported(info)) throw ServerException(ServerFailure.UNSUPPORTED)
-        val response = client.execute(
-            method = "POST",
-            baseUrl = baseUrl + apiPath,
-            path = "/Users/AuthenticateByName",
-            token = null,
-            body = client.json.encodeToString(AuthRequest.serializer(), AuthRequest(username, password))
-        )
-        val result = client.json.decodeFromString(AuthResult.serializer(), response.body)
+        val response = try {
+            client.execute(
+                method = "POST",
+                baseUrl = baseUrl + apiPath,
+                path = "/Users/AuthenticateByName",
+                token = null,
+                body = client.json.encodeToString(AuthRequest.serializer(), AuthRequest(username, password))
+            )
+        } catch (error: ServerException) {
+            throw error.withSignInIssue()
+        }
+        return signInResult(response.body, baseUrl, serverName(info, baseUrl), info.id, username)
+    }
+
+    private fun signInResult(body: String, baseUrl: String, serverName: String, serverId: String?, username: String): ServerSignIn {
+        val result = client.json.decodeFromString(AuthResult.serializer(), body)
         val user = result.user ?: throw ServerException(ServerFailure.AUTH_REQUIRED)
         val token = result.accessToken?.takeIf { it.isNotBlank() } ?: throw ServerException(ServerFailure.AUTH_REQUIRED)
-        val serverId = result.serverId ?: info.id ?: throw ServerException(ServerFailure.FAILED)
         return ServerSignIn(
             address = baseUrl,
-            serverName = info.serverName?.takeIf { it.isNotBlank() } ?: baseUrl.toHttpUrl().host,
-            serverId = serverId,
+            serverName = serverName,
+            serverId = result.serverId ?: serverId ?: throw ServerException(ServerFailure.FAILED),
             userId = user.id,
             userName = user.name ?: username,
             token = token
         )
+    }
+
+    private fun serverName(info: PublicInfo, baseUrl: String): String =
+        info.serverName?.takeIf { it.isNotBlank() } ?: baseUrl.toHttpUrl().host
+
+    override suspend fun quickConnectStart(address: String): ServerQuickConnect? {
+        if (!supportsQuickConnect) throw ServerException(ServerFailure.UNSUPPORTED)
+        val normalized = normalizeServerAddress(address, apiPath) ?: throw ServerException(ServerFailure.NOT_FOUND)
+        val (baseUrl, info) = publicInfo(normalized)
+        if (!isSupported(info)) throw ServerException(ServerFailure.UNSUPPORTED)
+        val root = baseUrl + apiPath
+        val enabled = try {
+            client.execute("GET", root, "/QuickConnect/Enabled", token = null).body.trim().equals("true", ignoreCase = true)
+        } catch (error: ServerException) {
+            if (error.failure == ServerFailure.NOT_FOUND) false else throw error
+        }
+        if (!enabled) return null
+        val response = try {
+            client.execute("POST", root, "/QuickConnect/Initiate", token = null)
+        } catch (error: ServerException) {
+            if (error.failure == ServerFailure.AUTH_REQUIRED || error.failure == ServerFailure.NOT_FOUND) return null
+            throw error
+        }
+        val result = client.json.decodeFromString(QuickConnectResult.serializer(), response.body)
+        return ServerQuickConnect(
+            address = baseUrl,
+            serverName = serverName(info, baseUrl),
+            serverId = info.id,
+            code = result.code?.takeIf { it.isNotBlank() } ?: throw ServerException(ServerFailure.FAILED),
+            secret = result.secret?.takeIf { it.isNotBlank() } ?: throw ServerException(ServerFailure.FAILED),
+            expiresAtMs = System.currentTimeMillis() + QUICK_CONNECT_LIFETIME_MS
+        )
+    }
+
+    override suspend fun quickConnectApproved(ticket: ServerQuickConnect): Boolean {
+        val response = client.execute(
+            "GET",
+            ticket.address + apiPath,
+            "/QuickConnect/Connect",
+            token = null,
+            query = mapOf("secret" to ticket.secret)
+        )
+        return client.json.decodeFromString(QuickConnectResult.serializer(), response.body).authenticated
+    }
+
+    override suspend fun quickConnectSignIn(ticket: ServerQuickConnect): ServerSignIn {
+        val response = try {
+            client.execute(
+                method = "POST",
+                baseUrl = ticket.address + apiPath,
+                path = "/Users/AuthenticateWithQuickConnect",
+                token = null,
+                body = client.json.encodeToString(QuickConnectSecret.serializer(), QuickConnectSecret(ticket.secret))
+            )
+        } catch (error: ServerException) {
+            if (error.failure == ServerFailure.AUTH_REQUIRED) throw ServerException(ServerFailure.NOT_FOUND)
+            throw error
+        }
+        return signInResult(response.body, ticket.address, ticket.serverName, ticket.serverId, username = "")
     }
 
     private suspend fun publicInfo(baseUrl: String): Pair<String, PublicInfo> {
@@ -95,12 +186,31 @@ internal abstract class MediaBrowserProvider(
             val redirected = response.location
                 ?.substringBefore(apiPath + path)
                 ?.let { normalizeServerAddress(it, apiPath) }
-                ?.takeIf { it != baseUrl }
+                ?.takeIf { it != baseUrl && !dropsEncryption(baseUrl, it) }
                 ?: throw ServerException(ServerFailure.FAILED)
             val retried = client.execute("GET", redirected + apiPath, path, token = null)
-            return redirected to client.json.decodeFromString(PublicInfo.serializer(), retried.body)
+            return redirected to readPublicInfo(retried.body)
         }
-        return baseUrl to client.json.decodeFromString(PublicInfo.serializer(), response.body)
+        return baseUrl to readPublicInfo(response.body)
+    }
+
+    /** A website (or a server's web page) answers this request with a page instead of server details. */
+    private fun readPublicInfo(body: String): PublicInfo = try {
+        client.json.decodeFromString(PublicInfo.serializer(), body)
+    } catch (_: IllegalArgumentException) {
+        throw ServerException(ServerFailure.FAILED, issue = ServerSignInIssue.WEBSITE)
+    }
+
+    override suspend fun locate(address: String): ServerLocation? {
+        val normalized = normalizeServerAddress(address, apiPath) ?: return null
+        val (baseUrl, info) = try {
+            publicInfo(normalized)
+        } catch (_: ServerException) {
+            return null
+        } catch (_: kotlinx.serialization.SerializationException) {
+            return null
+        }
+        return ServerLocation(baseUrl, info.id)
     }
 
     override suspend fun signOut(session: ServerSession) {
@@ -152,13 +262,20 @@ internal abstract class MediaBrowserProvider(
         )
     )
 
+    /** Some libraries (AIOStreams catalogs) list nothing without a genre; their first genre opens them. */
     private suspend fun firstGenre(session: ServerSession, library: ServerLibrary): String? =
-        get(
-            session,
-            Endpoint("/Genres"),
-            ItemsResult.serializer(),
-            mapOf("parentId" to library.id, "userId" to session.userId, "limit" to "1")
-        ).items.firstOrNull()?.id
+        try {
+            get(
+                session,
+                Endpoint("/Genres"),
+                ItemsResult.serializer(),
+                mapOf("parentId" to library.id, "userId" to session.userId, "limit" to "1")
+            ).items.firstOrNull()?.id
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            null
+        }
 
     override suspend fun collectionPage(
         session: ServerSession,
@@ -191,34 +308,31 @@ internal abstract class MediaBrowserProvider(
         limit: Int
     ): List<ServerTitle> {
         val scopes = if (isAioStreams(session)) listOf(null) else libraries
-        val items = coroutineScope {
-            scopes.map { library ->
-                async {
-                    get(
-                        session,
-                        itemsEndpoint(session.userId),
-                        ItemsResult.serializer(),
-                        mapOf(
-                            "parentId" to library?.id,
-                            "recursive" to "true",
-                            "includeItemTypes" to kind.itemType(),
-                            "searchTerm" to query,
-                            "limit" to limit.toString(),
-                            "fields" to LIST_FIELDS,
-                            "imageTypeLimit" to "1",
-                            "enableImageTypes" to "Primary,Backdrop,Logo"
-                        )
-                    ).items
-                }
-            }.awaitAll().flatten()
+        val items = searchEach(scopes) { library ->
+            get(
+                session,
+                itemsEndpoint(session.userId),
+                ItemsResult.serializer(),
+                mapOf(
+                    "parentId" to library?.id,
+                    "recursive" to "true",
+                    "includeItemTypes" to kind.itemType(),
+                    "searchTerm" to query,
+                    "limit" to limit.toString(),
+                    "fields" to LIST_FIELDS,
+                    "imageTypeLimit" to "1",
+                    "enableImageTypes" to "Primary,Backdrop,Logo"
+                )
+            ).items
         }
         return items.mapNotNull(mapper(session)::title).distinctBy { it.preview.id }.take(limit)
     }
 
+    /** AIOStreams answers a search the same in every catalog it lists, so it is searched once, without a library. */
     private suspend fun isAioStreams(session: ServerSession): Boolean {
         aioStreamsServers[session.apiRoot]?.let { return it }
         val detected = try {
-            publicInfo(session.connection.address).second.aioStreams != null
+            publicInfo(session.address).second.aioStreams != null
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
@@ -228,7 +342,7 @@ internal abstract class MediaBrowserProvider(
         return detected
     }
 
-    override suspend fun resumeItems(session: ServerSession, limit: Int): List<ServerTitle> {
+    override suspend fun resumeItems(session: ServerSession, limit: Int): List<ServerResumeEntry> {
         val result = get(
             session,
             resumeEndpoint(session.userId),
@@ -238,18 +352,27 @@ internal abstract class MediaBrowserProvider(
                 "mediaTypes" to "Video",
                 "fields" to LIST_FIELDS,
                 "imageTypeLimit" to "1",
-                "enableImageTypes" to "Primary,Backdrop,Logo,Thumb"
+                "enableImageTypes" to "Primary,Backdrop,Logo,Thumb",
+                "enableUserData" to "true"
             )
         )
         val libraries = session.connection.selectedLibraries
+        val mapper = mapper(session)
         return result.items
-            .mapNotNull(mapper(session)::resumeTitle)
-            .filter { title ->
-                val kind = ServerMediaKind.fromContentType(title.preview.apiType)
+            .mapNotNull { item ->
+                val title = mapper.resumeTitle(item) ?: return@mapNotNull null
+                val state = mapper.userState(item) ?: return@mapNotNull null
+                ServerResumeEntry(title, state)
+            }
+            .filter { entry ->
+                val kind = ServerMediaKind.fromContentType(entry.title.preview.apiType)
                 kind != null && libraries.any { it.holds(kind) }
             }
-            .distinctBy { it.preview.id }
+            .distinctBy { it.title.preview.id }
     }
+
+    override suspend fun externalIds(session: ServerSession, itemId: String): TrackingExternalIds =
+        item(session, itemId, "ProviderIds").externalIds()
 
     override suspend fun details(session: ServerSession, itemId: String): ServerItemDetails {
         val item = item(session, itemId, DETAIL_FIELDS)
@@ -383,6 +506,114 @@ internal abstract class MediaBrowserProvider(
         return matches.singleOrNull()?.let { ServerEpisode(itemId = it.id, premiereDate = it.premiereDate) }
     }
 
+    override suspend fun episodeStates(session: ServerSession, seriesItemId: String): List<ServerUserState> {
+        val mapper = mapper(session)
+        return get(
+            session,
+            Endpoint("/Shows/${pathSegment(seriesItemId)}/Episodes"),
+            ItemsResult.serializer(),
+            mapOf(
+                "userId" to session.userId,
+                "enableImages" to "false",
+                "enableUserData" to "true"
+            )
+        ).items.filterNot { it.isMissing }.mapNotNull(mapper::userState)
+    }
+
+    override suspend fun segments(session: ServerSession, itemId: String, mediaSourceId: String?): List<ServerSegment> =
+        try {
+            loadSegments(session, itemId, mediaSourceId)
+        } catch (_: ServerException) {
+            emptyList()
+        }
+
+    protected open suspend fun loadSegments(session: ServerSession, itemId: String, mediaSourceId: String?): List<ServerSegment> =
+        get(session, Endpoint("/MediaSegments/${pathSegment(segmentItemId(itemId, mediaSourceId))}"), MediaSegmentsResult.serializer())
+            .items
+            .mapNotNull { segment ->
+                val kind = when (segment.type?.lowercase()) {
+                    "intro" -> ServerSegmentKind.INTRO
+                    "recap" -> ServerSegmentKind.RECAP
+                    "outro" -> ServerSegmentKind.OUTRO
+                    "preview" -> ServerSegmentKind.PREVIEW
+                    else -> return@mapNotNull null
+                }
+                val start = segment.startTicks ?: return@mapNotNull null
+                val end = segment.endTicks ?: return@mapNotNull null
+                ServerSegment(kind, start / TICKS_PER_MS, end / TICKS_PER_MS)
+            }
+
+    protected open fun segmentItemId(itemId: String, mediaSourceId: String?): String = itemId
+
+    /** Emby also lists its intro and credits markers as chapters; only plain chapters are kept. */
+    override suspend fun chapters(session: ServerSession, itemId: String, mediaSourceId: String?): List<ServerChapter> =
+        try {
+            item(session, itemId, "Chapters").chapters.mapNotNull { chapter ->
+                if (chapter.markerType != null && !chapter.markerType.equals("Chapter", ignoreCase = true)) {
+                    return@mapNotNull null
+                }
+                val start = chapter.startPositionTicks ?: return@mapNotNull null
+                ServerChapter(start / TICKS_PER_MS, chapter.name?.trim()?.takeIf { it.isNotEmpty() })
+            }
+        } catch (_: ServerException) {
+            emptyList()
+        }
+
+    override suspend fun trickplay(session: ServerSession, itemId: String, mediaSourceId: String): ServerTrickplaySet? {
+        if (thumbnailFormat != ServerThumbnailFormat.TRICKPLAY) return null
+        return trickplayLevels(item(session, itemId, "Trickplay").trickplay, itemId, mediaSourceId)
+    }
+
+    override suspend fun trickplaySheet(
+        session: ServerSession,
+        itemId: String,
+        mediaSourceId: String,
+        width: Int,
+        index: Int,
+        maxBytes: Long
+    ): ByteArray {
+        val url = buildUrl(
+            session.apiRoot,
+            "/Videos/${pathSegment(itemId)}/Trickplay/$width/$index.jpg",
+            mapOf("mediaSourceId" to mediaSourceId)
+        )
+        val reply = client.bytes(url, session.token, maxBytes)
+        if (reply.truncated) throw ServerException(ServerFailure.FAILED, "sheet over size limit")
+        return reply.bytes
+    }
+
+    override suspend fun bif(
+        session: ServerSession,
+        itemId: String,
+        mediaSourceId: String,
+        width: Int,
+        range: LongRange?,
+        maxBytes: Long
+    ): ServerBytes {
+        if (thumbnailFormat != ServerThumbnailFormat.BIF) throw ServerException(ServerFailure.UNSUPPORTED)
+        val url = buildUrl(
+            session.apiRoot,
+            "/Videos/${pathSegment(itemId)}/index.bif",
+            mapOf("Width" to width.toString(), "MediaSourceId" to mediaSourceId)
+        )
+        return client.bytes(url, session.token, maxBytes, range)
+    }
+
+    protected suspend fun chapterSegments(session: ServerSession, itemId: String): List<ServerSegment> {
+        val item = item(session, itemId, "Chapters")
+        val marks = item.chapters.mapNotNull { chapter ->
+            val type = chapter.markerType?.lowercase() ?: return@mapNotNull null
+            val start = chapter.startPositionTicks ?: return@mapNotNull null
+            type to start / TICKS_PER_MS
+        }
+        fun mark(type: String) = marks.firstOrNull { it.first == type }?.second
+        val runtimeMs = item.runTimeTicks?.let { it / TICKS_PER_MS }
+        return listOfNotNull(
+            mark("introstart")?.let { start -> mark("introend")?.let { end -> ServerSegment(ServerSegmentKind.INTRO, start, end) } },
+            mark("creditsstart")?.let { start -> runtimeMs?.let { end -> ServerSegment(ServerSegmentKind.OUTRO, start, end) } }
+        )
+    }
+
     override suspend fun preparePlayback(
         session: ServerSession,
         request: ServerPlaybackRequest
@@ -397,21 +628,25 @@ internal abstract class MediaBrowserProvider(
             enableDirectPlay = request.capabilities.allowDirectPlay,
             deviceProfile = deviceProfile(request.capabilities)
         )
-        val response = client.execute(
-            method = "POST",
-            baseUrl = session.apiRoot,
-            path = "/Items/${pathSegment(itemId)}/PlaybackInfo",
-            token = session.token,
-            query = mapOf(
-                "userId" to session.userId,
-                "mediaSourceId" to body.mediaSourceId,
-                "audioStreamIndex" to body.audioStreamIndex?.toString(),
-                "subtitleStreamIndex" to body.subtitleStreamIndex?.toString(),
-                "maxStreamingBitrate" to body.maxStreamingBitrate.toString(),
-                "enableDirectPlay" to body.enableDirectPlay.toString()
-            ),
-            body = client.json.encodeToString(PlaybackInfoRequest.serializer(), body)
-        )
+        val response = try {
+            client.execute(
+                method = "POST",
+                baseUrl = session.apiRoot,
+                path = "/Items/${pathSegment(itemId)}/PlaybackInfo",
+                token = session.token,
+                query = mapOf(
+                    "userId" to session.userId,
+                    "mediaSourceId" to body.mediaSourceId,
+                    "audioStreamIndex" to body.audioStreamIndex?.toString(),
+                    "subtitleStreamIndex" to body.subtitleStreamIndex?.toString(),
+                    "maxStreamingBitrate" to body.maxStreamingBitrate.toString(),
+                    "enableDirectPlay" to body.enableDirectPlay.toString()
+                ),
+                body = client.json.encodeToString(PlaybackInfoRequest.serializer(), body)
+            )
+        } catch (error: ServerException) {
+            throw playbackInfoFailure(error)
+        }
         val info = client.json.decodeFromString(PlaybackInfoResult.serializer(), response.body)
         return playbackSession(session, request, info, client.deviceId)
     }
@@ -426,6 +661,7 @@ internal abstract class MediaBrowserProvider(
         when (info.errorCode) {
             null -> Unit
             "NotAllowed" -> throw ServerException(ServerFailure.FORBIDDEN)
+            "RateLimitExceeded" -> throw ServerException(ServerFailure.STREAM_LIMIT, info.errorCode)
             else -> throw ServerException(ServerFailure.UNSUPPORTED, info.errorCode)
         }
         val source = info.mediaSources.firstOrNull { it.id == request.target.mediaSourceId }
@@ -441,7 +677,7 @@ internal abstract class MediaBrowserProvider(
                     "playSessionId" to info.playSessionId,
                     "deviceId" to deviceId,
                     "tag" to source.eTag,
-                    API_KEY to session.token
+                    tokenQueryName to session.token
                 )
             ) to ServerPlayMethod.DIRECT_PLAY
 
@@ -473,9 +709,24 @@ internal abstract class MediaBrowserProvider(
             playMethod = method,
             audioTracks = audioTracks(source, url, request.audioStreamIndex),
             burnInSubtitles = burnInSubtitles(source, url),
-            transcodeReasons = transcodeReasons(url)
+            transcodeReasons = transcodeReasons(url),
+            transcodeOffered = source.transcodingUrl != null || source.supportsTranscoding
         )
     }
+
+    /** A play request refused with HTTP 429 for too many concurrent streams or transcodes. */
+    private fun playbackInfoFailure(error: ServerException): ServerException =
+        if (error.httpStatus != 429 || error.detail?.contains("concurrent", ignoreCase = true) != true) {
+            error
+        } else {
+            ServerException(
+                ServerFailure.STREAM_LIMIT,
+                error.message,
+                detail = error.detail,
+                httpStatus = error.httpStatus,
+                code = error.code
+            )
+        }
 
     private fun audioTracks(source: MediaSource, url: String, requestedIndex: Int?): List<ServerTrack> {
         val selected = queryValue(url, "AudioStreamIndex")?.toIntOrNull() ?: requestedIndex ?: source.defaultAudioStreamIndex
@@ -577,11 +828,11 @@ internal abstract class MediaBrowserProvider(
         get() = connection.remoteUserId
 
     private val ServerSession.apiRoot: String
-        get() = connection.address + apiPath
+        get() = address + apiPath
 
     private fun ServerSession.resolve(serverUrl: String): String =
         if (apiPath.isNotEmpty() && serverUrl.startsWith(apiPath, ignoreCase = true)) {
-            connection.address + serverUrl
+            address + serverUrl
         } else {
             apiRoot + serverUrl
         }
@@ -603,26 +854,34 @@ internal abstract class MediaBrowserProvider(
                 DirectPlayProfile(
                     container = "mp4,m4v,mkv,webm,mov",
                     videoCodec = "h264,hevc,vp8,vp9,av1",
-                    audioCodec = "aac,mp3,ac3,eac3,flac,opus,vorbis"
+                    audioCodec = DIRECT_AUDIO_CODECS
                 )
             )
         },
-        transcodingProfiles = listOf(
-            TranscodingProfile(
-                container = "ts",
-                videoCodec = "hevc,h264",
-                audioCodec = "ac3,eac3,aac,mp3",
-                protocol = "hls"
-            )
-        ),
+        transcodingProfiles = transcodingProfiles(),
+        codecProfiles = if (capabilities.allowDirectPlay) emptyList() else codecProfiles(),
         subtitleProfiles = EMBEDDED_SUBTITLES.map { SubtitleProfile(format = it, method = "Embed") } +
             TEXT_SUBTITLES.map { SubtitleProfile(format = it, method = "External") } +
             IMAGE_SUBTITLES.map { SubtitleProfile(format = it, method = "Encode") }
     )
 
+    override fun authHeaders(session: ServerSession): Map<String, String> = client.authHeaders(session.token)
+
+    override fun staticStreamUrl(session: ServerSession, target: ServerPlaybackTarget): String =
+        buildUrl(
+            session.apiRoot,
+            "/Videos/${pathSegment(target.item.itemId)}/stream",
+            mapOf(
+                "static" to "true",
+                "mediaSourceId" to target.mediaSourceId,
+                "deviceId" to client.deviceId,
+                tokenQueryName to session.token
+            )
+        )
+
     private fun withApiKey(url: String, token: String): String {
-        if (queryValue(url, API_KEY) != null || queryValue(url, "ApiKey") != null) return url
-        return url + (if ('?' in url) "&" else "?") + "$API_KEY=$token"
+        if (queryValue(url, "api_key") != null || queryValue(url, "ApiKey") != null) return url
+        return url + (if ('?' in url) "&" else "?") + "$tokenQueryName=$token"
     }
 
     private fun queryValue(url: String, name: String): String? =
@@ -632,13 +891,70 @@ internal abstract class MediaBrowserProvider(
             ?.substringAfter('=', "")
 
     private companion object {
-        const val API_KEY = "api_key"
         const val MAX_STREAMING_BITRATE = 1_000_000_000L
+        const val QUICK_CONNECT_LIFETIME_MS = 10 * 60_000L
         const val TITLE_LOOKUP_LIMIT = 20
+        const val DIRECT_AUDIO_CODECS = "aac,mp3,mp2,ac3,eac3,flac,alac,opus,vorbis,truehd,mlp,dts,dca," +
+            "pcm,pcm_s16le,pcm_s24le,pcm_s16be,pcm_s24be,pcm_bluray,pcm_dvd"
         const val LIST_FIELDS = "Overview,Genres,ProviderIds,PremiereDate"
         const val DETAIL_FIELDS = "Overview,Genres,ProviderIds,People,Studios,PremiereDate,EndDate"
         val TEXT_SUBTITLES = listOf("srt", "subrip", "ass", "ssa", "vtt", "webvtt")
         val IMAGE_SUBTITLES = listOf("pgssub", "dvdsub", "dvbsub")
         val EMBEDDED_SUBTITLES = TEXT_SUBTITLES + "mov_text" + IMAGE_SUBTITLES
     }
+}
+
+/** Silo's Jellyfin-compatible sign-in names the reason for a refusal; plain Jellyfin and Emby only say "invalid". */
+internal fun signInIssue(detail: String?): ServerSignInIssue? {
+    val text = detail?.lowercase() ?: return null
+    return when {
+        "profile suffix" in text -> ServerSignInIssue.PROFILE_NEEDED
+        text.startsWith("profile not found") -> ServerSignInIssue.PROFILE_NOT_FOUND
+        "invalid profile pin" in text -> ServerSignInIssue.PIN_WRONG
+        "pin protected" in text && "username#profile" in text -> ServerSignInIssue.PROFILE_AND_PIN
+        "pin protected" in text -> ServerSignInIssue.PROFILE_PIN
+        "password change required" in text || "temporary password" in text -> ServerSignInIssue.TEMPORARY_PASSWORD
+        "password sign-in is turned off" in text || "password login is disabled" in text ->
+            ServerSignInIssue.PASSWORD_SIGN_IN_OFF
+        else -> null
+    }
+}
+
+internal fun ServerException.withSignInIssue(): ServerException {
+    val issue = when {
+        httpStatus == 429 -> ServerSignInIssue.TOO_MANY_TRIES
+        failure == ServerFailure.AUTH_REQUIRED -> signInIssue(detail)
+        else -> null
+    } ?: return this
+    return ServerException(failure, message, issue = issue, httpStatus = httpStatus)
+}
+
+/**
+ * The usable trickplay widths for one file version, smallest first, with the key they are listed under. Jellyfin keys
+ * the manifest by media source id (the item id without dashes for a single-version item); Silo gives each version its
+ * own id. An entry under the item id stands in only when the version's own id is not listed.
+ */
+internal fun trickplayLevels(
+    manifest: Map<String, Map<String, TrickplayInfoDto>>?,
+    itemId: String,
+    mediaSourceId: String
+): ServerTrickplaySet? {
+    if (manifest.isNullOrEmpty()) return null
+    fun norm(id: String) = id.replace("-", "").lowercase()
+    val entry = manifest.entries.firstOrNull { norm(it.key) == norm(mediaSourceId) }
+        ?: manifest.entries.firstOrNull { norm(it.key) == norm(itemId) }
+        ?: return null
+    val levels = entry.value.mapNotNull { (key, info) ->
+        val width = info.width ?: key.toIntOrNull() ?: return@mapNotNull null
+        val height = info.height ?: return@mapNotNull null
+        val tileWidth = info.tileWidth ?: return@mapNotNull null
+        val tileHeight = info.tileHeight ?: return@mapNotNull null
+        val count = info.thumbnailCount ?: return@mapNotNull null
+        val interval = info.interval ?: return@mapNotNull null
+        if (width <= 0 || height <= 0 || tileWidth <= 0 || tileHeight <= 0 || count <= 0 || interval <= 0) {
+            return@mapNotNull null
+        }
+        ServerTrickplay(width, height, tileWidth, tileHeight, count, interval.toLong())
+    }.sortedBy { it.width }
+    return if (levels.isEmpty()) null else ServerTrickplaySet(entry.key, levels)
 }

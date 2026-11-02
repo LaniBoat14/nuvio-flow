@@ -39,7 +39,8 @@ internal fun HomeViewModel.onCatalogRowItemsChanged(rowKey: String) {
 
 private suspend fun HomeViewModel.batchFetchRatingsForRowAndNext(focusedRowKey: String) {
     if (focusedRowKey == MODERN_CONTINUE_WATCHING_ROW_KEY ||
-        focusedRowKey == MODERN_UPCOMING_ROW_KEY
+        focusedRowKey == MODERN_UPCOMING_ROW_KEY ||
+        focusedRowKey == MODERN_COMING_UP_ROW_KEY
     ) return
 
     val allRows = _modernHomePresentation.value.rows.list
@@ -50,7 +51,8 @@ private suspend fun HomeViewModel.batchFetchRatingsForRowAndNext(focusedRowKey: 
     for (i in (focusedIdx + 1) until allRows.size) {
         val nextRow = allRows[i]
         if (nextRow.key != MODERN_CONTINUE_WATCHING_ROW_KEY &&
-            nextRow.key != MODERN_UPCOMING_ROW_KEY
+            nextRow.key != MODERN_UPCOMING_ROW_KEY &&
+            nextRow.key != MODERN_COMING_UP_ROW_KEY
         ) {
             targetRowKeys.add(nextRow.key)
             break
@@ -76,8 +78,20 @@ private suspend fun HomeViewModel.batchFetchRatingsForRowAndNext(focusedRowKey: 
 private suspend fun HomeViewModel.batchFetchRatingsForItems(items: List<MetaPreview>) {
     if (items.isEmpty()) return
 
+    // Answers are applied together a few times a second: each update rebuilds the home rows.
+    val pending = java.util.concurrent.ConcurrentHashMap<String, com.nuvio.tv.domain.model.MDBListRatings>()
+    fun flushPending() {
+        val batch = pending.keys.toList().mapNotNull { id -> pending.remove(id)?.let { id to it } }.toMap()
+        runCatching { updateCatalogItemsMdbListRatings(batch) }
+    }
     try {
         coroutineScope {
+            val flusher = launch {
+                while (true) {
+                    delay(MDB_BATCH_FLUSH_INTERVAL_MS)
+                    flushPending()
+                }
+            }
             items.map { item ->
                 async(Dispatchers.IO) {
                     try {
@@ -87,7 +101,7 @@ private suspend fun HomeViewModel.batchFetchRatingsForItems(items: List<MetaPrev
                             fallbackItemType = item.apiType
                         )
                         if (result != null) {
-                            updateCatalogItemMdbListRatings(item.id, result.ratings)
+                            pending[item.id] = result.ratings
                         } else {
                             mdbBatchNegativeIds.add(item.id)
                         }
@@ -96,11 +110,17 @@ private suspend fun HomeViewModel.batchFetchRatingsForItems(items: List<MetaPrev
                     } catch (_: Exception) { }
                 }
             }.awaitAll()
+            flusher.cancel()
         }
     } catch (e: CancellationException) {
         throw e
-    } catch (_: Exception) { }
+    } catch (_: Exception) {
+    } finally {
+        flushPending()
+    }
 }
+
+private const val MDB_BATCH_FLUSH_INTERVAL_MS = 250L
 
 private fun HomeViewModel.isMdbBatchPrefetchEnabled(): Boolean {
     val settings = currentMdbListSettings

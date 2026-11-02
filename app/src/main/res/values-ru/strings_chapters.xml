@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="player_chapters">Главы</string>
+    <string name="player_chapter_number">Глава %1$d</string>
+    <string name="player_chapter_named">Глава %1$d: %2$s</string>
+    <string name="player_chapter_now_playing">Воспроизводится</string>
+    <string name="playback_chapters">Главы в плеере</string>
+    <string name="playback_chapters_sub">Для фильмов с главами: кнопка «Главы», отметки на шкале времени и название главы</string>
+</resources>

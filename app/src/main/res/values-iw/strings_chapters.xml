@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="player_chapters">סצנות</string>
+    <string name="player_chapter_number">סצנה %1$d</string>
+    <string name="player_chapter_named">סצנה %1$d: %2$s</string>
+    <string name="player_chapter_now_playing">מתנגן עכשיו</string>
+    <string name="playback_chapters">סצנות בנגן</string>
+    <string name="playback_chapters_sub">לסרטים עם סצנות: כפתור סצנות, סימונים על ציר הזמן ושם הסצנה</string>
+</resources>

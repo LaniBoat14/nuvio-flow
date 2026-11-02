@@ -26,7 +26,8 @@ data class TorboxTorrentDataDto(
     @Json(name = "id") val id: Int? = null,
     @Json(name = "hash") val hash: String? = null,
     @Json(name = "name") val name: String? = null,
-    @Json(name = "files") val files: List<TorboxTorrentFileDto>? = null
+    @Json(name = "files") val files: List<TorboxTorrentFileDto>? = null,
+    @Json(name = "created_at") val createdAt: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -70,6 +71,12 @@ data class TorboxCloudFileDto(
 @JsonClass(generateAdapter = true)
 data class TorboxCheckCachedRequestDto(
     @Json(name = "hashes") val hashes: List<String>
+)
+
+@JsonClass(generateAdapter = true)
+data class TorboxControlTorrentRequestDto(
+    @Json(name = "torrent_id") val torrentId: Int,
+    @Json(name = "operation") val operation: String
 )
 
 @JsonClass(generateAdapter = true)

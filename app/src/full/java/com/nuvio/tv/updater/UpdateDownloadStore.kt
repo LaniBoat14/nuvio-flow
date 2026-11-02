@@ -34,19 +34,19 @@ class UpdateDownloadStore @Inject constructor(
 
     /** Returns the already downloaded APK for this release, or null when it is missing or incomplete. */
     suspend fun downloadedFileFor(update: AppUpdate): File? {
-        val (tag, path) = updatePreferences.downloadedUpdate.first() ?: return null
-        if (tag != update.tag) return null
+        val (tag, path, code) = updatePreferences.downloadedUpdate.first() ?: return null
+        if (tag != update.tag || code != update.versionCode) return null
         val file = File(path)
         val expectedSize = update.assetSizeBytes
         return file.takeIf { it.exists() && (expectedSize == null || it.length() == expectedSize) }
     }
 
     /** Returns the downloaded APK when it is for a version newer than the installed one. */
-    suspend fun pendingInstall(): Pair<String, File>? {
-        val (tag, path) = updatePreferences.downloadedUpdate.first() ?: return null
-        val file = File(path)
-        if (!file.exists() || !VersionUtils.isRemoteNewer(tag, BuildConfig.VERSION_NAME)) return null
-        return tag to file
+    suspend fun pendingInstall(): PendingInstall? {
+        val downloaded = updatePreferences.downloadedUpdate.first() ?: return null
+        val file = File(downloaded.apkPath)
+        if (!file.exists() || !downloaded.isNewerThanInstalled()) return null
+        return PendingInstall(downloaded.tag, file, downloaded.versionCode)
     }
 
     suspend fun download(
@@ -58,7 +58,7 @@ class UpdateDownloadStore @Inject constructor(
         apkDownloader.download(update.assetUrl, destination, onProgress)
             .onSuccess { file ->
                 updatesDir.listFiles()?.filter { it != file }?.forEach { it.delete() }
-                updatePreferences.setDownloadedUpdate(update.tag, file.absolutePath)
+                updatePreferences.setDownloadedUpdate(update.tag, file.absolutePath, update.versionCode)
             }
     }
 
@@ -69,7 +69,17 @@ class UpdateDownloadStore @Inject constructor(
     }
 
     suspend fun clearIfInstalled() {
-        val (tag, _) = updatePreferences.downloadedUpdate.first() ?: return
-        if (!VersionUtils.isRemoteNewer(tag, BuildConfig.VERSION_NAME)) clear()
+        val downloaded = updatePreferences.downloadedUpdate.first() ?: return
+        if (!downloaded.isNewerThanInstalled()) clear()
     }
 }
+
+data class DownloadedUpdate(val tag: String, val apkPath: String, val versionCode: Long? = null) {
+    /** By version code when the release had one, as the update check decides; by name otherwise. */
+    fun isNewerThanInstalled(
+        installedName: String = BuildConfig.VERSION_NAME,
+        installedCode: Long = BuildConfig.VERSION_CODE.toLong()
+    ): Boolean = VersionUtils.isRemoteNewer(tag, installedName, versionCode, installedCode)
+}
+
+data class PendingInstall(val tag: String, val file: File, val versionCode: Long?)

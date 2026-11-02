@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.nuvio.tv.ui.screens.player.AspectMode
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -25,6 +26,7 @@ import javax.inject.Singleton
  *  - tunneledSurfaceFill  (ExoPlayer surface fill while tunneling; does not affect aspectMode)
  *  - playerStatsHudButtonEnabled  (whether stats overlay button is available in stream info)
  *  - playerStatsHudActive  (whether playback stats HUD is turned on by the user)
+ *  - remoteButtons  (jobs given to remote keys while a video plays; each box has its own remote)
  */
 @Singleton
 class DeviceLocalPlayerPreferences @Inject constructor(
@@ -43,6 +45,29 @@ class DeviceLocalPlayerPreferences @Inject constructor(
     private val tunneledSurfaceFillKey = booleanPreferencesKey("tunneled_surface_fill")
     private val playerStatsHudButtonEnabledKey = booleanPreferencesKey("player_stats_hud_enabled")
     private val playerStatsHudActiveKey = booleanPreferencesKey("player_stats_hud_active")
+    private val tunnelFrameReportDecodersKey = stringSetPreferencesKey("tunnel_frame_report_decoders")
+    private val remoteButtonsKey = stringPreferencesKey("remote_buttons")
+
+    val remoteButtons: Flow<RemoteButtonMap> = store.data.map { prefs ->
+        RemoteButtonMap.decode(prefs[remoteButtonsKey])
+    }
+
+    suspend fun setRemoteButtons(map: RemoteButtonMap) {
+        store.edit { prefs ->
+            if (map == RemoteButtonMap.DEFAULT) prefs.remove(remoteButtonsKey) else prefs[remoteButtonsKey] = map.encode()
+        }
+    }
+
+    /** Video decoders (with the firmware) seen reporting tunnelled frames on this box. */
+    val tunnelFrameReportDecoders: Flow<Set<String>> = store.data.map { prefs ->
+        prefs[tunnelFrameReportDecodersKey] ?: emptySet()
+    }
+
+    suspend fun addTunnelFrameReportDecoder(key: String) {
+        store.edit { prefs ->
+            prefs[tunnelFrameReportDecodersKey] = (prefs[tunnelFrameReportDecodersKey] ?: emptySet()) + key
+        }
+    }
 
     val aspectMode: Flow<AspectMode> = store.data.map { prefs ->
         prefs[aspectModeKey]?.let {
@@ -57,7 +82,7 @@ class DeviceLocalPlayerPreferences @Inject constructor(
     }
 
     val transparentLetterbox: Flow<Boolean> = store.data.map { prefs ->
-        prefs[transparentLetterboxKey] ?: false
+        prefs[transparentLetterboxKey] ?: com.nuvio.tv.core.player.LetterboxRenderPolicy.defaultTransparentLetterbox()
     }
 
     suspend fun setTransparentLetterbox(enabled: Boolean) {

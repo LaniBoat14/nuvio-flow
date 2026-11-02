@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="support_nuvio_button">Susține echipa Nuvio</string>
+    <string name="support_nuvio_title">Susține echipa Nuvio</string>
+    <string name="support_nuvio_subtitle">Nuvio Arc are la bază aplicația oficială Nuvio. Un abonament merge la echipa Nuvio, ajută la plata serverelor și a dezvoltării și păstrează aplicația de bază gratuită pentru toți.</string>
+    <string name="support_nuvio_perk_themes">Teme cu gradient</string>
+    <string name="support_nuvio_perk_themes_desc">Teme cu gradient în plus sau creează-ți propria temă.</string>
+    <string name="support_nuvio_perk_backgrounds">Fundaluri de profil</string>
+    <string name="support_nuvio_perk_backgrounds_desc">Din colecția Supporter sau o imagine proprie.</string>
+    <string name="support_nuvio_perk_avatars">Avataruri pentru membri</string>
+    <string name="support_nuvio_perk_avatars_desc">Seturi de avataruri în plus pentru profilele tale.</string>
+    <string name="support_nuvio_perk_badge">Insignă Supporter</string>
+    <string name="support_nuvio_perk_badge_desc">O insignă mică pe contul și profilele tale.</string>
+    <string name="support_nuvio_perk_discord">Rol pe Discord</string>
+    <string name="support_nuvio_perk_discord_desc">Conectează Discord pe site pentru a primi rolul.</string>
+    <string name="support_nuvio_perk_votes">Vot asupra deciziilor din aplicație</string>
+    <string name="support_nuvio_perk_votes_desc">Doar Supporter Plus.</string>
+    <string name="support_nuvio_perk_votes_chip">Vot (Supporter Plus)</string>
+    <string name="support_nuvio_plus_tag">Plus</string>
+    <string name="support_nuvio_on_tag">Activ</string>
+    <string name="support_nuvio_already_title">Ești deja susținător?</string>
+    <string name="support_nuvio_already_body">Autentifică-te pe acest TV cu același cont Nuvio. Avantajele se activează singure.</string>
+    <string name="support_nuvio_scan_title">Scanează pentru a deschide nuvio.tv/support</string>
+    <string name="support_nuvio_scan_body">Se deschide pe telefon. Nu se plătește nimic pe acest TV.</string>
+    <string name="support_nuvio_patreon_manage">Scanează pentru a modifica sau anula pe Patreon</string>
+    <string name="support_nuvio_pass_until">Accesul tău este valabil până la %1$s.</string>
+    <string name="support_nuvio_sign_in">Autentifică-te pe acest TV</string>
+    <string name="support_nuvio_close">Închide</string>
+    <string name="support_nuvio_checking">Se verifică abonamentul…</string>
+    <string name="support_nuvio_thanks_title">Mulțumim că susții echipa Nuvio</string>
+    <string name="support_nuvio_thanks_subtitle">Avantajele țin de contul tău Nuvio, așa că funcționează aici în Nuvio Arc și în aplicația oficială.</string>
+    <string name="support_nuvio_gentle_eyebrow">Nuvio Supporter</string>
+    <string name="support_nuvio_gentle_title">Totul în Nuvio Arc funcționează fără abonament</string>
+    <string name="support_nuvio_gentle_body">Acest cont nu are un abonament Nuvio Supporter și este perfect în regulă. Dacă vrei vreodată să ajuți echipa Nuvio, un abonament adaugă câteva avantaje în plus:</string>
+    <string name="support_nuvio_gentle_unavailable">Abonamentul tău nu a putut fi verificat acum. Totul în Nuvio Arc funcționează și fără. Dacă vrei să ajuți echipa Nuvio, un abonament adaugă câteva avantaje în plus:</string>
+    <string name="support_nuvio_gentle_scan">Vezi opțiunile pe telefon</string>
+    <string name="support_nuvio_paid_check_again">Tocmai ai plătit? Verifică din nou</string>
+    <string name="support_nuvio_no_thanks">Nu, mulțumesc</string>
+    <string name="support_nuvio_no_thanks_hint">Nu, mulțumesc ascunde butonul Susține și temele Supporter blocate pe acest TV. Le poți readuce din Setări › Despre.</string>
+    <string name="support_nuvio_thanks_note_title">Avantajele %1$s sunt active</string>
+    <string name="support_nuvio_thanks_note_body">Mulțumim că susții echipa Nuvio.</string>
+    <string name="support_nuvio_theme_locked">Supporter</string>
+    <string name="support_nuvio_suggestions_setting">Sugestii de susținere a echipei Nuvio</string>
+    <string name="support_nuvio_suggestions_setting_subtitle">Afișează butonul Susține echipa Nuvio și temele Supporter blocate.</string>
+    <string name="cd_support_nuvio_qr">Cod QR pentru nuvio.tv/support</string>
+</resources>

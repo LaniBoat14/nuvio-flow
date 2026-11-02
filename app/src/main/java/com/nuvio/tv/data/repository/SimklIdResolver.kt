@@ -1,6 +1,7 @@
 package com.nuvio.tv.data.repository
 
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import com.nuvio.tv.data.simkl.SimklApiConfiguration
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -37,7 +38,9 @@ class SimklIdResolver @Inject constructor(
         val anilist: String? = null,
         val kitsu: String? = null,
         val imdb: String? = null,
-        val tvdbSeason: Int? = null
+        val tvdbSeason: Int? = null,
+        val tmdb: String? = null,
+        val tvdb: String? = null
     )
 
     data class EpisodeMapping(
@@ -69,8 +72,12 @@ class SimklIdResolver @Inject constructor(
                 anilist = ids?.optString("anilist")?.takeIf { it.isNotBlank() },
                 kitsu = ids?.optString("kitsu")?.takeIf { it.isNotBlank() },
                 imdb = ids?.optString("imdb")?.takeIf { it.isNotBlank() },
-                tvdbSeason = details.optInt("season", -1).takeIf { it > 0 }
+                tvdbSeason = details.optInt("season", -1).takeIf { it > 0 },
+                tmdb = ids?.optString("tmdb")?.takeIf { it.isNotBlank() },
+                tvdb = ids?.optString("tvdb")?.takeIf { it.isNotBlank() }
             ).also { idsCache[cacheKey] = it }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.d(TAG, "resolveIds $source:$id failed: ${e.message}")
             null
@@ -96,6 +103,8 @@ class SimklIdResolver @Inject constructor(
                 }
             }
             mapping.also { episodeCache[simklId] = it }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.d(TAG, "getEpisodeMapping $type:$simklId failed: ${e.message}")
             emptyList()
@@ -156,6 +165,8 @@ class SimklIdResolver @Inject constructor(
             }
             animeSeasonCache[cacheKey] = seasons
             seasons.firstOrNull { it.tvdbSeason == tvdbSeason }?.simklId
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.d(TAG, "resolveSeasonSimklId anime:$parentSimklId season:$tvdbSeason failed: ${e.message}")
             null
@@ -178,8 +189,12 @@ class SimklIdResolver @Inject constructor(
                 anilist = ids?.optString("anilist")?.takeIf { it.isNotBlank() },
                 kitsu = ids?.optString("kitsu")?.takeIf { it.isNotBlank() },
                 imdb = ids?.optString("imdb")?.takeIf { it.isNotBlank() },
-                tvdbSeason = details.optInt("season", -1).takeIf { it > 0 }
+                tvdbSeason = details.optInt("season", -1).takeIf { it > 0 },
+                tmdb = ids?.optString("tmdb")?.takeIf { it.isNotBlank() },
+                tvdb = ids?.optString("tvdb")?.takeIf { it.isNotBlank() }
             ).also { idsCache[cacheKey] = it }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.d(TAG, "resolveIdsBySimklId $type:$simklId failed: ${e.message}")
             null

@@ -1,9 +1,12 @@
 package com.nuvio.tv.ui.screens.home
 
+import com.nuvio.tv.core.util.StartupLatencyTrace
+
 import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.R
 import com.nuvio.tv.core.network.NetworkResult
+import com.nuvio.tv.data.mediaserver.ServerCatalog
 import com.nuvio.tv.domain.model.Addon
 import com.nuvio.tv.domain.model.CatalogDescriptor
 import com.nuvio.tv.domain.model.CatalogRow
@@ -21,11 +24,16 @@ import com.nuvio.tv.domain.model.supportsExtra
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.PLACEHOLDER_IMAGE_URL
@@ -39,7 +47,9 @@ private data class CatalogUpdateResult(
     val displayRows: List<CatalogRow>,
     val heroItems: List<com.nuvio.tv.domain.model.MetaPreview>,
     val gridItems: List<GridItem>,
-    val fullRows: List<CatalogRow>
+    val fullRows: List<CatalogRow>,
+    val statusRows: List<CatalogRow>,
+    val heldWatchedRowKey: String?
 )
 
 @OptIn(FlowPreview::class)
@@ -154,6 +164,8 @@ internal suspend fun HomeViewModel.loadAllCatalogsPipeline(
     }
 
     activeCatalogLoadSignature = signature
+    watchedTitles.refillPages.clear()
+    StartupLatencyTrace.mark("catalogs_load_start")
     catalogsLoadInProgress = true
     // A full load leaves every catalog fresh, so the next return to Home has nothing to do.
     lastHomeCatalogRefreshAtMs = android.os.SystemClock.elapsedRealtime()
@@ -177,12 +189,14 @@ internal suspend fun HomeViewModel.loadAllCatalogsPipeline(
     reconcilePosterStatusObserversPipeline(emptyList())
     _fullCatalogRows.value = emptyList()
     hasRenderedFirstCatalog = false
+    trailerPreviewJob?.cancel()
     trailerPreviewLoadingIds.clear()
     trailerPreviewNegativeCache.clear()
     trailerPreviewUrlsState.clear()
     trailerPreviewAudioUrlsState.clear()
+    trailerPreviewValidUntil.clear()
     activeTrailerPreviewItemId = null
-    trailerPreviewRequestVersion = 0L
+    trailerPreviewRequestVersion++
     prefetchedExternalMetaIds.clear()
     externalMetaPrefetchInFlightIds.clear()
     externalMetaPrefetchJob?.cancel()
@@ -279,7 +293,7 @@ internal suspend fun HomeViewModel.loadAllCatalogsPipeline(
             val custom = titlesSnapshot[key]
             val baseName = if (!custom.isNullOrBlank()) custom else catalog.name
             val catalogName = baseName.replaceFirstChar { it.uppercase() }
-            if (!showTypeSuffix) return catalogName
+            if (!showTypeSuffix || ServerCatalog.isServerAddonId(addon.id)) return catalogName
             val typeLabel = when (catalog.apiType.lowercase()) {
                 "movie" -> strTypeMovie.ifBlank { catalog.apiType.replaceFirstChar { it.uppercase() } }
                 "series" -> strTypeSeries.ifBlank { catalog.apiType.replaceFirstChar { it.uppercase() } }
@@ -296,8 +310,30 @@ internal suspend fun HomeViewModel.loadAllCatalogsPipeline(
             _uiState.first { it.layoutPreferencesReady }
         }
         val isGridLayout = _uiState.value.homeLayout == HomeLayout.GRID
-        val eagerHomeCatalogs = if (isGridLayout) catalogsToLoad else catalogsToLoad.take(eagerCatalogLoadCount)
-        val lazyHomeCatalogs = if (isGridLayout) emptyList() else catalogsToLoad.drop(eagerCatalogLoadCount)
+        // Eager set follows DISPLAY order (catalogOrder), not addon-manifest order,
+        // so the eagerly-loaded rows are the ones shown at the top of the home
+        // screen -- stable when the user reorders home rows. catalogOrder was
+        // rebuilt at rebuildCatalogOrder(addons) above; collection_* keys are not
+        // network catalogues and are skipped.
+        val eagerHomeCatalogs: List<Pair<Addon, CatalogDescriptor>>
+        val lazyHomeCatalogs: List<Pair<Addon, CatalogDescriptor>>
+        if (isGridLayout) {
+            eagerHomeCatalogs = catalogsToLoad
+            lazyHomeCatalogs = emptyList()
+        } else {
+            val catalogByKey = catalogsToLoad.associateBy { (addon, catalog) ->
+                catalogKey(addonId = addon.id, type = catalog.apiType, catalogId = catalog.id)
+            }
+            val displayOrderKeys = snapshotCatalogState().first.filterNot { it.startsWith("collection_") }
+            val displayOrderKeySet = displayOrderKeys.toSet()
+            val displayOrdered = displayOrderKeys.mapNotNull { catalogByKey[it] }
+            val remainder = catalogsToLoad.filterNot { (addon, catalog) ->
+                catalogKey(addonId = addon.id, type = catalog.apiType, catalogId = catalog.id) in displayOrderKeySet
+            }
+            val ordered = displayOrdered + remainder
+            eagerHomeCatalogs = ordered.take(eagerCatalogLoadCount)
+            lazyHomeCatalogs = ordered.drop(eagerCatalogLoadCount)
+        }
 
         // Build placeholder descriptors for lazy catalogs
         synchronized(catalogStateLock) {
@@ -340,6 +376,10 @@ internal suspend fun HomeViewModel.loadAllCatalogsPipeline(
         eagerCatalogs.forEach { (addon, catalog) ->
             loadCatalogPipeline(addon, catalog, generation)
         }
+
+        // Kick the reserved-headroom background sweep so the remaining
+        // lazy catalogues fill in on their own, without waiting for scroll.
+        startReservedHeadroomSweep(generation)
 
         // Immediately schedule an update so placeholder rows appear in the UI
         // while catalogs are still loading.
@@ -413,7 +453,7 @@ internal fun HomeViewModel.loadCatalogPipeline(
     isRefresh: Boolean = false,
     requestedByUser: Boolean = false,
     forceReplace: Boolean = false
-) {
+): Job {
     val loadJob = viewModelScope.launch {
         var hasCountedCompletion = false
         catalogLoadSemaphore.withPermit {
@@ -434,7 +474,7 @@ internal fun HomeViewModel.loadCatalogPipeline(
                 skip = 0,
                 skipStep = skipStep,
                 supportsSkip = supportsSkip
-            ).collect { result ->
+            ).flowOn(serverArtworkContext()).collect { result ->
                 if (generation != catalogLoadGeneration) return@collect
                 when (result) {
                     is NetworkResult.Success -> {
@@ -445,6 +485,7 @@ internal fun HomeViewModel.loadCatalogPipeline(
                         )
                         if (!isRefresh || !mergeRefreshedCatalogRow(key, result.data, requestedByUser, forceReplace)) {
                             replaceCatalogRow(key, result.data)
+                            watchedTitles.refillPages.remove(key)
                         }
                         // Trigger MDBList batch for newly loaded catalog data.
                         onCatalogRowItemsChanged(key)
@@ -462,20 +503,12 @@ internal fun HomeViewModel.loadCatalogPipeline(
                         )
                         if (pendingCatalogLoads == 0) {
                             catalogsLoadInProgress = false
+                            StartupLatencyTrace.mark("catalogs_load_end")
                         }
-                        // Batch updates: only trigger a UI rebuild when all
-                        // eager catalogs have completed, or let the debounce
-                        // in scheduleUpdateCatalogRows coalesce intermediate
-                        // arrivals.  When pending == 0 we always flush.
-                        if (pendingCatalogLoads == 0) {
-                            scheduleUpdateCatalogRows()
-                        } else if (!hasRenderedFirstCatalog) {
-                            // First content arriving — show it quickly so the
-                            // user sees something beyond placeholders.
-                            scheduleUpdateCatalogRows()
-                        }
-                        // Otherwise, let the next completion or the final
-                        // pendingCatalogLoads==0 trigger the update.
+                        // The existing debounce coalesces nearby completions. Withholding
+                        // this signal until pending==0 strands ready rows behind a slow
+                        // add-on, including rows explicitly requested while scrolling.
+                        scheduleUpdateCatalogRows()
                     }
                     is NetworkResult.Error -> {
                         val errorKey = catalogKey(
@@ -497,11 +530,9 @@ internal fun HomeViewModel.loadCatalogPipeline(
                         )
                         if (pendingCatalogLoads == 0) {
                             catalogsLoadInProgress = false
+                            StartupLatencyTrace.mark("catalogs_load_end")
                         }
-                        // Same batching logic as success path.
-                        if (pendingCatalogLoads == 0 || !hasRenderedFirstCatalog) {
-                            scheduleUpdateCatalogRows()
-                        }
+                        scheduleUpdateCatalogRows()
                     }
                     NetworkResult.Loading -> {
                         /* Handled by individual row */
@@ -511,6 +542,7 @@ internal fun HomeViewModel.loadCatalogPipeline(
         }
     }
     registerCatalogLoadJob(loadJob)
+    return loadJob
 }
 
 internal fun HomeViewModel.loadMoreCatalogItemsPipeline(catalogId: String, addonId: String, type: String) {
@@ -548,7 +580,7 @@ internal fun HomeViewModel.loadMoreCatalogItemsPipeline(catalogId: String, addon
             skip = nextSkip,
             skipStep = currentRow.skipStep,
             supportsSkip = currentRow.supportsSkip
-        ).collect { result ->
+        ).flowOn(serverArtworkContext()).collect { result ->
             when (result) {
                 is NetworkResult.Success -> {
                     updateCatalogRow(key) { latestRow ->
@@ -571,6 +603,11 @@ internal fun HomeViewModel.loadMoreCatalogItemsPipeline(catalogId: String, addon
 }
 
 internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
+    val watchedFilter = awaitWatchedFilterPipeline()
+    val watchedIds = watchedFilter?.ids?.takeIf { watchedFilter.hides }
+    val watchedFocusRowKey = if (watchedTitles.homeShown) liveFocusedRowKey else null
+    val shownRowsSnapshot = _uiState.value.catalogRows
+    val posterProfileId = profileManager.activeProfileId.value
     val (orderedKeys, catalogSnapshot) = snapshotCatalogState()
     val collectionsSnapshot = collectionsCache.associateBy { "collection_${it.id}" }
     val heroCatalogKeys = currentHeroCatalogKeys
@@ -580,7 +617,7 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
     val hideUnreleased = _uiState.value.hideUnreleasedContent
     val titlesSnapshot = customCatalogTitles
 
-    val (displayRows, baseHeroItems, baseGridItems, fullRowsFiltered) = withContext(Dispatchers.Default) {
+    val catalogUpdate = withContext(Dispatchers.Default) {
         val rawRows = orderedKeys.mapNotNull { key ->
             val row = catalogSnapshot[key] ?: return@mapNotNull null
             val custom = titlesSnapshot[key]
@@ -588,15 +625,29 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
         }
         val orderedRows = if (hideUnreleased) {
             val today = LocalDate.now()
-            rawRows.map { it.filterReleasedItems(today) }
+            rawRows.map {
+                ensureActive()
+                it.filterReleasedItems(today)
+            }
         } else {
             rawRows
+        }
+        val visibleRows = if (watchedIds != null) {
+            orderedRows.withoutWatched(watchedIds, watchedFocusRowKey, shownRowsSnapshot)
+        } else {
+            orderedRows
+        }
+        ensureActive()
+        val heldWatchedRowKey = watchedFocusRowKey?.takeIf { key ->
+            watchedIds != null && visibleRows.any { row ->
+                row.stableKey() == key && row.items.any(watchedIds::isWatched)
+            }
         }
         val selectedHeroCatalogSet = heroCatalogKeys.toSet()
         val orderedKeySet = orderedKeys.toSet()
         val selectedHeroRows = if (selectedHeroCatalogSet.isNotEmpty()) {
             // Include hero catalogs from ordered rows
-            val fromOrdered = orderedRows.filter { row ->
+            val fromOrdered = visibleRows.filter { row ->
                 val key = row.legacyKey()
                 key in selectedHeroCatalogSet
             }
@@ -605,80 +656,51 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
             val heroOnlyRows = selectedHeroCatalogSet
                 .filter { it !in orderedKeySet }
                 .mapNotNull { catalogSnapshot[it] }
-            val heroOnlyFiltered = if (hideUnreleased) {
+            val heroOnlyReleased = if (hideUnreleased) {
                 val today = LocalDate.now()
                 heroOnlyRows.map { it.filterReleasedItems(today) }
             } else {
                 heroOnlyRows
             }
+            val heroOnlyFiltered = if (watchedIds != null) {
+                heroOnlyReleased.map { it.withoutWatched(watchedIds) }
+            } else {
+                heroOnlyReleased
+            }
             fromOrdered + heroOnlyFiltered
         } else {
             emptyList()
         }
-        fun stableHeroCandidates(row: CatalogRow, candidates: kotlin.collections.Collection<MetaPreview>): List<MetaPreview> {
-            return candidates.sortedWith(
-                compareBy<MetaPreview> { stableHeroSortKey(row, it) }
-                    .thenBy { it.id }
-            )
-        }
-        fun slotShuffled(rows: List<CatalogRow>, filter: (MetaPreview) -> Boolean, currentOrder: List<String>): List<MetaPreview> {
-            val totalCatalogs = rows.size.coerceAtLeast(1)
-            val baseSlot = 7 / totalCatalogs
-            val remainder = 7 % totalCatalogs
-            val seen = mutableSetOf<String>()
-            val result = mutableListOf<MetaPreview>()
-            rows.forEachIndexed { index, row ->
-                val slot = baseSlot + if (index < remainder) 1 else 0
-                val existing = currentOrder.filter { id -> row.items.any { it.id == id } }
-                val byId = row.items.filter(filter).associateBy { it.id }
-                val ordered = existing.mapNotNull { byId[it] }
-                val new = stableHeroCandidates(
-                    row = row,
-                    candidates = byId.values.filter { it.id !in existing }
-                )
-                // Filter out duplicates but keep taking until slot is filled
-                val unique = (ordered + new).filter { seen.add(it.id) }
-                result += unique.take(slot)
-            }
-            return result
-        }
-
         val currentHeroOrder = heroItemOrder
 
-        val heroItemsFromSelectedCatalogs = slotShuffled(
+        val computedHeroItems = pickHeroItems(
             selectedHeroRows, { it.hasHeroArtwork() }, currentHeroOrder
-        )
-        val fallbackHeroItemsFromSelectedCatalogs = slotShuffled(
-            selectedHeroRows, { true }, currentHeroOrder
-        )
-        // When orderedRows is empty (all catalogs disabled), include any
-        // hero-only loaded catalogs as fallback hero sources.
-        val allHeroFallbackRows = if (orderedRows.isNotEmpty()) {
-            orderedRows
-        } else {
-            val nonOrderedRows = catalogSnapshot.keys
-                .filter { it !in orderedKeySet }
-                .mapNotNull { catalogSnapshot[it] }
-            if (hideUnreleased) {
-                val today = LocalDate.now()
-                nonOrderedRows.map { it.filterReleasedItems(today) }
+        ).ifEmpty {
+            pickHeroItems(selectedHeroRows, { true }, currentHeroOrder)
+        }.ifEmpty {
+            if (selectedHeroCatalogSet.isNotEmpty()) return@ifEmpty emptyList()
+            // When orderedRows is empty (all catalogs disabled), include any
+            // hero-only loaded catalogs as fallback hero sources.
+            val allHeroFallbackRows = if (orderedRows.isNotEmpty()) {
+                visibleRows
             } else {
-                nonOrderedRows
+                val nonOrderedRows = catalogSnapshot.keys
+                    .filter { it !in orderedKeySet }
+                    .mapNotNull { catalogSnapshot[it] }
+                val releasedRows = if (hideUnreleased) {
+                    val today = LocalDate.now()
+                    nonOrderedRows.map { it.filterReleasedItems(today) }
+                } else {
+                    nonOrderedRows
+                }
+                if (watchedIds != null) releasedRows.map { it.withoutWatched(watchedIds) } else releasedRows
             }
+            pickHeroItems(allHeroFallbackRows, { it.hasHeroArtwork() }, currentHeroOrder)
         }
-        val fallbackHeroItemsWithArtwork = slotShuffled(
-            allHeroFallbackRows, { it.hasHeroArtwork() }, currentHeroOrder
-        )
+        ensureActive()
 
-        val computedHeroItems = when {
-            heroItemsFromSelectedCatalogs.isNotEmpty() -> heroItemsFromSelectedCatalogs
-            fallbackHeroItemsFromSelectedCatalogs.isNotEmpty() -> fallbackHeroItemsFromSelectedCatalogs
-            selectedHeroCatalogSet.isNotEmpty() -> emptyList()
-            fallbackHeroItemsWithArtwork.isNotEmpty() -> fallbackHeroItemsWithArtwork
-            else -> emptyList()
-        }
-
-        val computedDisplayRows = orderedRows.map { row ->
+        val computedDisplayRows = visibleRows.map { row ->
+            ensureActive()
             val shouldKeepFullRowInModern = currentLayout == HomeLayout.MODERN
             val gridTruncateLimit = 24
             if (row.items.size > gridTruncateLimit && !shouldKeepFullRowInModern) {
@@ -707,8 +729,19 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
             }
         }
 
-        CatalogUpdateResult(computedDisplayRows, computedHeroItems, emptyList(), orderedRows)
+        CatalogUpdateResult(
+            displayRows = computedDisplayRows,
+            heroItems = computedHeroItems,
+            gridItems = emptyList(),
+            fullRows = orderedRows,
+            statusRows = if (watchedIds != null) orderedRows else computedDisplayRows,
+            heldWatchedRowKey = heldWatchedRowKey
+        )
     }
+    val displayRows = catalogUpdate.displayRows
+    val baseHeroItems = catalogUpdate.heroItems
+    val fullRowsFiltered = catalogUpdate.fullRows
+    watchedTitles.heldRowKey = catalogUpdate.heldWatchedRowKey
 
     _fullCatalogRows.update { rows ->
         if (rows == fullRowsFiltered) rows else fullRowsFiltered
@@ -731,6 +764,7 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
             }
         }
         for (key in orderedKeys) {
+            ensureActive()
             if (key in disabledHomeCatalogKeys) continue
             val collectionEntry = collectionsSnapshot[key]
             if (collectionEntry != null) {
@@ -875,6 +909,15 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
         computedHomeRows to nextGridItems
     }
 
+    // Capture the displayed profile's artwork while its own catalog pipeline is active.
+    // A profile switch during computation must never relabel the old rows.
+    if (profileManager.activeProfileId.value != posterProfileId) return
+    val wallPosters = displayRows.asSequence().flatMap { it.items.asSequence() }
+        .mapNotNull { it.poster }.filter(String::isNotBlank).distinct().take(24).toList()
+    withContext(Dispatchers.IO) {
+        com.nuvio.tv.ui.v2.profile.ProfilePosterWall.rememberPosters(appContext, wallPosters, posterProfileId)
+    }
+
     // Clear any stale error when content is now available (e.g., hero
     // catalogs loaded after the initial startup race set an error).
     val hasContent = computedHomeRows.isNotEmpty() || baseHeroItems.isNotEmpty() || displayRows.isNotEmpty()
@@ -932,14 +975,78 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
         heroItemOrder = emptyList()
     }
 
-    schedulePosterStatusReconcilePipeline(displayRows)
+    schedulePosterStatusReconcilePipeline(catalogUpdate.statusRows)
+    if (watchedIds != null) {
+        requestWatchedRefillPages(fullRowsFiltered, displayRows)
+    }
 }
 
-private fun stableHeroSortKey(
-    row: CatalogRow,
-    item: MetaPreview
-): Int {
-    return "${row.addonId}|${row.apiType}|${row.catalogId}|${item.id}".hashCode()
+/**
+ * Shares seven hero slots across [rows]. Titles already in [currentOrder] keep their place, the rest of
+ * each slot is filled in a stable per-catalog order, and a title seen in an earlier row is never picked again.
+ */
+internal suspend fun pickHeroItems(
+    rows: List<CatalogRow>,
+    filter: (MetaPreview) -> Boolean,
+    currentOrder: List<String>
+): List<MetaPreview> {
+    val totalCatalogs = rows.size.coerceAtLeast(1)
+    val baseSlot = HERO_SLOT_COUNT / totalCatalogs
+    val remainder = HERO_SLOT_COUNT % totalCatalogs
+    val seen = HashSet<String>()
+    val result = mutableListOf<MetaPreview>()
+    for ((index, row) in rows.withIndex()) {
+        currentCoroutineContext().ensureActive()
+        val slot = baseSlot + if (index < remainder) 1 else 0
+        // Slots only shrink down the list, so no later row can add anything.
+        if (slot == 0) break
+        val existing = currentOrder.filter { id -> row.items.any { it.id == id } }
+        val byId = HashMap<String, MetaPreview>(row.items.size)
+        row.items.forEach { if (filter(it)) byId[it.id] = it }
+        val picked = ArrayList<MetaPreview>(slot)
+        existing.forEach { id ->
+            val item = byId[id] ?: return@forEach
+            if (seen.add(item.id) && picked.size < slot) picked += item
+        }
+        val need = slot - picked.size
+        if (need > 0) {
+            val prefixHash = "${row.addonId}|${row.apiType}|${row.catalogId}|".hashCode()
+            val topKeys = IntArray(need)
+            val top = arrayOfNulls<MetaPreview>(need)
+            var size = 0
+            for (item in byId.values) {
+                if (item.id in existing || item.id in seen) continue
+                val key = stableHeroSortKey(prefixHash, item.id)
+                if (size == need && compareHeroKeys(key, item.id, topKeys[size - 1], top[size - 1]!!.id) >= 0) continue
+                var pos = if (size < need) size++ else need - 1
+                while (pos > 0 && compareHeroKeys(key, item.id, topKeys[pos - 1], top[pos - 1]!!.id) < 0) {
+                    topKeys[pos] = topKeys[pos - 1]
+                    top[pos] = top[pos - 1]
+                    pos--
+                }
+                topKeys[pos] = key
+                top[pos] = item
+            }
+            for (i in 0 until size) picked += top[i]!!
+        }
+        seen.addAll(byId.keys)
+        result += picked
+    }
+    return result
+}
+
+private const val HERO_SLOT_COUNT = 7
+
+/** Same value as `(prefix + id).hashCode()` without building the joined string. */
+internal fun stableHeroSortKey(prefixHash: Int, id: String): Int {
+    var hash = prefixHash
+    for (ch in id) hash = 31 * hash + ch.code
+    return hash
+}
+
+private fun compareHeroKeys(key: Int, id: String, otherKey: Int, otherId: String): Int {
+    val byKey = key.compareTo(otherKey)
+    return if (byKey != 0) byKey else id.compareTo(otherId)
 }
 
 internal fun HomeViewModel.schedulePosterStatusReconcilePipeline(rows: List<CatalogRow>) {
@@ -1089,6 +1196,65 @@ private fun HomeViewModel.reconcileFullyWatchedFromLocalItems(
         fullyWatchedSeriesIds.updateWithValidation(mergedHolderIds, cacheResolvedIds)
     }
     return mergedHolderIds
+}
+
+private const val CATALOG_SWEEP_CONCURRENCY = 2
+private const val CATALOG_SWEEP_YIELD_POLL_MS = 150L
+/** The first seconds after the visible rows land belong to the user's first moves, not to off-screen rows. */
+private const val CATALOG_SWEEP_START_DELAY_MS = 5_000L
+
+// Reserved-headroom background sweep.
+// Once the eager catalogue batch is dispatched, this drains the remaining
+// pendingLazyCatalogs automatically, in display (insertion) order, so off-screen
+// rows fill in on their own without the user scrolling to them. It yields to
+// eager and on-demand (scrolled-to) loads: it only dispatches while no non-sweep
+// catalogue load is pending and while fewer than CATALOG_SWEEP_CONCURRENCY sweep
+// loads are already in flight, leaving at least three of the shared five
+// catalogLoadSemaphore permits free so a scrolled-to row never queues behind
+// background work. Aborts if the catalogue generation changes (refresh / layout
+// switch). It starts CATALOG_SWEEP_START_DELAY_MS after the eager batch is done, and
+// its rows reach the screen in batches (see scheduleUpdateCatalogRows).
+internal fun HomeViewModel.startReservedHeadroomSweep(generation: Long) {
+    catalogSweepJob?.cancel()
+    catalogSweepJob = viewModelScope.launch {
+        while (isActive && generation == catalogLoadGeneration && pendingCatalogLoads > catalogSweepInFlight.get()) {
+            delay(CATALOG_SWEEP_YIELD_POLL_MS)
+        }
+        delay(CATALOG_SWEEP_START_DELAY_MS)
+        while (isActive && generation == catalogLoadGeneration) {
+            val nonSweepPending = pendingCatalogLoads > catalogSweepInFlight.get()
+            val atSweepCap = catalogSweepInFlight.get() >= CATALOG_SWEEP_CONCURRENCY
+            if (nonSweepPending || atSweepCap) {
+                delay(CATALOG_SWEEP_YIELD_POLL_MS)
+                continue
+            }
+            val next = pullNextSweepCatalog() ?: break
+            catalogSweepInFlight.incrementAndGet()
+            pendingCatalogLoads = pendingCatalogLoads + 1
+            val job = loadCatalogPipeline(next.first, next.second, generation)
+            job.invokeOnCompletion { catalogSweepInFlight.decrementAndGet() }
+        }
+    }
+}
+
+// Atomically claim the next pending lazy catalogue for the sweep, in display
+// (insertion) order, sharing the same catalogStateLock and lazyLoadRequestedKeys
+// dedup as the on-demand requestLazyCatalogLoad path so a catalogue is never
+// loaded twice. Returns null once the pending set is drained.
+private fun HomeViewModel.pullNextSweepCatalog(): Pair<Addon, CatalogDescriptor>? {
+    return synchronized(catalogStateLock) {
+        val iterator = pendingLazyCatalogs.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            val key = entry.key
+            val value = entry.value
+            iterator.remove()
+            if (lazyLoadRequestedKeys.add(key)) {
+                return@synchronized value
+            }
+        }
+        null
+    }
 }
 
 /**

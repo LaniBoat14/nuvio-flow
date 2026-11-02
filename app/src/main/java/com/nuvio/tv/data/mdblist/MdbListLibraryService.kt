@@ -38,7 +38,10 @@ class MdbListLibraryService(
         }
     }.distinctUntilChanged()
     private val snapshots = allSnapshots.onEach { refreshAsync() }
-    private val projection = snapshots.map { MdbListLibraryProjection(it?.visible() ?: MdbListLibrarySnapshot()) }
+    private val projection = combine(snapshots, writer.pendingWrites) { library, _ ->
+        val writes = writer.pendingWrites(runCatching { sync.currentScope() }.getOrNull())
+        MdbListLibraryProjection((library ?: MdbListLibrarySnapshot()).withWrites(writes).visible())
+    }
 
     /** Every list that can be hidden, with whether it is shown in the library, for MDBList settings. */
     val listOptions = allSnapshots.map { it?.listOptions().orEmpty() }.distinctUntilChanged()
@@ -55,19 +58,40 @@ class MdbListLibraryService(
         val scope = sync.currentScope()
         refresh(TrackingRefreshIntent.AUTOMATIC)
         if (sync.currentScope() != scope) throw CancellationException("MDBList account changed")
-        val library = sync.currentSnapshot()?.library ?: throw loadState.value.error ?: MdbListDecodingException()
+        val library = writer.currentLibrary() ?: throw loadState.value.error ?: MdbListDecodingException()
+        return library.membership(input)
+    }
+
+    /**
+     * Membership for the Add to library button: the cached library as it is shown, so the press acts
+     * at once. Without a cached library only the watchlist is read.
+     */
+    suspend fun getDefaultMembershipSnapshot(input: LibraryEntryInput): ListMembershipSnapshot {
+        writer.currentLibrary()?.let { return it.membership(input) }
+        val scope = sync.currentScope()
+        val watchlist = MdbListLibraryRemote(api, scope).items(MDBLIST_WATCHLIST_KEY)
+        if (sync.currentScope() != scope) throw CancellationException("MDBList account changed")
+        return MdbListLibrarySnapshot(itemsByList = mapOf(MDBLIST_WATCHLIST_KEY to watchlist))
+            .withWrites(writer.pendingWrites(scope))
+            .membership(input)
+    }
+
+    /** Writes first; the cached library is updated and refreshed in the background afterwards. */
+    suspend fun applyMembershipChanges(input: LibraryEntryInput, changes: ListMembershipChanges) {
+        val scope = sync.currentScope()
+        writer.applyMembershipChanges(scope, input, changes, coroutineScope) {
+            refresh(TrackingRefreshIntent.AUTOMATIC)
+            writer.commitPending(scope)
+        }
+    }
+
+    private fun MdbListLibrarySnapshot.membership(input: LibraryEntryInput): ListMembershipSnapshot {
         val target = runCatching { input.mdbListLibraryItem() }.getOrNull()
-        return ListMembershipSnapshot(library.visibleTabs().associate { tab ->
-            tab.key to library.itemsByList[tab.key].orEmpty().any { item ->
+        return ListMembershipSnapshot(visibleTabs().associate { tab ->
+            tab.key to itemsByList[tab.key].orEmpty().any { item ->
                 target?.matches(item) == true || item.type == mdbListLibraryType(input.itemType) && input.itemId in item.media.ids.aliases()
             }
         })
-    }
-
-    suspend fun applyMembershipChanges(input: LibraryEntryInput, changes: ListMembershipChanges) {
-        val scope = sync.currentScope()
-        refresh(TrackingRefreshIntent.AUTOMATIC)
-        writer.applyMembershipChanges(scope, input, changes)
     }
 
     suspend fun setListVisible(key: String, visible: Boolean) {

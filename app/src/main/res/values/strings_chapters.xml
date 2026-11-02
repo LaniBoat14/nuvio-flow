@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="player_chapters">Chapters</string>
+    <string name="player_chapter_number">Chapter %1$d</string>
+    <string name="player_chapter_named">Chapter %1$d: %2$s</string>
+    <string name="player_chapter_now_playing">Now playing</string>
+    <string name="playback_chapters">Chapters in the player</string>
+    <string name="playback_chapters_sub">For films that have chapters: a Chapters button, marks on the timeline and the chapter name</string>
+</resources>

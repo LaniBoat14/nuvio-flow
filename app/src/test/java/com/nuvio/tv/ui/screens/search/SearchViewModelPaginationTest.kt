@@ -118,6 +118,7 @@ class SearchViewModelPaginationTest {
         private val pageDelayMs: Long = 0L
     ) : CatalogRepository {
         val queries = mutableListOf<String>()
+        override suspend fun clearCaches() = Unit
 
         override fun getCatalog(
             addonBaseUrl: String,
@@ -228,6 +229,7 @@ class SearchViewModelPaginationTest {
             watchedSeriesStateHolder = watchedSeries,
             posterOptions = mockk<PosterOptionsController>(relaxed = true),
             serverCatalog = mockk { every { searchAddons } returns flowOf(emptyList()) },
+            catalogSpeed = SearchCatalogSpeed(),
             context = mockk<Context>(relaxed = true)
         )
     }

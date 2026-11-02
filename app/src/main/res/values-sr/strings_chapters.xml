@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="player_chapters">Поглавља</string>
+    <string name="player_chapter_number">Поглавље %1$d</string>
+    <string name="player_chapter_named">Поглавље %1$d: %2$s</string>
+    <string name="player_chapter_now_playing">Сада се репродукује</string>
+    <string name="playback_chapters">Поглавља у плејеру</string>
+    <string name="playback_chapters_sub">За филмове са поглављима: дугме Поглавља, ознаке на временској линији и назив поглавља</string>
+</resources>

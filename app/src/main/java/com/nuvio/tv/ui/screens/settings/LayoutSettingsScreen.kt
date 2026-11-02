@@ -96,7 +96,7 @@ fun LayoutSettingsContent(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 18.dp),
-                        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
+                        verticalArrangement = Arrangement.spacedBy(if (isV2Settings()) 4.dp else NuvioTheme.spacing.md)
                     ) {
                         items(items = sections, key = { it.name }) { section ->
                             val expanded = section.name in expandedSections
@@ -175,6 +175,7 @@ private fun LayoutSectionContent(
         LayoutSection.HOME_LAYOUT -> LayoutHomeLayoutSection(uiState, onEvent)
         LayoutSection.HOME_CONTENT -> LayoutHomeContentSection(uiState, onEvent)
         LayoutSection.SIDEBAR -> LayoutSidebarSection(uiState, onEvent)
+        LayoutSection.CALENDAR -> LayoutCalendarSection()
         LayoutSection.CONTINUE_WATCHING -> LayoutContinueWatchingSection(uiState, onEvent)
         LayoutSection.FOCUSED_POSTER -> LayoutFocusedPosterSection(uiState, onEvent)
         LayoutSection.POSTER_CARD -> LayoutPosterCardSection(uiState, onEvent)

@@ -13,6 +13,15 @@ class MediaBrowserConnectionTest {
     private val emby = EmbyProvider(TestHttp().client, testIdentity)
 
     @Test
+    fun aRedirectMayNotDropEncryption() {
+        assertTrue(dropsEncryption("https://media.example.com", "http://media.example.com"))
+        assertTrue(dropsEncryption("HTTPS://media.example.com", "http://other.example.com:8096"))
+        assertFalse(dropsEncryption("https://media.example.com", "https://media.example.com/jellyfin"))
+        assertFalse(dropsEncryption("http://media.example.com", "https://media.example.com"))
+        assertFalse(dropsEncryption("http://192.168.1.10:8096", "http://192.168.1.10:8096/web"))
+    }
+
+    @Test
     fun normalizesAddresses() {
         assertEquals("http://192.168.1.10:8096", normalizeServerAddress("192.168.1.10:8096"))
         assertEquals("https://media.example.com/jellyfin", normalizeServerAddress(" https://media.example.com/jellyfin/ "))

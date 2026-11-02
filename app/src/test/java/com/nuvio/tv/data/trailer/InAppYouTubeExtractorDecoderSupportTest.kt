@@ -7,15 +7,17 @@ import org.junit.Test
 
 /**
  * The trailer player played the audio over a black screen when the extractor picked a stream it
- * couldn't show: 4K AV1 on the SHIELD (no AV1 decoder) or 10-bit VP9 HDR (decoder error, and a
- * TextureView has no HDR output anyway). Such streams are dropped.
+ * couldn't show: 4K AV1 on the SHIELD (no AV1 decoder) or 10-bit VP9 HDR on an SDR display.
+ * Such streams are dropped.
  */
 class InAppYouTubeExtractorDecoderSupportTest {
 
-    // A SHIELD-like device: H.264 and VP9 up to 4K, no AV1 at all.
-    private val extractor = InAppYouTubeExtractor { codecs, _, _, _ ->
-        codecs.startsWith("avc1") || codecs.startsWith("vp9") || codecs.startsWith("vp09")
-    }
+    // A SHIELD-like device: H.264 and VP9, no AV1 at all, SDR display.
+    private val limits = TrailerVideoLimits(
+        canDecode = { codecs, _, _, _ ->
+            codecs.startsWith("avc1") || codecs.startsWith("vp9") || codecs.startsWith("vp09")
+        }
+    )
 
     @Test
     fun `reads the codecs from youtube mime types`() {
@@ -36,36 +38,36 @@ class InAppYouTubeExtractorDecoderSupportTest {
     @Test
     fun `drops streams the device has no decoder for`() {
         val streams = listOf(
-            video(url = "av1-2160p", codecs = "av01.0.12M.08"),
-            video(url = "vp9-2160p", codecs = "vp9"),
+            video(url = "av1-1080p", codecs = "av01.0.08M.08"),
+            video(url = "vp9-1080p", codecs = "vp9"),
             video(url = "avc-1080p", codecs = "avc1.640028")
         )
 
-        assertEquals(listOf("vp9-2160p", "avc-1080p"), extractor.playableVideo(streams).map { it.url })
+        assertEquals(listOf("vp9-1080p", "avc-1080p"), trailerVideoCandidates(streams, limits).map { it.url })
     }
 
     @Test
-    fun `drops hdr streams even when the device can decode them`() {
+    fun `drops hdr streams on an sdr display even when the device can decode them`() {
         val streams = listOf(
-            video(url = "vp9-hdr-2160p", codecs = "vp09.02.51.10.01.09.16.09.00", isHdr = true),
-            video(url = "vp9-sdr-2160p", codecs = "vp9")
+            video(url = "vp9-hdr-1080p", codecs = "vp09.02.51.10.01.09.16.09.00", isHdr = true),
+            video(url = "vp9-sdr-1080p", codecs = "vp9")
         )
 
-        assertEquals(listOf("vp9-sdr-2160p"), extractor.playableVideo(streams).map { it.url })
+        assertEquals(listOf("vp9-sdr-1080p"), trailerVideoCandidates(streams, limits).map { it.url })
     }
 
     @Test
     fun `keeps a stream whose codec is unknown`() {
         val streams = listOf(video(url = "unknown", codecs = null))
 
-        assertEquals(listOf("unknown"), extractor.playableVideo(streams).map { it.url })
+        assertEquals(listOf("unknown"), trailerVideoCandidates(streams, limits).map { it.url })
     }
 
     @Test
-    fun `leaves nothing when no stream can be shown, so HLS is used instead`() {
-        val streams = listOf(video(url = "av1-2160p", codecs = "av01.0.12M.08"))
+    fun `leaves nothing when no stream can be decoded, so HLS is used instead`() {
+        val streams = listOf(video(url = "av1-1080p", codecs = "av01.0.08M.08"))
 
-        assertTrue(extractor.playableVideo(streams).isEmpty())
+        assertTrue(trailerVideoCandidates(streams, limits).isEmpty())
     }
 
     private fun video(url: String, codecs: String?, isHdr: Boolean = false) = StreamCandidate(
@@ -75,10 +77,11 @@ class InAppYouTubeExtractorDecoderSupportTest {
         score = 0.0,
         hasN = false,
         itag = "0",
-        height = 2160,
+        height = 1080,
         fps = 24,
         ext = "mp4",
-        width = 3840,
+        width = 1920,
+        codec = codecs?.let { trailerVideoCodecOf("video/mp4; codecs=\"$it\"") },
         codecs = codecs,
         isHdr = isHdr
     )

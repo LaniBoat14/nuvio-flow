@@ -1,8 +1,10 @@
-@file:OptIn(androidx.tv.material3.ExperimentalTvMaterial3Api::class)
-
 package com.nuvio.tv.ui.screens.player
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,74 +12,116 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Border
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
+import androidx.tv.material3.ExperimentalTvMaterial3Api
 import com.nuvio.tv.R
+import com.nuvio.tv.core.player.thumbnail.SeekThumbnails
+import com.nuvio.tv.ui.components.FocusScrollingText
+import com.nuvio.tv.ui.components.NuvioScrollDefaults
 import com.nuvio.tv.ui.theme.NuvioTheme
-import kotlinx.coroutines.delay
+import com.nuvio.tv.ui.v2.appearance.LocalV2Appearance
+import com.nuvio.tv.ui.v2.components.nuvioControlSurface
+import com.nuvio.tv.ui.v2.player.v2PlayerPanel
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
-/**
- * The file's chapters, from the right edge like the episodes panel. Focus opens on the chapter
- * playing, so the next and previous ones are one key away; selecting one seeks to its start.
- */
+/** "Chapter 3: Name", or "Chapter 3" when the file only numbers it. */
 @Composable
-internal fun ChaptersSidePanel(
-    chapters: List<PlayerChapter>,
-    positionMs: Long,
-    durationMs: Long,
-    focusRequester: FocusRequester,
-    onChapterSelected: (Int) -> Unit,
-    onClose: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val listState = rememberLazyListState()
-    // Fixed while the panel is open: it marks where focus starts, not a live highlight.
-    val openedAtIndex = remember(chapters) {
-        PlayerChapters.indexAt(chapters, positionMs).coerceAtLeast(0)
-    }
-    val currentIndex = PlayerChapters.indexAt(chapters, positionMs)
+internal fun chapterLabel(chapter: PlayerChapter): String =
+    if (chapter.title != null) stringResource(R.string.player_chapter_named, chapter.number, chapter.title)
+    else stringResource(R.string.player_chapter_number, chapter.number)
 
-    LaunchedEffect(chapters) {
-        runCatching {
-            listState.scrollToItem((openedAtIndex - 2).coerceAtLeast(0))
-            delay(32)
-            focusRequester.requestFocus()
+internal fun chapterLabel(context: android.content.Context, chapter: PlayerChapter): String =
+    if (chapter.title != null) context.getString(R.string.player_chapter_named, chapter.number, chapter.title)
+    else context.getString(R.string.player_chapter_number, chapter.number)
+
+/** The chapter at the shown (or seek preview) position; null without chapters or before the first. */
+@Composable
+internal fun rememberCurrentChapter(viewModel: PlayerViewModel, chapters: List<PlayerChapter>): PlayerChapter? {
+    if (chapters.isEmpty()) return null
+    val timeline by viewModel.playbackTimeline.collectAsState()
+    val index by remember(chapters) {
+        derivedStateOf {
+            val position = if (ScrubGlide.active) ScrubGlide.positionMs else timeline.currentPosition
+            PlayerChapters.indexAt(chapters, position)
+        }
+    }
+    return chapters.getOrNull(index)
+}
+
+/** Thin gaps in the timeline where each chapter starts. */
+internal fun Modifier.chapterGaps(fractions: List<Float>): Modifier =
+    if (fractions.isEmpty()) this else composed {
+        drawWithContent {
+            drawContent()
+            val gap = 2.dp.toPx()
+            for (fraction in fractions) {
+                val x = size.width * fraction - gap / 2f
+                drawRect(Color.Black.copy(alpha = 0.55f), topLeft = Offset(x, 0f), size = Size(gap, size.height))
+            }
         }
     }
 
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+internal fun ChaptersSidePanel(
+    chapters: List<PlayerChapter>,
+    currentPositionMs: Long,
+    onChapterSelected: (PlayerChapter) -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val currentIndex = remember(chapters) { PlayerChapters.indexAt(chapters, currentPositionMs).coerceAtLeast(0) }
+    val focusRequester = remember { FocusRequester() }
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = (currentIndex - 1).coerceAtLeast(0))
+    LaunchedEffect(Unit) {
+        runCatching { focusRequester.requestFocus() }
+    }
+    val v2 = LocalV2Appearance.current != null
     Box(
         modifier = modifier
             .fillMaxHeight()
             .width(520.dp)
             .clip(RoundedCornerShape(topStart = NuvioTheme.spacing.lg, bottomStart = NuvioTheme.spacing.lg))
-            .background(NuvioTheme.colors.BackgroundElevated)
+            .then(if (v2) Modifier.v2PlayerPanel() else Modifier.background(NuvioTheme.colors.BackgroundElevated))
     ) {
         Column(modifier = Modifier.padding(NuvioTheme.spacing.xl)) {
             Row(
@@ -86,7 +130,7 @@ internal fun ChaptersSidePanel(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = stringResource(R.string.player_chapters_title, chapters.size),
+                    text = stringResource(R.string.player_chapters),
                     style = MaterialTheme.typography.headlineSmall,
                     color = NuvioTheme.colors.TextPrimary
                 )
@@ -96,125 +140,148 @@ internal fun ChaptersSidePanel(
                     isPrimary = false
                 )
             }
-
             Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
-
+            // The focused chapter glides to a fixed spot instead of the list jumping by whole rows.
+            CompositionLocalProvider(LocalBringIntoViewSpec provides NuvioScrollDefaults.smoothScrollSpec) {
             LazyColumn(
                 state = listState,
-                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
-                contentPadding = PaddingValues(vertical = NuvioTheme.spacing.xs),
+                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
+                contentPadding = PaddingValues(top = NuvioTheme.spacing.xs, bottom = NuvioTheme.spacing.xl),
                 modifier = Modifier.fillMaxHeight()
             ) {
-                itemsIndexed(chapters, key = { _, chapter -> chapter.startMs }) { index, chapter ->
-                    val endMs = chapters.getOrNull(index + 1)?.startMs ?: durationMs
+                itemsIndexed(chapters, key = { _, chapter -> chapter.number }) { index, chapter ->
                     ChapterItem(
-                        number = index + 1,
                         chapter = chapter,
                         isCurrent = index == currentIndex,
-                        progress = if (index == currentIndex && endMs > chapter.startMs) {
-                            ((positionMs - chapter.startMs).toFloat() / (endMs - chapter.startMs)).coerceIn(0f, 1f)
-                        } else {
-                            null
-                        },
-                        remainingMs = if (index == currentIndex) (endMs - positionMs).coerceAtLeast(0L) else null,
-                        modifier = if (index == openedAtIndex) Modifier.focusRequester(focusRequester) else Modifier,
-                        onClick = { onChapterSelected(index) }
+                        modifier = if (index == currentIndex) Modifier.focusRequester(focusRequester) else Modifier,
+                        onClick = { onChapterSelected(chapter) }
                     )
                 }
+            }
             }
         }
     }
 }
 
+@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun ChapterItem(
-    number: Int,
     chapter: PlayerChapter,
     isCurrent: Boolean,
-    progress: Float?,
-    remainingMs: Long?,
     modifier: Modifier,
     onClick: () -> Unit
 ) {
+    val v2 = LocalV2Appearance.current != null
+    var isFocused by remember { mutableStateOf(false) }
+    // Looked up until the picture is in memory, then kept: a loaded row stops following the thumbnail tick.
+    var painter by remember(chapter.startMs) { mutableStateOf<Painter?>(null) }
+    if (painter == null) {
+        val tick by SeekThumbnails.tick
+        LaunchedEffect(chapter.startMs, tick) {
+            painter = seekThumbnailPainter(SeekThumbnails.tileFor(chapter.startMs))
+        }
+    }
+    val shape = RoundedCornerShape(NuvioTheme.radii.xl)
     Card(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .onFocusChanged { isFocused = it.isFocused }
+            .nuvioControlSurface(shape),
         colors = CardDefaults.colors(
-            containerColor = NuvioTheme.colors.BackgroundCard,
-            focusedContainerColor = NuvioTheme.colors.FocusBackground
+            containerColor = if (v2) {
+                if (isCurrent) NuvioTheme.colors.Secondary.copy(alpha = .12f) else Color.Transparent
+            } else NuvioTheme.colors.BackgroundCard,
+            focusedContainerColor = if (v2) Color.Transparent else NuvioTheme.colors.FocusBackground
         ),
-        border = CardDefaults.border(
-            focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                shape = RoundedCornerShape(NuvioTheme.radii.xl)
-            )
+        border = if (v2) CardDefaults.border(border = Border.None, focusedBorder = Border.None) else CardDefaults.border(
+            focusedBorder = Border(border = BorderStroke(NuvioTheme.spacing.xxs, Color.White), shape = shape)
         ),
-        scale = CardDefaults.scale(focusedScale = 1.01f),
-        shape = CardDefaults.shape(shape = RoundedCornerShape(NuvioTheme.radii.xl))
+        scale = CardDefaults.scale(focusedScale = if (v2) 1f else 1.01f),
+        shape = CardDefaults.shape(shape = shape)
     ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(130.dp)
+                    .height(73.dp)
+                    .clip(RoundedCornerShape(NuvioTheme.radii.md))
+                    .background(NuvioTheme.colors.SurfaceVariant)
             ) {
-                Box(modifier = Modifier.width(28.dp), contentAlignment = Alignment.Center) {
-                    if (isCurrent) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = stringResource(R.string.cd_current),
-                            tint = NuvioTheme.colors.Primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    } else {
-                        Text(
-                            text = number.toString(),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = NuvioTheme.extendedColors.textTertiary
-                        )
-                    }
+                painter?.let {
+                    Image(it, contentDescription = null, contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize())
                 }
-                Text(
-                    text = chapter.title ?: stringResource(R.string.player_chapter_number, number),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (isCurrent) NuvioTheme.colors.Primary else NuvioTheme.colors.TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    text = formatTime(chapter.startMs),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = NuvioTheme.extendedColors.textSecondary
-                )
-            }
-            if (progress != null && remainingMs != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.padding(start = 40.dp)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(NuvioTheme.spacing.xs)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color.Black.copy(alpha = 0.75f))
+                        .padding(horizontal = NuvioTheme.spacing.sm, vertical = 2.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(Color.White.copy(alpha = 0.2f))
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .fillMaxWidth(progress)
-                                .background(NuvioTheme.colors.Primary)
-                        )
-                    }
                     Text(
-                        text = stringResource(R.string.player_chapter_remaining, formatTime(remainingMs)),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NuvioTheme.extendedColors.textTertiary
+                        text = formatSeekTime(chapter.startMs),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White
                     )
                 }
             }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
+            ) {
+                // Fixed-height lines (number line + two title lines) keep every row as tall as its picture,
+                // so each step down the list scrolls the same distance.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = if (chapter.title != null) stringResource(R.string.player_chapter_number, chapter.number) else "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NuvioTheme.extendedColors.textSecondary,
+                        maxLines = 1
+                    )
+                    if (isCurrent) {
+                        Text(
+                            text = (if (chapter.title != null) " • " else "") + stringResource(R.string.player_chapter_now_playing),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = NuvioTheme.colors.Secondary,
+                            maxLines = 1
+                        )
+                    }
+                }
+                FocusScrollingText(
+                    text = chapter.title ?: stringResource(R.string.player_chapter_number, chapter.number),
+                    focused = isFocused,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 2,
+                    color = NuvioTheme.colors.TextPrimary,
+                    startDelayMillis = 800L
+                )
+            }
         }
     }
+}
+
+/** Chapter starts as shares of the timeline; empty without chapters. */
+@Composable
+internal fun rememberChapterFractions(viewModel: PlayerViewModel, durationMs: Long): List<Float> {
+    val chapters = rememberChapters(viewModel)
+    return remember(chapters, durationMs) { PlayerChapters.timelineFractions(chapters, durationMs) }
+}
+
+/** The chapter under the seek cursor while seeking with the controls hidden. */
+@Composable
+internal fun rememberSeekChapter(viewModel: PlayerViewModel): PlayerChapter? =
+    rememberCurrentChapter(viewModel, rememberChapters(viewModel))
+
+@Composable
+private fun rememberChapters(viewModel: PlayerViewModel): List<PlayerChapter> {
+    val flow = remember(viewModel) { viewModel.uiState.map { it.chapters }.distinctUntilChanged() }
+    return flow.collectAsState(initial = viewModel.uiState.value.chapters).value
 }

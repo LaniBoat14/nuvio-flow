@@ -14,12 +14,17 @@ import com.nuvio.tv.domain.model.LibraryListTab
 import com.nuvio.tv.domain.model.LibrarySourceMode
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.WatchProgress
+import com.nuvio.tv.domain.model.WatchedTitlesMode
 
 @Immutable
 data class HomeUiState(
     val catalogRows: List<CatalogRow> = emptyList(),
     val continueWatchingItems: List<ContinueWatchingItem> = emptyList(),
     val upcomingItems: List<ContinueWatchingItem> = emptyList(),
+    /** The Calendar's "Coming up" row, empty while the row is switched off. */
+    val comingUpItems: List<ContinueWatchingItem> = emptyList(),
+    /** True while the Coming up row is on: it shows the Upcoming episodes and the Upcoming row stays hidden. */
+    val upcomingInComingUp: Boolean = false,
     val isLoading: Boolean = true,
     val layoutPreferencesReady: Boolean = false,
     val error: String? = null,
@@ -28,6 +33,7 @@ data class HomeUiState(
     val homeLayout: HomeLayout = HomeLayout.MODERN,
     val modernLandscapePostersEnabled: Boolean = false,
     val alwaysShowLandscapeClearlogo: Boolean = false,
+    val addonLandscapeBackdropLogo: Boolean = false,
     val modernHeroFullScreenBackdropEnabled: Boolean = false,
     val homeImdbRatingsVisibility: HomeImdbRatingsVisibility = HomeImdbRatingsVisibility.SHOW_ALL,
     val detailImdbRatingsVisibility: DetailImdbRatingsVisibility = DetailImdbRatingsVisibility.SHOW_ALL,
@@ -41,8 +47,8 @@ data class HomeUiState(
     val classicFocusGradientEnabled: Boolean = false,
     val focusedPosterBackdropExpandEnabled: Boolean = false,
     val focusedPosterBackdropExpandDelaySeconds: Int = 3,
-    val focusedPosterBackdropTrailerEnabled: Boolean = false,
-    val focusedPosterBackdropTrailerMuted: Boolean = true,
+    val focusedPosterBackdropTrailerEnabled: Boolean = true,
+    val focusedPosterBackdropTrailerMuted: Boolean = false,
     val focusedPosterBackdropTrailerPlaybackTarget: FocusedPosterTrailerPlaybackTarget =
         FocusedPosterTrailerPlaybackTarget.HERO_MEDIA,
     val posterCardWidthDp: Int = 126,
@@ -63,6 +69,7 @@ data class HomeUiState(
     val posterListPickerRemovalConfirmations: List<TrackingMembershipRemovalConfirmation> = emptyList(),
     val gridItems: List<GridItem> = emptyList(),
     val hideUnreleasedContent: Boolean = false,
+    val watchedTitlesMode: WatchedTitlesMode = WatchedTitlesMode.SHOW,
     val showFullReleaseDate: Boolean = true,
     val blurUnwatchedEpisodes: Boolean = false,
     val useEpisodeThumbnailsInCw: Boolean = true,
@@ -139,7 +146,13 @@ data class NextUpInfo(
     val seedSeason: Int? = null,
     val seedEpisode: Int? = null,
     val contentLanguage: String? = null,
-    val mdbListRatings: com.nuvio.tv.domain.model.MDBListRatings? = null
+    val mdbListRatings: com.nuvio.tv.domain.model.MDBListRatings? = null,
+    /** Shown on the card in place of the usual Next up or air date text. */
+    val badgeLabel: String? = null,
+    /** A Coming up card for a show only the Upcoming row knows, so removing it from Home works like there. */
+    val upcomingOnly: Boolean = false,
+    /** The Calendar's key for a Coming up card's title, used to hide it from the row. */
+    val comingUpKey: String? = null
 )
 
 @Immutable

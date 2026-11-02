@@ -1,6 +1,10 @@
 package com.nuvio.tv.ui.screens.settings
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.stringResource
@@ -11,6 +15,7 @@ import com.nuvio.tv.data.local.LibassRenderScale
 import com.nuvio.tv.data.local.LibassRenderMode
 import com.nuvio.tv.data.local.PlayerPreference
 import com.nuvio.tv.data.local.PlayerSettings
+import com.nuvio.tv.data.local.SubtitleEdgeStyle
 import com.nuvio.tv.data.local.SubtitleLanguageOption
 import com.nuvio.tv.data.local.SubtitleStyleSettings
 import com.nuvio.tv.data.local.displayName
@@ -70,6 +75,15 @@ internal fun PlaybackSubtitlesSection(
         enabled = languageSelectionEnabled,
         onClick = { onOpenDialog(PlaybackDialog.SECONDARY_SUBTITLE_LANGUAGE) }
     )
+    SettingsActionRow(
+        title = stringResource(R.string.sub_tertiary_lang),
+        subtitle = null,
+        value = style.tertiaryPreferredLanguage
+            ?.let { code -> AVAILABLE_SUBTITLE_LANGUAGES.find { it.code == code }?.displayName }
+            ?: stringResource(R.string.sub_not_set),
+        enabled = languageSelectionEnabled,
+        onClick = { onOpenDialog(PlaybackDialog.TERTIARY_SUBTITLE_LANGUAGE) }
+    )
     autoSyncSettingsItems(enabled = enabled) // AutoSync hook
 
     SettingsToggleRow(
@@ -87,6 +101,13 @@ internal fun PlaybackSubtitlesSection(
         enabled = enabled
     )
     SettingsToggleRow(
+        title = stringResource(R.string.sub_addon_subtitles),
+        subtitle = stringResource(R.string.sub_addon_subtitles_desc),
+        checked = settings.addonSubtitlesEnabled,
+        onToggle = { onUpdate { setAddonSubtitlesEnabled(!settings.addonSubtitlesEnabled) } },
+        enabled = enabled
+    )
+    SettingsToggleRow(
         title = stringResource(R.string.sub_strip_sdh),
         subtitle = stringResource(R.string.sub_strip_sdh_desc),
         checked = style.stripSdh,
@@ -95,13 +116,24 @@ internal fun PlaybackSubtitlesSection(
     )
 
     SettingsSectionLabel(text = stringResource(R.string.sub_style_label))
+    var showFontPicker by remember { mutableStateOf(false) }
+    SettingsActionRow(
+        title = stringResource(R.string.subtitle_font_family),
+        subtitle = null,
+        value = subtitleFontName(style.font),
+        enabled = enabled,
+        onClick = { showFontPicker = true }
+    )
+    if (showFontPicker && enabled) {
+        SubtitleFontDialog(style.font, { font -> onUpdate { setSubtitleFont(font) } }) { showFontPicker = false }
+    }
     SliderSettingsItem(
         title = stringResource(R.string.sub_size),
         value = style.size,
         valueText = "${style.size}%",
         minValue = 50,
         maxValue = 200,
-        step = 10,
+        step = 5,
         onValueChange = { size -> onUpdate { setSubtitleSize(size) } },
         enabled = enabled
     )
@@ -135,14 +167,20 @@ internal fun PlaybackSubtitlesSection(
         onClick = { onOpenDialog(PlaybackDialog.SUBTITLE_BACKGROUND_COLOR) },
         enabled = enabled
     )
-    SettingsToggleRow(
-        title = stringResource(R.string.sub_outline),
-        subtitle = stringResource(R.string.sub_outline_sub),
-        checked = style.outlineEnabled,
-        onToggle = { onUpdate { setSubtitleOutlineEnabled(!style.outlineEnabled) } },
-        enabled = enabled
+    var showEdgePicker by remember { mutableStateOf(false) }
+    SettingsActionRow(
+        title = stringResource(R.string.subtitle_edge_style),
+        subtitle = null,
+        value = subtitleEdgeName(style.effectiveEdgeStyle),
+        enabled = enabled,
+        onClick = { showEdgePicker = true }
     )
-    if (style.outlineEnabled) {
+    if (showEdgePicker && enabled) {
+        SubtitleEdgeDialog(style.effectiveEdgeStyle, { edge -> onUpdate { setSubtitleEdgeStyle(edge) } }) {
+            showEdgePicker = false
+        }
+    }
+    if (style.effectiveEdgeStyle == SubtitleEdgeStyle.OUTLINE) {
         ColorSettingsItem(
             title = stringResource(R.string.sub_outline_color),
             currentColor = Color(style.outlineColor),
@@ -174,13 +212,6 @@ internal fun PlaybackSubtitlesSection(
             onValueChange = { brightness -> onUpdate { setSubtitleHdrBrightness(brightness) } },
             enabled = enabled
         )
-        SettingsToggleRow(
-            title = stringResource(R.string.sub_hdr_dim_player_controls),
-            subtitle = stringResource(R.string.sub_hdr_dim_player_controls_sub),
-            checked = style.hdrDimPlayerControls,
-            onToggle = { onUpdate { setSubtitleHdrDimPlayerControls(!style.hdrDimPlayerControls) } },
-            enabled = enabled
-        )
     }
 
     SettingsSectionLabel(text = stringResource(R.string.sub_advanced_section))
@@ -209,7 +240,8 @@ internal fun PlaybackSubtitlesSection(
             title = stringResource(R.string.sub_libass_render_scale),
             subtitle = stringResource(R.string.sub_libass_render_scale_sub),
             value = settings.libassRenderScale.label,
-            onClick = { onOpenDialog(PlaybackDialog.LIBASS_RENDER_SCALE) }
+            onClick = { onOpenDialog(PlaybackDialog.LIBASS_RENDER_SCALE) },
+            enabled = enabled
         )
     }
 }
@@ -258,6 +290,16 @@ internal fun SubtitleSettingsDialogs(
             showNoneOption = true,
             onLanguageSelected = { language ->
                 onUpdate { setSubtitleSecondaryLanguage(language) }
+                onDismiss()
+            },
+            onDismiss = onDismiss
+        )
+        PlaybackDialog.TERTIARY_SUBTITLE_LANGUAGE -> LanguageSelectionDialog(
+            title = stringResource(R.string.sub_tertiary_lang),
+            selectedLanguage = style.tertiaryPreferredLanguage,
+            showNoneOption = true,
+            onLanguageSelected = { language ->
+                onUpdate { setSubtitleTertiaryLanguage(language) }
                 onDismiss()
             },
             onDismiss = onDismiss

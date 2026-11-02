@@ -4,15 +4,14 @@ import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.theme.accentBrush
 
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
@@ -25,6 +24,19 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.util.lerp
 
 private val LoadingEasing = CubicBezierEasing(0.333f, 0f, 0.667f, 1f)
+internal const val LOADING_CYCLE_MS = 2_000L
+private const val LOADING_FRAMES = 60f
+
+internal fun loadingIndicatorFrame(elapsedMs: Long): Float =
+    (elapsedMs.coerceAtLeast(0L) % LOADING_CYCLE_MS) * LOADING_FRAMES / LOADING_CYCLE_MS
+
+/** Spins on the frame clock rather than as an animation, so it keeps turning with animations off or slowed. */
+internal suspend fun runLoadingIndicatorClock(onFrame: (Float) -> Unit): Nothing {
+    val startedAtMs = withFrameMillis { it }
+    while (true) {
+        onFrame(loadingIndicatorFrame(withFrameMillis { it } - startedAtMs))
+    }
+}
 
 @Composable
 fun LoadingIndicator(
@@ -32,12 +44,8 @@ fun LoadingIndicator(
     color: Color = Color.Unspecified
 ) {
     val brush = if (color == Color.Unspecified) NuvioTheme.palette.accentBrush() else SolidColor(color)
-    val frame = rememberInfiniteTransition(label = "loading_indicator").animateFloat(
-        initialValue = 0f,
-        targetValue = 60f,
-        animationSpec = infiniteRepeatable(tween(durationMillis = 2000, easing = LinearEasing)),
-        label = "loading_frame"
-    )
+    val frame = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) { runLoadingIndicatorClock { frame.floatValue = it } }
     Box(
         modifier = modifier,
         contentAlignment = Alignment.Center
@@ -53,7 +61,7 @@ fun LoadingIndicator(
                     val arcSize = Size(radius * 2f, radius * 2f)
                     val stroke = Stroke(width = 50f * scale, cap = StrokeCap.Round)
                     onDrawBehind {
-                        val currentFrame = frame.value
+                        val currentFrame = frame.floatValue
                         val start = lerp(0f, 99f, LoadingEasing.transform(((currentFrame - 10f) / 50f).coerceIn(0f, 1f)))
                         val end = lerp(1f, 100f, LoadingEasing.transform((currentFrame / 50f).coerceIn(0f, 1f)))
                         drawArc(

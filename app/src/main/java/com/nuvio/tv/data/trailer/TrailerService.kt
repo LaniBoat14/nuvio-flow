@@ -1,13 +1,13 @@
 package com.nuvio.tv.data.trailer
 
 import android.util.Log
-import com.nuvio.tv.core.player.TrailerVideoPolicy
 import com.nuvio.tv.core.tmdb.TmdbService
 import com.nuvio.tv.data.local.TmdbSettingsDataStore
-import com.nuvio.tv.data.local.TrailerSettingsDataStore
 import com.nuvio.tv.data.remote.api.TmdbApi
 import com.nuvio.tv.data.remote.api.TmdbVideoResult
 import com.nuvio.tv.data.remote.api.TrailerApi
+import com.nuvio.tv.data.local.TrailerSettingsDataStore
+import com.nuvio.tv.data.local.TrailerSource
 import java.time.Clock
 import java.net.URI
 import java.time.Instant
@@ -15,7 +15,10 @@ import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -24,15 +27,7 @@ import kotlinx.coroutines.withContext
 
 private const val TAG = "TrailerService"
 private const val TMDB_TRAILER_FALLBACK_LANGUAGE = "en-US"
-private val YOUTUBE_SOURCE_CACHE_TTL: Duration = Duration.ofHours(3)
-private val YOUTUBE_VIDEO_ID_REGEX = Regex("^[a-zA-Z0-9_-]{11}$")
-private const val MAX_YOUTUBE_CANDIDATES = 3
-
-// Top level so the lambda doesn't capture the TrailerService instance from its constructor call.
-private fun trailerHeightCap(trailerSettingsDataStore: TrailerSettingsDataStore): suspend () -> Int = {
-    val allow4k = runCatching { trailerSettingsDataStore.settings.first().allow4k }.getOrDefault(true)
-    TrailerVideoPolicy.maxTrailerVideoHeight(allow4k)
-}
+private const val TMDB_TRAILER_MAX_CANDIDATES = 3
 
 @Singleton
 class TrailerService(
@@ -41,8 +36,10 @@ class TrailerService(
     private val inAppYouTubeExtractor: InAppYouTubeExtractor,
     private val tmdbSettingsDataStore: TmdbSettingsDataStore,
     private val tmdbService: TmdbService,
-    private val clock: Clock = Clock.systemUTC(),
-    private val maxTrailerVideoHeight: suspend () -> Int = { Int.MAX_VALUE }
+    private val imdbTrailerResolver: ImdbTrailerResolver,
+    private val trailerSettingsDataStore: TrailerSettingsDataStore,
+    private val clock: Clock,
+    private val mediaCache: TrailerMediaCache? = null
 ) {
     @Inject
     constructor(
@@ -51,22 +48,24 @@ class TrailerService(
         inAppYouTubeExtractor: InAppYouTubeExtractor,
         tmdbSettingsDataStore: TmdbSettingsDataStore,
         tmdbService: TmdbService,
-        trailerSettingsDataStore: TrailerSettingsDataStore
+        imdbTrailerResolver: ImdbTrailerResolver,
+        trailerSettingsDataStore: TrailerSettingsDataStore,
+        mediaCache: TrailerMediaCache? = null
     ) : this(
         trailerApi = trailerApi,
         tmdbApi = tmdbApi,
         inAppYouTubeExtractor = inAppYouTubeExtractor,
         tmdbSettingsDataStore = tmdbSettingsDataStore,
         tmdbService = tmdbService,
+        imdbTrailerResolver = imdbTrailerResolver,
+        trailerSettingsDataStore = trailerSettingsDataStore,
         clock = Clock.systemUTC(),
-        maxTrailerVideoHeight = trailerHeightCap(trailerSettingsDataStore)
+        mediaCache = mediaCache
     )
 
-    // Cache: "title|year|tmdbId|type|maxHeight" -> trailer playback source (NEGATIVE_CACHE sentinel for misses).
-    // The height is part of the key so toggling 4K trailers takes effect without a restart.
-    private val cache = ConcurrentHashMap<String, TrailerPlaybackSource>()
-    private val NEGATIVE_CACHE = TrailerPlaybackSource(videoUrl = "")
-    // Time-bound cache: youtubeVideoId -> resolved playback source (success-only)
+    private val cache = TrailerSourceCache(clock)
+    private val lookupLocks = Array(32) { Mutex() }
+    // youtubeVideoId -> resolved playback source (success-only)
     private val youtubeSourceCache = ConcurrentHashMap<String, CachedTrailerPlaybackSource>()
     // Extractions running right now, by the same key as youtubeSourceCache
     private val inFlightYoutubeSources = ConcurrentHashMap<String, CompletableDeferred<TrailerPlaybackSource?>>()
@@ -87,66 +86,83 @@ class TrailerService(
         tmdbId: String? = null,
         type: String? = null,
         ignoreUseTrailersGate: Boolean = false
-    ): TrailerPlaybackSource? = withContext(Dispatchers.IO) {
-        // Read the TMDB settings once and reuse for both the "Disable Trailers"
-        // gate and the trailer language lookup below. The gate respects the
-        // user's "Disable Trailers in TMDB Enrichment" toggle: the TMDB path
-        // below is the only trailer source surfaced through this function,
-        // so when the toggle is off we return no trailer at all rather than
-        // silently falling through to TMDB's /videos endpoint. See #1647.
-        // Post-play recommendations bypass this gate because they have no
-        // meta-addon trailer to fall back on.
-        val tmdbSettings = runCatching { tmdbSettingsDataStore.settings.first() }.getOrNull()
-        if (!ignoreUseTrailersGate && tmdbSettings?.useTrailers != true) {
-            Log.d(TAG, "Trailers disabled in TMDB enrichment settings; skipping lookup")
-            return@withContext null
-        }
-        val tmdbLanguage = normalizeTmdbTrailerLanguage(tmdbSettings?.language)
+    ): TrailerPlaybackSource? = lookupTrailer(title, year, tmdbId, type, ignoreUseTrailersGate).source
 
-        val cacheKey = "$title|$year|$tmdbId|$type|${maxTrailerVideoHeight()}"
+    /**
+     * Same lookup as [getTrailerPlaybackSource], and also says whether a miss is definite
+     * (nothing to try) or may have been a timeout, rate limit or failed request.
+     */
+    suspend fun lookupTrailer(
+        title: String,
+        year: String? = null,
+        tmdbId: String? = null,
+        type: String? = null,
+        ignoreUseTrailersGate: Boolean = false
+    ): TrailerLookupResult = withContext(Dispatchers.IO) {
+        val settings = try { tmdbSettingsDataStore.settings.first() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { null }
+        val provider = try { trailerSettingsDataStore.settings.first().source }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { TrailerSource.YOUTUBE }
+        val useYouTube = settings?.useTrailers == true || ignoreUseTrailersGate
+        if (!useYouTube && provider != TrailerSource.IMDB) return@withContext TrailerLookupResult.DEFINITE_MISS
 
-        cache[cacheKey]?.let { cached ->
-            val hit = cached !== NEGATIVE_CACHE
-            Log.d(TAG, "Cache hit for $cacheKey: $hit")
-            return@withContext if (hit) cached else null
-        }
-
-        try {
-            Log.d(TAG, "Searching trailer: title=$title, year=$year, tmdbId=$tmdbId, type=$type")
-
-            // TMDB-first path. Gated on `useTrailers` above so the
-            // user's toggle in TMDB enrichment settings is honored.
-            val tmdbSource = getTrailerPlaybackSourceFromTmdbId(
-                tmdbId = tmdbId,
-                type = type,
-                title = title,
-                year = year,
-                languageOverride = tmdbLanguage
-            )
-            if (tmdbSource != null) {
-                cache[cacheKey] = tmdbSource
-                return@withContext tmdbSource
+        val rawId = tmdbId?.removePrefix("tmdb:")?.removePrefix("movie:")?.removePrefix("series:")
+            ?.substringBefore(':')?.substringBefore('/')?.trim()
+        val suppliedImdb = rawId?.takeIf { Regex("tt\\d+").matches(it) }
+        val numericId = rawId?.toIntOrNull()?.toString()
+        val language = normalizeTmdbTrailerLanguage(settings?.language)
+        val mediaType = normalizeTmdbMediaType(type)
+        val identity = suppliedImdb ?: numericId ?: "$title|$year"
+        val key = "$identity|$mediaType|$provider|$language|$useYouTube"
+        lookupLocks[(key.hashCode() and Int.MAX_VALUE) % lookupLocks.size].withLock {
+            cache.get(key)?.let { entry ->
+                val source = entry.source
+                if (source == null) return@withLock TrailerLookupResult.DEFINITE_MISS
+                if (!TrailerPlaybackFailures.hasFailed(source.videoUrl)) return@withLock TrailerLookupResult(source)
+                cache.invalidate(source.videoUrl)
+                imdbTrailerResolver.invalidate(source.videoUrl)
             }
-            Log.w(TAG, "TMDB path exhausted; no YouTube trailer key resolved for backend /trailer fallback")
-            // Only cache negative result if tmdbId was available — if null, enrichment
-            // may not have completed yet and a retry with tmdbId could succeed. A miss while
-            // YouTube is rate limiting says nothing about the title, so it isn't cached either.
-            if (tmdbId != null && !inAppYouTubeExtractor.isRateLimited()) {
-                cache[cacheKey] = NEGATIVE_CACHE
+            try {
+                var imdbFailed = false
+                if (provider == TrailerSource.IMDB) {
+                    val imdb = suppliedImdb ?: numericId?.toInt()?.let {
+                        tmdbService.tmdbToImdb(it, mediaType ?: "movie")
+                    }
+                    if (imdb != null) {
+                        val source = imdbTrailerResolver.resolve(imdb, type)
+                        if (source != null && TrailerSourceExpiry.isUsable(source, clock.millis())) {
+                            mediaCache?.initialize()
+                            val fresh = source.copy(validUntilMs = minOf(clock.millis() + 30 * 60_000L, TrailerSourceExpiry.expiresAtMs(source)))
+                            cache.put(key, fresh)
+                            return@withLock TrailerLookupResult(fresh)
+                        }
+                        imdbFailed = true
+                    }
+                }
+                if (!useYouTube) return@withLock TrailerLookupResult(null, definiteMiss = !imdbFailed)
+                val resolvedTmdb = numericId ?: suppliedImdb?.let { tmdbService.ensureTmdbId(it, type ?: "movie") }
+                val lookup = lookupTmdbTrailer(resolvedTmdb, type, title, year, language)
+                val ttl = if (provider == TrailerSource.IMDB) 30_000L else 30 * 60_000L
+                val source = lookup.source?.let {
+                    it.copy(validUntilMs = minOf(clock.millis() + ttl, TrailerSourceExpiry.expiresAtMs(it)))
+                }
+                val definiteMiss = lookup.definiteMiss && !imdbFailed
+                // Retry the preferred provider soon after a YouTube fallback.
+                if (source != null) cache.put(key, source, ttl)
+                else if (resolvedTmdb != null && definiteMiss) cache.put(key, null, 30_000L)
+                TrailerLookupResult(source, definiteMiss)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(TAG, "Trailer lookup failed", error)
+                TrailerLookupResult(null, definiteMiss = false)
             }
-            null
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            // The detail screen cancels the previous trailer job every time it starts a new
-            // one, so this is routine. Swallowing it returned null, which the caller cannot
-            // tell apart from "this title has no trailer" -- it wrote that null over a URL a
-            // later job had already resolved, and the NEGATIVE_CACHE line above pinned the
-            // miss for the rest of the process, so the trailer button stayed gone.
-            throw e
-        } catch (e: Exception) {
-            Log.e(TAG, "Error fetching trailer for $title: ${e.message}", e)
-            null
         }
     }
+
+    suspend fun preload(source: TrailerPlaybackSource) { mediaCache?.preload(source) }
 
     /**
      * Search for a trailer and return its primary video URL for existing call sites.
@@ -180,11 +196,7 @@ class TrailerService(
         }
         val mediaType = normalizeTmdbMediaType(type)
         val tmdbLanguage = normalizeTmdbTrailerLanguage(tmdbSettings.language)
-        val tmdbResults = when (mediaType) {
-            "movie" -> fetchTmdbMovieVideos(numericTmdbId, tmdbLanguage)
-            "tv" -> fetchTmdbTvVideos(numericTmdbId, tmdbLanguage)
-            else -> fetchTmdbMovieVideos(numericTmdbId, tmdbLanguage) + fetchTmdbTvVideos(numericTmdbId, tmdbLanguage)
-        }
+        val tmdbResults = fetchTmdbVideos(numericTmdbId, mediaType, tmdbLanguage).orEmpty()
         rankTmdbVideoCandidates(tmdbResults, preferredLanguageCode = tmdbLanguage)
             .firstOrNull()
             ?.key
@@ -202,8 +214,17 @@ class TrailerService(
         title: String? = null,
         year: String? = null,
         languageOverride: String? = null
-    ): TrailerPlaybackSource? = withContext(Dispatchers.IO) {
-        val numericTmdbId = tmdbId?.toIntOrNull() ?: return@withContext null
+    ): TrailerPlaybackSource? = lookupTmdbTrailer(tmdbId, type, title, year, languageOverride).source
+
+    private suspend fun lookupTmdbTrailer(
+        tmdbId: String?,
+        type: String?,
+        title: String?,
+        year: String?,
+        languageOverride: String?
+    ): TrailerLookupResult = withContext(Dispatchers.IO) {
+        val numericTmdbId = tmdbId?.toIntOrNull()
+            ?: return@withContext TrailerLookupResult(null, definiteMiss = false)
         val mediaType = normalizeTmdbMediaType(type)
         val tmdbLanguage = languageOverride ?: getPreferredTmdbTrailerLanguage()
         Log.d(
@@ -211,18 +232,13 @@ class TrailerService(
             "TMDB trailer lookup start: tmdbId=$numericTmdbId type=${mediaType ?: "unknown"} language=$tmdbLanguage"
         )
 
-        val tmdbResults = when (mediaType) {
-            "movie" -> fetchTmdbMovieVideos(numericTmdbId, tmdbLanguage)
-            "tv" -> fetchTmdbTvVideos(numericTmdbId, tmdbLanguage)
-            else -> fetchTmdbMovieVideos(numericTmdbId, tmdbLanguage) + fetchTmdbTvVideos(numericTmdbId, tmdbLanguage)
-        }
+        val tmdbResults = fetchTmdbVideos(numericTmdbId, mediaType, tmdbLanguage)
+            ?: return@withContext TrailerLookupResult(null, definiteMiss = false)
 
         val candidates = rankTmdbVideoCandidates(tmdbResults, preferredLanguageCode = tmdbLanguage)
         Log.d(TAG, "TMDB candidate count: ${candidates.size}")
 
-        // Big titles list a dozen trailers and teasers. When the best few all fail, the rest
-        // almost always fail the same way, and trying them only adds YouTube requests.
-        for (candidate in candidates.take(MAX_YOUTUBE_CANDIDATES)) {
+        for (candidate in candidates.take(TMDB_TRAILER_MAX_CANDIDATES)) {
             if (inAppYouTubeExtractor.isRateLimited()) {
                 Log.w(TAG, "YouTube is rate limiting, not trying the remaining TMDB candidates")
                 break
@@ -242,16 +258,17 @@ class TrailerService(
                 year = year
             )
             if (source != null) {
-                return@withContext source
+                return@withContext TrailerLookupResult(source)
             }
 
             Log.d(
                 TAG,
                 "TMDB candidate extraction failed, trying next: key=${obfuscateYoutubeKey(key)}"
             )
+            if (inAppYouTubeExtractor.unplayableReason(youtubeUrl) == YouTubeUnplayableReason.SIGN_IN_REQUIRED) break
         }
 
-        null
+        TrailerLookupResult(null, definiteMiss = candidates.isEmpty())
     }
 
     /**
@@ -263,21 +280,16 @@ class TrailerService(
         year: String? = null
     ): TrailerPlaybackSource? = withContext(Dispatchers.IO) {
         try {
-            val maxHeight = maxTrailerVideoHeight()
-            val youtubeKey = extractYouTubeVideoId(youtubeUrl)
-            // Same video, different source per height cap, so the cap is part of the cache key.
-            val sourceCacheKey = youtubeKey?.takeIf { it.isNotBlank() }?.let { "$it|$maxHeight" }
-                ?: return@withContext resolveYouTubeSource(youtubeUrl, null, maxHeight, title, year)
-
-            getValidCachedYoutubeSource(sourceCacheKey)?.let { cached ->
-                Log.d(TAG, "YouTube cache hit for key=${obfuscateYoutubeKey(youtubeKey.orEmpty())}")
+            val youtubeKey = youTubeVideoIdOf(youtubeUrl)?.takeIf { it.isNotBlank() }
+                ?: return@withContext resolveYouTubeSource(youtubeUrl, null, title, year)
+            freshEntry(youtubeSourceCache, youtubeKey)?.let { cached ->
+                Log.d(TAG, "YouTube cache hit for key=${obfuscateYoutubeKey(youtubeKey)}")
                 return@withContext cached
             }
-
-            resolveYouTubeSourceOnce(sourceCacheKey) {
+            resolveYouTubeSourceOnce(youtubeKey) {
                 // Re-check: another caller may have just finished this video.
-                getValidCachedYoutubeSource(sourceCacheKey)
-                    ?: resolveYouTubeSource(youtubeUrl, sourceCacheKey, maxHeight, title, year)
+                freshEntry(youtubeSourceCache, youtubeKey)
+                    ?: resolveYouTubeSource(youtubeUrl, youtubeKey, title, year)
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -294,12 +306,12 @@ class TrailerService(
      * then takes the work over.
      */
     private suspend fun resolveYouTubeSourceOnce(
-        sourceCacheKey: String,
+        youtubeKey: String,
         resolve: suspend () -> TrailerPlaybackSource?
     ): TrailerPlaybackSource? {
         while (true) {
             val pending = CompletableDeferred<TrailerPlaybackSource?>()
-            val inFlight = inFlightYoutubeSources.putIfAbsent(sourceCacheKey, pending)
+            val inFlight = inFlightYoutubeSources.putIfAbsent(youtubeKey, pending)
             if (inFlight == null) {
                 try {
                     return resolve().also { pending.complete(it) }
@@ -307,7 +319,7 @@ class TrailerService(
                     pending.completeExceptionally(e)
                     throw e
                 } finally {
-                    inFlightYoutubeSources.remove(sourceCacheKey, pending)
+                    inFlightYoutubeSources.remove(youtubeKey, pending)
                 }
             }
             try {
@@ -321,20 +333,15 @@ class TrailerService(
 
     private suspend fun resolveYouTubeSource(
         youtubeUrl: String,
-        sourceCacheKey: String?,
-        maxHeight: Int,
+        youtubeKey: String?,
         title: String?,
         year: String?
     ): TrailerPlaybackSource? {
         Log.d(TAG, "Attempting in-app YouTube extraction for ${summarizeUrl(youtubeUrl)}")
-        val localSource = inAppYouTubeExtractor.extractPlaybackSource(youtubeUrl, maxHeight)
+        val localSource = inAppYouTubeExtractor.extractPlaybackSource(youtubeUrl)
         if (localSource != null) {
-            if (sourceCacheKey != null) {
-                youtubeSourceCache[sourceCacheKey] = CachedTrailerPlaybackSource(
-                    playbackSource = localSource,
-                    cachedAt = Instant.now(clock),
-                    expiresAt = extractUrlExpireInstant(localSource)
-                )
+            if (youtubeKey != null) {
+                youtubeSourceCache[youtubeKey] = cachedEntry(localSource)
             }
             Log.d(
                 TAG,
@@ -356,15 +363,24 @@ class TrailerService(
         if (!isValidUrl(fallbackUrl)) return null
 
         val fallbackSource = TrailerPlaybackSource(videoUrl = fallbackUrl)
-        if (sourceCacheKey != null) {
-            youtubeSourceCache[sourceCacheKey] = CachedTrailerPlaybackSource(
-                playbackSource = fallbackSource,
-                cachedAt = Instant.now(clock),
-                expiresAt = extractUrlExpireInstant(fallbackSource)
-            )
+        if (youtubeKey != null) {
+            youtubeSourceCache[youtubeKey] = cachedEntry(fallbackSource)
         }
         Log.d(TAG, "Using backend fallback source for ${summarizeUrl(youtubeUrl)}")
         return fallbackSource
+    }
+
+    /** Same as [getTrailerPlaybackSourceFromYouTubeUrl], and on a miss says why when YouTube refused the video. */
+    suspend fun lookupYouTubeTrailer(
+        youtubeUrl: String,
+        title: String? = null,
+        year: String? = null
+    ): YouTubeTrailerLookup {
+        val source = getTrailerPlaybackSourceFromYouTubeUrl(youtubeUrl, title, year)
+        return YouTubeTrailerLookup(
+            source = source,
+            unplayable = if (source == null) inAppYouTubeExtractor.unplayableReason(youtubeUrl) else null
+        )
     }
 
     /**
@@ -382,25 +398,53 @@ class TrailerService(
         )?.videoUrl
     }
 
-    private suspend fun fetchTmdbMovieVideos(tmdbId: Int, preferredLanguage: String): List<TmdbVideoResult> {
+    /** Null when a request failed, so an empty list always means TMDB has no videos. */
+    private suspend fun fetchTmdbVideos(
+        tmdbId: Int,
+        mediaType: String?,
+        language: String
+    ): List<TmdbVideoResult>? = when (mediaType) {
+        "movie" -> fetchTmdbMovieVideos(tmdbId, language)
+        "tv" -> fetchTmdbTvVideos(tmdbId, language)
+        else -> {
+            val movie = fetchTmdbMovieVideos(tmdbId, language)
+            val tv = fetchTmdbTvVideos(tmdbId, language)
+            if ((movie == null || tv == null) && movie.isNullOrEmpty() && tv.isNullOrEmpty()) {
+                null
+            } else {
+                movie.orEmpty() + tv.orEmpty()
+            }
+        }
+    }
+
+    private suspend fun fetchTmdbMovieVideos(tmdbId: Int, preferredLanguage: String): List<TmdbVideoResult>? {
         val localized = fetchTmdbMovieVideosOnce(tmdbId, preferredLanguage)
-        if (localized.isNotEmpty() || preferredLanguage.equals(TMDB_TRAILER_FALLBACK_LANGUAGE, ignoreCase = true)) {
+        if (!localized.isNullOrEmpty() || preferredLanguage.equals(TMDB_TRAILER_FALLBACK_LANGUAGE, ignoreCase = true)) {
             return localized
         }
         Log.d(TAG, "TMDB movie videos localized miss for $tmdbId ($preferredLanguage), retrying $TMDB_TRAILER_FALLBACK_LANGUAGE")
-        return fetchTmdbMovieVideosOnce(tmdbId, TMDB_TRAILER_FALLBACK_LANGUAGE)
+        return mergeLanguageFallback(localized, fetchTmdbMovieVideosOnce(tmdbId, TMDB_TRAILER_FALLBACK_LANGUAGE))
     }
 
-    private suspend fun fetchTmdbTvVideos(tmdbId: Int, preferredLanguage: String): List<TmdbVideoResult> {
+    private suspend fun fetchTmdbTvVideos(tmdbId: Int, preferredLanguage: String): List<TmdbVideoResult>? {
         val localized = fetchTmdbTvVideosOnce(tmdbId, preferredLanguage)
-        if (localized.isNotEmpty() || preferredLanguage.equals(TMDB_TRAILER_FALLBACK_LANGUAGE, ignoreCase = true)) {
+        if (!localized.isNullOrEmpty() || preferredLanguage.equals(TMDB_TRAILER_FALLBACK_LANGUAGE, ignoreCase = true)) {
             return localized
         }
         Log.d(TAG, "TMDB tv videos localized miss for $tmdbId ($preferredLanguage), retrying $TMDB_TRAILER_FALLBACK_LANGUAGE")
-        return fetchTmdbTvVideosOnce(tmdbId, TMDB_TRAILER_FALLBACK_LANGUAGE)
+        return mergeLanguageFallback(localized, fetchTmdbTvVideosOnce(tmdbId, TMDB_TRAILER_FALLBACK_LANGUAGE))
     }
 
-    private suspend fun fetchTmdbMovieVideosOnce(tmdbId: Int, language: String): List<TmdbVideoResult> {
+    private fun mergeLanguageFallback(
+        localized: List<TmdbVideoResult>?,
+        fallback: List<TmdbVideoResult>?
+    ): List<TmdbVideoResult>? = when {
+        fallback == null -> null
+        fallback.isEmpty() && localized == null -> null
+        else -> fallback
+    }
+
+    private suspend fun fetchTmdbMovieVideosOnce(tmdbId: Int, language: String): List<TmdbVideoResult>? {
         return try {
             val response = tmdbApi.getMovieVideos(
                 movieId = tmdbId,
@@ -409,7 +453,7 @@ class TrailerService(
             )
             if (!response.isSuccessful) {
                 Log.w(TAG, "TMDB movie videos request failed ($tmdbId/$language): ${response.code()}")
-                emptyList()
+                null
             } else {
                 response.body()?.results.orEmpty()
             }
@@ -417,11 +461,11 @@ class TrailerService(
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "TMDB movie videos error ($tmdbId/$language): ${e.message}")
-            emptyList()
+            null
         }
     }
 
-    private suspend fun fetchTmdbTvVideosOnce(tmdbId: Int, language: String): List<TmdbVideoResult> {
+    private suspend fun fetchTmdbTvVideosOnce(tmdbId: Int, language: String): List<TmdbVideoResult>? {
         return try {
             val response = tmdbApi.getTvVideos(
                 tvId = tmdbId,
@@ -430,7 +474,7 @@ class TrailerService(
             )
             if (!response.isSuccessful) {
                 Log.w(TAG, "TMDB tv videos request failed ($tmdbId/$language): ${response.code()}")
-                emptyList()
+                null
             } else {
                 response.body()?.results.orEmpty()
             }
@@ -438,7 +482,7 @@ class TrailerService(
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "TMDB tv videos error ($tmdbId/$language): ${e.message}")
-            emptyList()
+            null
         }
     }
 
@@ -466,19 +510,20 @@ class TrailerService(
         return "***${key.takeLast(4)}"
     }
 
-    private fun getValidCachedYoutubeSource(youtubeKey: String): TrailerPlaybackSource? {
-        val cached = youtubeSourceCache[youtubeKey] ?: return null
+    private fun cachedEntry(source: TrailerPlaybackSource) =
+        CachedTrailerPlaybackSource(playbackSource = source, cachedAt = Instant.now(clock))
+
+    private fun freshEntry(
+        map: ConcurrentHashMap<String, CachedTrailerPlaybackSource>,
+        key: String
+    ): TrailerPlaybackSource? {
+        val cached = map[key] ?: return null
         val now = Instant.now(clock)
-
-        // Use URL expire timestamp if available, otherwise fall back to TTL
-        val expired = cached.expiresAt?.let { now.isAfter(it) }
-            ?: (Duration.between(cached.cachedAt, now) > YOUTUBE_SOURCE_CACHE_TTL)
-
-        if (!expired) {
-            return cached.playbackSource
-        }
-
-        youtubeSourceCache.remove(youtubeKey, cached)
+        val stale = isTrailerSourceStale(cached.playbackSource, cached.cachedAt, now) ||
+            !TrailerSourceExpiry.isUsable(cached.playbackSource, now.toEpochMilli()) ||
+            TrailerPlaybackFailures.hasFailed(cached.playbackSource.videoUrl)
+        if (!stale) return cached.playbackSource
+        map.remove(key, cached)
         return null
     }
 
@@ -487,66 +532,25 @@ class TrailerService(
         youtubeSourceCache.clear()
     }
 
-    /**
-     * Extracts the YouTube URL expiration timestamp from the `/expire/EPOCH/` path segment.
-     */
-    private fun extractUrlExpireInstant(source: TrailerPlaybackSource): Instant? {
-        val url = source.videoUrl
-        val expireRegex = Regex("/expire/(\\d+)/")
-        val match = expireRegex.find(url) ?: return null
-        val epoch = match.groupValues[1].toLongOrNull() ?: return null
-        return Instant.ofEpochSecond(epoch)
-    }
-
-    private fun extractYouTubeVideoId(input: String): String? {
-        val trimmed = input.trim()
-        if (trimmed.matches(YOUTUBE_VIDEO_ID_REGEX)) return trimmed
-
-        return runCatching {
-            val uri = URI(trimmed)
-            val host = uri.host?.lowercase()?.removePrefix("www.") ?: return@runCatching null
-            when {
-                host == "youtu.be" -> {
-                    val id = uri.path?.trim('/')?.substringBefore('/')?.trim().orEmpty()
-                    id.takeIf { it.matches(YOUTUBE_VIDEO_ID_REGEX) }
-                }
-
-                host == "youtube.com" || host.endsWith(".youtube.com") -> {
-                    val path = uri.path.orEmpty()
-                    val query = uri.rawQuery.orEmpty()
-
-                    if (path.startsWith("/watch")) {
-                        query.split("&")
-                            .asSequence()
-                            .mapNotNull { entry ->
-                                val index = entry.indexOf('=')
-                                if (index <= 0) return@mapNotNull null
-                                val key = entry.substring(0, index)
-                                val value = entry.substring(index + 1)
-                                if (key == "v") value else null
-                            }
-                            .firstOrNull { it.matches(YOUTUBE_VIDEO_ID_REGEX) }
-                    } else {
-                        val segments = path.trim('/').split("/")
-                        val candidate = when (segments.firstOrNull()?.lowercase()) {
-                            "embed", "shorts", "live" -> segments.getOrNull(1)
-                            else -> null
-                        }
-                        candidate?.takeIf { it.matches(YOUTUBE_VIDEO_ID_REGEX) }
-                    }
-                }
-
-                else -> null
-            }
-        }.getOrNull()
-    }
-
     private data class CachedTrailerPlaybackSource(
         val playbackSource: TrailerPlaybackSource,
-        val cachedAt: Instant,
-        val expiresAt: Instant? = null
+        val cachedAt: Instant
     )
 }
+
+data class TrailerLookupResult(
+    val source: TrailerPlaybackSource?,
+    val definiteMiss: Boolean = false
+) {
+    companion object {
+        val DEFINITE_MISS = TrailerLookupResult(null, definiteMiss = true)
+    }
+}
+
+data class YouTubeTrailerLookup(
+    val source: TrailerPlaybackSource?,
+    val unplayable: YouTubeUnplayableReason? = null
+)
 
 internal fun normalizeTmdbTrailerLanguage(language: String?): String {
     val normalized = language

@@ -36,6 +36,7 @@ import androidx.tv.material3.Text
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.ui.components.GridContentCard
 import com.nuvio.tv.ui.components.PosterCardStyle
+import com.nuvio.tv.ui.components.rememberScaledPosterCardStyle
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -106,7 +107,7 @@ fun MoreLikeThisSection(
         Modifier
     }
 
-    val landscapeStyle = remember(posterCardCornerRadius) {
+    val landscapeStyle = rememberScaledPosterCardStyle(remember(posterCardCornerRadius) {
         PosterCardStyle(
             width = 260.dp,
             height = 146.dp,
@@ -114,7 +115,7 @@ fun MoreLikeThisSection(
             focusedBorderWidth = NuvioTheme.spacing.xxs,
             focusedScale = 1.02f
         )
-    }
+    })
 
     Column(
         modifier = Modifier
@@ -134,7 +135,7 @@ fun MoreLikeThisSection(
                     }
                 }
                 .focusGroup(),
-            contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.xxxl, vertical = 6.dp),
+            contentPadding = PaddingValues(start = detailStartInset, end = NuvioTheme.spacing.xxxl, top = 6.dp, bottom = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
         ) {
             itemsIndexed(

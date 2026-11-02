@@ -69,11 +69,15 @@ import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.nuvio.tv.core.poster.failedWithoutFallback
+import com.nuvio.tv.core.poster.posterFallbackUrl
 import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.domain.model.CardDepthSurface
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.PosterShape
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.v2.appearance.LocalV2Appearance
+import com.nuvio.tv.ui.v2.components.nuvioV2Focus
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.CachePolicy
@@ -114,6 +118,11 @@ fun ContentCard(
     onLongPress: (() -> Unit)? = null,
     onClick: () -> Unit = {}
 ) {
+    val isV2 = LocalV2Appearance.current != null
+    val artworkAccent = if (isV2) com.nuvio.tv.ui.v2.appearance.LocalArtworkAccent.current else null
+    // V2 focus is a layer transform. Expanded artwork belongs to the Home hero,
+    // never a changing LazyRow item width.
+    val backdropExpansionEnabled = focusedPosterBackdropExpandEnabled && !isV2
     val cardShape = remember(posterCardStyle.cornerRadius) { RoundedCornerShape(posterCardStyle.cornerRadius) }
     val cardDepthStyle = LocalCardDepthStyle.current
     val globalLandscape = LocalLandscapePosterMode.current
@@ -130,13 +139,16 @@ fun ContentCard(
     }
     // Landscape cards are already 16:9 — expanded width equals base width (no size change).
     val expandedCardWidth = if (globalLandscape) baseCardWidth else baseCardHeight * BACKDROP_ASPECT_RATIO
-    val effectiveExpandEnabled = focusedPosterBackdropExpandEnabled
+    val effectiveExpandEnabled = backdropExpansionEnabled
 
     var isFocused by remember { mutableStateOf(false) }
     var longPressTriggered by remember { mutableStateOf(false) }
     val longPressKeyTracker = rememberLongPressKeyTracker()
     var interactionNonce by remember { mutableIntStateOf(0) }
     var isBackdropExpanded by remember { mutableStateOf(false) }
+    LaunchedEffect(backdropExpansionEnabled) {
+        if (!backdropExpansionEnabled) isBackdropExpanded = false
+    }
     var trailerFirstFrameRendered by remember(trailerPreviewUrl) { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -238,7 +250,7 @@ fun ContentCard(
         val context = LocalContext.current
         val density = LocalDensity.current
         // Keep decode size stable during width animation to avoid recreating requests/painters every frame.
-        val maxRequestCardWidth = if (effectiveExpandEnabled) {
+        val maxRequestCardWidth = if (effectiveExpandEnabled && isBackdropExpanded) {
             maxOf(baseCardWidth, expandedCardWidth)
         } else {
             baseCardWidth
@@ -266,8 +278,21 @@ fun ContentCard(
         } else {
             item.poster
         }
+        val showsLandscapeArtwork = globalLandscape || (effectiveExpandEnabled && isBackdropExpanded)
+        var landscapePosterFailed by remember(imageUrl) { mutableStateOf(false) }
+        var failedWithoutFallback by remember(imageUrl) { mutableStateOf(false) }
+        val lateFallbackUrl = if (failedWithoutFallback) {
+            item.posterFallbackUrl(imageUrl, landscapeCard = showsLandscapeArtwork)
+        } else {
+            null
+        }
+        val portraitArtwork = rememberPortraitArtworkState(imageUrl)
+        val canFitPortraitArtwork = effectivePosterShape == PosterShape.LANDSCAPE || showsLandscapeArtwork
+        val fitPortraitArtwork = canFitPortraitArtwork && portraitArtwork.isPortrait
         val revalidationKey = com.nuvio.tv.core.image.rememberImageRevalidationKey(imageUrl)
-        val imageModel = remember(imageUrl, requestWidthPx, requestHeightPx, revalidationKey) {
+        val imageModel = remember(
+            imageUrl, requestWidthPx, requestHeightPx, revalidationKey, showsLandscapeArtwork, lateFallbackUrl
+        ) {
             val builder = ImageRequest.Builder(context)
                 .data(imageUrl)
                 .crossfade(true)
@@ -276,8 +301,8 @@ fun ContentCard(
             if (revalidationKey > 0) {
                 builder.placeholderMemoryCacheKey("${imageUrl}_${requestWidthPx}x${requestHeightPx}_v${revalidationKey - 1}")
             }
-            val fallbackUrl = item.rawPosterUrl
-            if (!fallbackUrl.isNullOrBlank() && fallbackUrl != imageUrl) {
+            val fallbackUrl = item.posterFallbackUrl(imageUrl, landscapeCard = showsLandscapeArtwork)
+            if (fallbackUrl != null) {
                 builder.memoryCacheKeyExtras(
                     mapOf(com.nuvio.tv.core.image.CustomPosterFallbackInterceptor.FALLBACK_URL_KEY to fallbackUrl)
                 )
@@ -313,6 +338,7 @@ fun ContentCard(
             },
             modifier = Modifier
                 .fillMaxWidth()
+                .nuvioV2Focus(isFocused, cardShape, stationary = true)
                 .onFocusChanged { state ->
                     val focusedNow = state.isFocused
                     if (needsFocusState) {
@@ -383,12 +409,12 @@ fun ContentCard(
                 focusedContainerColor = Color.Transparent
             ),
             border = CardDefaults.border(
-                focusedBorder = Border(
+                focusedBorder = if (isV2) Border.None else Border(
                     border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
                     shape = cardShape
                 )
             ),
-            scale = CardDefaults.scale(focusedScale = posterCardStyle.focusedScale)
+            scale = CardDefaults.scale(focusedScale = if (isV2) 1f else posterCardStyle.focusedScale)
         ) {
             Box(
                 modifier = Modifier
@@ -417,22 +443,38 @@ fun ContentCard(
                             )
                     )
                 } else if (!imageUrl.isNullOrBlank()) {
+                    val watchedDim = watchedPosterDim(isWatched, isFocused)
                     AsyncImage(
                         model = imageModel,
+                        onSuccess = {
+                            artworkAccent?.imageLoaded(imageUrl)
+                            landscapePosterFailed = it.result.request.data != imageUrl
+                            if (canFitPortraitArtwork) {
+                                portraitArtwork.onLoaded(it.result.image.width, it.result.image.height)
+                            }
+                        },
+                        onError = {
+                            landscapePosterFailed = true
+                            if (it.result.failedWithoutFallback(imageUrl)) failedWithoutFallback = true
+                            portraitArtwork.onFailed()
+                        },
                         contentDescription = item.name,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().portraitArtworkBackdrop(fitPortraitArtwork).watchedPosterFade(watchedDim),
                         placeholder = backgroundPainter,
                         error = backgroundPainter,
                         fallback = backgroundPainter,
-                        contentScale = ContentScale.Crop
+                        contentScale = ContentScale.Crop,
+                        colorFilter = portraitArtworkBackdropFilter(fitPortraitArtwork) ?: watchedPosterFilter(watchedDim.value)
+                    )
+                    if (fitPortraitArtwork) FittedPortraitArtwork(
+                        imageModel,
+                        contentDescription = null,
+                        modifier = Modifier.watchedPosterFade(watchedDim),
+                        colorFilter = watchedPosterFilter(watchedDim.value)
                     )
                 } else {
                     MonochromePosterPlaceholder(contentDescription = item.name)
                 }
-
-                // Landscape mode: show clearlogo or title overlay on backdrop cards
-                val isLandscapeBackdropCard = globalLandscape &&
-                    effectiveLandscapePoster.isNullOrBlank()
 
                 val shouldPlayTrailerPreview = isBackdropExpanded &&
                     focusedPosterBackdropTrailerEnabled &&
@@ -488,15 +530,33 @@ fun ContentCard(
                 if (shouldPlayTrailerPreview && !imageUrl.isNullOrBlank()) {
                     AsyncImage(
                         model = imageModel,
+                        onSuccess = { artworkAccent?.imageLoaded(imageUrl) },
                         contentDescription = null,
                         modifier = Modifier
                             .fillMaxSize()
-                            .graphicsLayer { alpha = trailerCoverAlpha },
-                        contentScale = ContentScale.Crop
+                            .graphicsLayer { alpha = trailerCoverAlpha }
+                            .portraitArtworkBackdrop(fitPortraitArtwork),
+                        contentScale = ContentScale.Crop,
+                        colorFilter = portraitArtworkBackdropFilter(fitPortraitArtwork)
                     )
+                    if (fitPortraitArtwork) {
+                        FittedPortraitArtwork(
+                            imageModel,
+                            contentDescription = null,
+                            modifier = Modifier.graphicsLayer { alpha = trailerCoverAlpha }
+                        )
+                    }
                 }
 
-                if (isBackdropExpanded && !globalLandscape && !(useLandscapeAsExpanded && !trailerFirstFrameRendered)) {
+                val showsLandscapePoster = !landscapePosterFailed &&
+                    if (globalLandscape) !effectiveLandscapePoster.isNullOrBlank() else useLandscapeAsExpanded
+                val showTitleOverlay = cardTitleOverlayVisible(
+                    artworkCarriesTitle = fitPortraitArtwork || showsLandscapePoster,
+                    trailerShowing = shouldPlayTrailerPreview && trailerFirstFrameRendered,
+                    logoOverTrailer = LocalLogoOverCardTrailer.current
+                )
+
+                if (isBackdropExpanded && !globalLandscape && showTitleOverlay) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
@@ -547,10 +607,7 @@ fun ContentCard(
                 }
 
                 // Landscape overlay — rendered AFTER trailer so it stays on top.
-                // Show on backdrop cards always; also show on any landscape card when expanded
-                // (trailer playing) so the logo stays visible over the video.
-                val showLandscapeOverlay = globalLandscape && (isLandscapeBackdropCard || isBackdropExpanded) &&
-                    !(useLandscapeAsExpanded && !trailerFirstFrameRendered)
+                val showLandscapeOverlay = globalLandscape && showTitleOverlay
                 val showLandscapeLogoOverlay = showLandscapeOverlay &&
                     !item.logo.isNullOrBlank() && !logoLoadFailed
                 if (showLandscapeLogoOverlay && logoModel != null) {
@@ -614,6 +671,14 @@ fun ContentCard(
                     )
                 }
 
+                if (isWatched && LocalDimWatchedPosters.current) {
+                    WatchedPosterVeil(
+                        focused = isFocused,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(1.9f)
+                    )
+                }
                 if (isWatched) {
                     WatchedMarker(
                         modifier = Modifier
@@ -635,7 +700,7 @@ fun ContentCard(
                     .then(if (isBackdropExpanded && !globalLandscape) Modifier.requiredWidth(expandedCardWidth) else Modifier.fillMaxWidth())
                     .padding(top = NuvioTheme.spacing.sm)
                     .then(
-                        if (effectiveExpandEnabled) {
+                        if (focusedPosterBackdropExpandEnabled) {
                             Modifier.defaultMinSize(minHeight = 60.dp)
                         } else Modifier
                     )
@@ -653,7 +718,7 @@ fun ContentCard(
                     val ageRating = item.ageRating?.trim()?.takeIf { it.isNotBlank() }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        
+
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (metaTokens.isNotEmpty()) {
@@ -676,7 +741,7 @@ fun ContentCard(
                             }
                             Box(
                                 modifier = Modifier
-                                    
+
                                     .border(
                                         border = BorderStroke(
                                             NuvioTheme.spacing.hairline,
@@ -735,7 +800,7 @@ fun ContentCard(
             }
             } // Box clipToBounds
         }
-        if (!showLabels && effectiveExpandEnabled) {
+        if (!showLabels && focusedPosterBackdropExpandEnabled) {
             Spacer(modifier = Modifier.height(9.dp))
         }
     }

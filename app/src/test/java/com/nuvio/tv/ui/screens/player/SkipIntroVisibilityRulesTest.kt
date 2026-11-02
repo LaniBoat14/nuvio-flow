@@ -1,6 +1,11 @@
 package com.nuvio.tv.ui.screens.player
 
+import androidx.compose.runtime.BroadcastFrameClock
 import com.nuvio.tv.data.repository.SkipInterval
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -8,6 +13,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class SkipIntroVisibilityRulesTest {
 
     private val intro = SkipInterval(
@@ -194,5 +200,75 @@ class SkipIntroVisibilityRulesTest {
     @Test
     fun `auto-hide remaining duration collapses to 1ms when progress already complete`() {
         assertEquals(1, skipIntroAutoHideRemainingMs(progress = 1f))
+    }
+
+    @Test
+    fun `auto-hide progress grows with elapsed time from where it was paused`() {
+        assertEquals(0f, skipIntroAutoHideProgress(startProgress = 0f, elapsedMs = 0L), 0.0001f)
+        assertEquals(0.25f, skipIntroAutoHideProgress(startProgress = 0f, elapsedMs = 2_500L), 0.0001f)
+        assertEquals(0.8f, skipIntroAutoHideProgress(startProgress = 0.5f, elapsedMs = 3_000L), 0.0001f)
+        assertEquals(1f, skipIntroAutoHideProgress(startProgress = 0.5f, elapsedMs = 9_000L), 0.0001f)
+    }
+
+    @Test
+    fun `auto-hide countdown ends after the full timeout of frame time`() = runTest {
+        val frames = BroadcastFrameClock()
+        val steps = mutableListOf<Float>()
+        val countdown = launch(frames) { runSkipIntroAutoHide(startProgress = 0f) { steps += it } }
+        runCurrent()
+        frames.sendFrame(0L)
+        runCurrent()
+
+        frames.sendFrame(16_000_000L)
+        runCurrent()
+        assertTrue(countdown.isActive)
+        assertEquals(0.0016f, steps.last(), 0.0001f)
+
+        frames.sendFrame(9_999_000_000L)
+        runCurrent()
+        assertTrue("one millisecond short must still be counting", countdown.isActive)
+        assertEquals(0.9999f, steps.last(), 0.0001f)
+
+        frames.sendFrame(10_000_000_000L)
+        runCurrent()
+        assertTrue(countdown.isCompleted)
+        assertEquals(1f, steps.last(), 0f)
+    }
+
+    @Test
+    fun `auto-hide countdown resumed half way needs only the remaining half`() = runTest {
+        val frames = BroadcastFrameClock()
+        val steps = mutableListOf<Float>()
+        val countdown = launch(frames) { runSkipIntroAutoHide(startProgress = 0.5f) { steps += it } }
+        runCurrent()
+        frames.sendFrame(20_000_000_000L)
+        runCurrent()
+
+        frames.sendFrame(22_000_000_000L)
+        runCurrent()
+        assertTrue(countdown.isActive)
+        assertEquals(0.7f, steps.last(), 0.0001f)
+
+        frames.sendFrame(25_000_000_000L)
+        runCurrent()
+        assertTrue(countdown.isCompleted)
+        assertEquals(1f, steps.last(), 0f)
+    }
+
+    @Test
+    fun `auto-hide countdown cancelled mid way keeps the progress it reached`() = runTest {
+        val frames = BroadcastFrameClock()
+        var progress = 0f
+        val countdown = launch(frames) { runSkipIntroAutoHide(startProgress = 0f) { progress = it } }
+        runCurrent()
+        frames.sendFrame(0L)
+        runCurrent()
+        frames.sendFrame(4_000_000_000L)
+        runCurrent()
+        countdown.cancel()
+        runCurrent()
+
+        assertEquals(0.4f, progress, 0.0001f)
+        assertEquals(6_000, skipIntroAutoHideRemainingMs(progress))
     }
 }

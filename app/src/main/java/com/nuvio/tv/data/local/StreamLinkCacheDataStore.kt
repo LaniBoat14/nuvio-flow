@@ -41,6 +41,21 @@ class StreamLinkCacheDataStore @Inject constructor(
     private fun store(profileId: Int = profileManager.activeProfileId.value) =
         factory.get(profileId, FEATURE)
 
+    private val replayed = java.util.concurrent.ConcurrentHashMap<String, CachedStreamLink>()
+
+    /** The saved link is being played again as is, without asking the add-ons. */
+    fun markReplayed(contentKey: String, link: CachedStreamLink) {
+        replayed[contentKey] = link
+    }
+
+    /** The saved link that was played again for [contentKey], until it is removed or saved over. */
+    fun replayedLink(contentKey: String): CachedStreamLink? = replayed[contentKey]
+
+    suspend fun remove(contentKey: String) {
+        replayed.remove(contentKey)
+        store().edit { prefs -> prefs.remove(cachePrefKey(contentKey)) }
+    }
+
     suspend fun save(
         contentKey: String,
         url: String,
@@ -76,6 +91,7 @@ class StreamLinkCacheDataStore @Inject constructor(
             audioDelayLanguage?.let { put("audioDelayLanguage", it) }
         }.toString()
 
+        replayed.remove(contentKey)
         store().edit { prefs ->
             prefs[cachePrefKey(contentKey)] = payload
         }

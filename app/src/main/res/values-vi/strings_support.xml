@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="support_nuvio_button">Ủng hộ đội ngũ Nuvio</string>
+    <string name="support_nuvio_title">Ủng hộ đội ngũ Nuvio</string>
+    <string name="support_nuvio_subtitle">Nuvio Arc được xây dựng trên ứng dụng Nuvio chính thức. Gói thành viên được chuyển cho đội ngũ Nuvio, giúp trả chi phí máy chủ và phát triển, và giữ ứng dụng cốt lõi miễn phí cho mọi người.</string>
+    <string name="support_nuvio_perk_themes">Chủ đề chuyển màu</string>
+    <string name="support_nuvio_perk_themes_desc">Thêm chủ đề chuyển màu, hoặc tự tạo chủ đề riêng.</string>
+    <string name="support_nuvio_perk_backgrounds">Hình nền hồ sơ</string>
+    <string name="support_nuvio_perk_backgrounds_desc">Từ bộ sưu tập Người tài trợ, hoặc ảnh của riêng bạn.</string>
+    <string name="support_nuvio_perk_avatars">Ảnh đại diện thành viên</string>
+    <string name="support_nuvio_perk_avatars_desc">Thêm bộ ảnh đại diện cho các hồ sơ của bạn.</string>
+    <string name="support_nuvio_perk_badge">Huy hiệu Người tài trợ</string>
+    <string name="support_nuvio_perk_badge_desc">Một huy hiệu nhỏ trên tài khoản và hồ sơ của bạn.</string>
+    <string name="support_nuvio_perk_discord">Vai trò Discord</string>
+    <string name="support_nuvio_perk_discord_desc">Kết nối Discord trên trang web để nhận vai trò.</string>
+    <string name="support_nuvio_perk_votes">Bình chọn quyết định của ứng dụng</string>
+    <string name="support_nuvio_perk_votes_desc">Chỉ dành cho Người tài trợ cao cấp.</string>
+    <string name="support_nuvio_perk_votes_chip">Bình chọn (Người tài trợ cao cấp)</string>
+    <string name="support_nuvio_plus_tag">Plus</string>
+    <string name="support_nuvio_on_tag">Bật</string>
+    <string name="support_nuvio_already_title">Bạn đã là người tài trợ?</string>
+    <string name="support_nuvio_already_body">Đăng nhập trên TV này bằng cùng tài khoản Nuvio. Đặc quyền của bạn sẽ tự động được bật.</string>
+    <string name="support_nuvio_scan_title">Quét để mở nuvio.tv/support</string>
+    <string name="support_nuvio_scan_body">Mở trên điện thoại của bạn. Không thanh toán gì trên TV này.</string>
+    <string name="support_nuvio_patreon_manage">Quét để thay đổi hoặc hủy trên Patreon</string>
+    <string name="support_nuvio_pass_until">Gói của bạn có hiệu lực đến %1$s.</string>
+    <string name="support_nuvio_sign_in">Đăng nhập trên TV này</string>
+    <string name="support_nuvio_close">Đóng</string>
+    <string name="support_nuvio_checking">Đang kiểm tra gói thành viên của bạn…</string>
+    <string name="support_nuvio_thanks_title">Cảm ơn bạn đã ủng hộ đội ngũ Nuvio</string>
+    <string name="support_nuvio_thanks_subtitle">Đặc quyền đi theo tài khoản Nuvio của bạn, nên hoạt động cả trong Nuvio Arc và ứng dụng chính thức.</string>
+    <string name="support_nuvio_gentle_eyebrow">Người tài trợ Nuvio</string>
+    <string name="support_nuvio_gentle_title">Mọi thứ trong Nuvio Arc đều dùng được mà không cần gói thành viên</string>
+    <string name="support_nuvio_gentle_body">Tài khoản này chưa có gói thành viên của người tài trợ Nuvio, và điều đó hoàn toàn ổn. Nếu một ngày bạn muốn giúp đội ngũ Nuvio, gói thành viên sẽ thêm vài đặc quyền:</string>
+    <string name="support_nuvio_gentle_unavailable">Hiện không thể kiểm tra gói thành viên của bạn. Mọi thứ trong Nuvio Arc đều dùng được mà không cần gói này. Nếu bạn muốn giúp đội ngũ Nuvio, gói thành viên sẽ thêm vài đặc quyền:</string>
+    <string name="support_nuvio_gentle_scan">Xem các lựa chọn trên điện thoại</string>
+    <string name="support_nuvio_paid_check_again">Vừa thanh toán? Kiểm tra lại</string>
+    <string name="support_nuvio_no_thanks">Không, cảm ơn</string>
+    <string name="support_nuvio_no_thanks_hint">Chọn “Không, cảm ơn” sẽ ẩn nút Ủng hộ và các chủ đề dành cho người tài trợ đang bị khóa trên TV này. Bật lại trong Cài đặt › Giới thiệu.</string>
+    <string name="support_nuvio_thanks_note_title">Đã bật đặc quyền %1$s</string>
+    <string name="support_nuvio_thanks_note_body">Cảm ơn bạn đã ủng hộ đội ngũ Nuvio.</string>
+    <string name="support_nuvio_theme_locked">Người tài trợ</string>
+    <string name="support_nuvio_suggestions_setting">Gợi ý ủng hộ đội ngũ Nuvio</string>
+    <string name="support_nuvio_suggestions_setting_subtitle">Hiện nút Ủng hộ đội ngũ Nuvio và các chủ đề dành cho người tài trợ đang bị khóa.</string>
+    <string name="cd_support_nuvio_qr">Mã QR cho nuvio.tv/support</string>
+</resources>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="player_chapters">Розділи</string>
+    <string name="player_chapter_number">Розділ %1$d</string>
+    <string name="player_chapter_named">Розділ %1$d: %2$s</string>
+    <string name="player_chapter_now_playing">Зараз відтворюється</string>
+    <string name="playback_chapters">Розділи в плеєрі</string>
+    <string name="playback_chapters_sub">Для фільмів із розділами: кнопка «Розділи», позначки на шкалі часу та назва розділу</string>
+</resources>

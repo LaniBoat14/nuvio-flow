@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.media3.common.C
 import androidx.media3.common.NuvioEngineConfig
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ScrubbingModeParameters
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -535,14 +534,5 @@ object NuvioExoPlayerPerformanceHelper {
         } else {
             NuvioEngineConfig.set(NuvioEngineConfig.stockMode())
         }
-    }
-    fun buildScrubbingParams(): ScrubbingModeParameters? {
-        if (!enabled) return null
-        return ScrubbingModeParameters.Builder()
-            .setDisabledTrackTypes(setOf(C.TRACK_TYPE_AUDIO, C.TRACK_TYPE_METADATA))
-            .setShouldIncreaseCodecOperatingRate(true)
-            .setAllowSkippingMediaCodecFlush(true)
-            .setShouldEnableDynamicScheduling(true)
-            .build()
     }
 }

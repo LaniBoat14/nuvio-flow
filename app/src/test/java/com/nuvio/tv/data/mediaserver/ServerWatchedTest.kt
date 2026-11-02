@@ -1,6 +1,5 @@
 package com.nuvio.tv.data.mediaserver
 
-import android.content.Context
 import com.nuvio.tv.core.tmdb.TmdbService
 import com.nuvio.tv.core.tracking.TrackingExternalIds
 import com.nuvio.tv.domain.repository.AddonRepository
@@ -40,7 +39,7 @@ class ServerWatchedTest {
         }
         val metaRepository = mockk<MetaRepository> { every { getCachedMeta(any(), any()) } returns null }
         val addonRepository = mockk<AddonRepository> { every { getInstalledAddons() } returns flowOf(emptyList()) }
-        val catalog = ServerCatalog(mockk<Context>(relaxed = true), repository, addonRepository)
+        val catalog = ServerCatalog(repository, addonRepository, serverArtwork())
         val watched = ServerWatched(
             repository = repository,
             matcher = ServerMatcher(repository, tmdbService, metaRepository),
@@ -78,6 +77,17 @@ class ServerWatchedTest {
         withTimeout(15_000L) { harness.watched.mirror(listOf(movie("tt0111161")), played = false)!!.join() }
         assertEquals("7" to false, harness.provider.playedChanges.last())
         assertEquals(3, harness.provider.playedChanges.size)
+        assertEquals(0, failureNotices)
+    }
+
+    @Test
+    fun aMirrorThatCannotReachTheServerStaysQuiet() = runBlocking {
+        val harness = harness(provider().apply { failingPlayed += "7" })
+        harness.repository.setCatalogMetadata(harness.connection.id, true)
+
+        withTimeout(15_000L) { harness.watched.mirror(listOf(movie("tt0111161")), played = true)!!.join() }
+
+        assertEquals(listOf("7" to true), harness.provider.playedChanges.toList())
         assertEquals(0, failureNotices)
     }
 
@@ -138,5 +148,22 @@ class ServerWatchedTest {
         withTimeout(5_000L) { while (resynced == 0) delay(10) }
         assertTrue(resynced > 0)
         collector.cancel()
+    }
+
+    @Test
+    fun trackersGetTheServerTitlesImdbTmdbAndTvdbIds() = runBlocking {
+        val provider = provider().apply {
+            indexedIds["8"] = TrackingExternalIds(tvdb = "81189", trakt = 1L)
+            indexedIds["9"] = TrackingExternalIds(trakt = 2L)
+        }
+        val harness = harness(provider)
+        val id = { itemId: String -> ServerItemRef(harness.connection.id, itemId).encode() }
+
+        assertEquals(TrackingExternalIds(imdb = "tt0944947", tmdb = 1399), harness.watched.trackerIds(id(FakeServerProvider.SHOW_ID)))
+        assertEquals(TrackingExternalIds(tvdb = "81189"), harness.watched.trackerIds(id("8")))
+        assertNull(harness.watched.trackerIds(id("9")))
+        assertNull(harness.watched.trackerIds(id("unknown")))
+        assertNull(harness.watched.trackerIds("tt0111161"))
+        assertNull(harness.watched.trackerIds(ServerItemRef("cmissing", "7").encode()))
     }
 }

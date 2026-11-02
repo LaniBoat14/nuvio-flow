@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="start_window" type="drawable">@drawable/splash_screen_background</item>
+    <item name="start_window_arctic_blue" type="drawable">@drawable/splash_screen_background</item>
+    <item name="start_window_emerald" type="drawable">@drawable/splash_screen_background</item>
+    <item name="start_window_rose_gold" type="drawable">@drawable/splash_screen_background</item>
+    <item name="start_window_copper" type="drawable">@drawable/splash_screen_background</item>
+    <item name="start_window_graphite" type="drawable">@drawable/splash_screen_background</item>
+    <item name="start_window_gold" type="drawable">@drawable/splash_screen_background</item>
+    <item name="start_window_jade" type="drawable">@drawable/splash_screen_background</item>
+    <item name="start_window_glass" type="drawable">@drawable/splash_screen_background</item>
+    <item name="start_window_crimson" type="drawable">@drawable/splash_screen_background</item>
+    <item name="start_window_ocean" type="drawable">@drawable/splash_screen_background</item>
+    <item name="start_window_violet" type="drawable">@drawable/splash_screen_background</item>
+    <item name="start_window_emerald_green" type="drawable">@drawable/splash_screen_background</item>
+    <item name="start_window_amber" type="drawable">@drawable/splash_screen_background</item>
+    <item name="start_window_rose" type="drawable">@drawable/splash_screen_background</item>
+    <item name="start_window_white" type="drawable">@drawable/splash_screen_background</item>
+</resources>

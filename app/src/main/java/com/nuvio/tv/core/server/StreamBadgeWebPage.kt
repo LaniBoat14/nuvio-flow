@@ -64,7 +64,7 @@ object StreamBadgeWebPage {
   body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; min-height: 100vh; line-height: 1.5; }
   .page { max-width: 600px; margin: 0 auto; padding: 0 1.5rem 6rem; }
   .header { text-align: center; padding: 3rem 0 2.5rem; border-bottom: 1px solid rgba(255,255,255,0.06); margin-bottom: 2.5rem; }
-  .header-logo { height: 40px; width: auto; margin-bottom: 0.5rem; filter: brightness(0) invert(1); opacity: 0.9; }
+  .header-logo { height: 48px; width: auto; margin-bottom: 0.5rem; }
   .header p { font-size: 0.875rem; font-weight: 300; color: rgba(255,255,255,0.42); letter-spacing: 0.02em; }
   .intro { margin-bottom: 2rem; }
   .intro-title { font-size: 1rem; font-weight: 700; margin-bottom: 0.35rem; }
@@ -99,7 +99,7 @@ object StreamBadgeWebPage {
   .badge-chip img { max-height: 18px; max-width: 104px; object-fit: contain; display: block; }
   .status { color: rgba(135,239,172,0.95); font-size: 0.875rem; font-weight: 300; min-height: 24px; margin-top: 1rem; text-align: center; }
   .status.error { color: rgba(207,102,121,0.9); }
-  @media (max-width: 480px) { .page { padding: 0 1rem 5rem; } .header { padding: 2rem 0; } .header-logo { height: 32px; } .actions { flex-direction: column; } }
+  @media (max-width: 480px) { .page { padding: 0 1rem 5rem; } .header { padding: 2rem 0; } .header-logo { height: 40px; } .actions { flex-direction: column; } }
 </style>
 </head>
 <body>

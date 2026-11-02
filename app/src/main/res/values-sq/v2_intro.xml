@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="v2_intro_animation_title">Animacioni hyrës</string>
+    <string name="v2_intro_animation_subtitle">Shfaq hyrjen ndërsa faqja kryesore dhe posterat ngarkohen në sfond</string>
+    <string name="v2_intro_sound_title">Tingulli hyrës</string>
+    <string name="v2_intro_sound_subtitle">Luaj hyrjen me tingullin e saj, në surround nëse sistemi yt e mbështet</string>
+</resources>

@@ -305,9 +305,14 @@ class WatchProgressSyncService @Inject constructor(
                 Log.d(TAG, "  pull entry: key=${entry.progressKey} contentId=${entry.contentId} type=${entry.contentType} pos=${entry.position} dur=${entry.duration} lastWatched=${entry.lastWatched}")
             }
 
-            val pulled = remote.map { entry ->
+            val pulled = remote.mapNotNull { entry ->
+            val cid: String? = entry.contentId
+            if (cid == null || cid.isBlank()) {
+                Log.w(TAG, "Dropping pulled entry with missing contentId (key=${entry.progressKey})")
+                return@mapNotNull null
+            }
                 entry.progressKey to WatchProgress(
-                    contentId = entry.contentId,
+                    contentId = cid,
                     contentType = entry.contentType,
                     name = "",
                     poster = null,
@@ -446,7 +451,7 @@ class WatchProgressSyncService @Inject constructor(
                         // key (contentId_s1e5), which would resurrect series entries that were
                         // explicitly deleted remotely. Only apply normalization on full snapshots.
                         val progress = event.toWatchProgress()
-                        pageChanges[event.progressKey] = progress
+                        if (progress != null) pageChanges[event.progressKey] = progress
                     }
                 }
 
@@ -607,9 +612,14 @@ class WatchProgressSyncService @Inject constructor(
         return contentType.lowercase() in setOf("series", "tv")
     }
 
-    private fun SupabaseWatchProgressEvent.toWatchProgress(): WatchProgress {
+    private fun SupabaseWatchProgressEvent.toWatchProgress(): WatchProgress? {
+        val cid: String? = contentId
+        if (cid == null || cid.isBlank()) {
+            Log.w(TAG, "Dropping sync event with missing contentId (progressKey=$progressKey)")
+            return null
+        }
         return WatchProgress(
-            contentId = contentId,
+            contentId = cid,
             contentType = contentType,
             name = "",
             poster = null,

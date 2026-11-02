@@ -71,7 +71,7 @@ class StreamBadgeSettingsDataStore @Inject constructor(
             showFileSizeBadges = prefs[showFileSizeBadgesKey] ?: true,
             showAddonLogo = prefs[showAddonLogoKey] ?: true,
             badgePlacement = prefs[streamBadgePlacementKey].toStreamBadgePlacement(),
-            showInPlayer = prefs[showInPlayerKey] ?: false,
+            showInPlayer = prefs[showInPlayerKey] ?: true,
             playerBadgeSource = prefs[playerBadgeSourceKey].orEmpty()
         )
     }.shareIn(scope, SharingStarted.Eagerly, replay = 1)

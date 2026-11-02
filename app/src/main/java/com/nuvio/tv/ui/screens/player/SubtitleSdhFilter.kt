@@ -30,7 +30,8 @@ internal object SubtitleSdhFilter {
         var filtered = speakerChevrons.replace(text, "")
         val unlabelled = filtered
         filtered = speakerLabel.replace(unlabelled) { match ->
-            val textFollows = unlabelled.substring(match.range.last + 1).substringBefore('\n').isNotBlank()
+            // The speech can follow on the same line or on the next lines of the cue ("Man:" then "Get down!").
+            val textFollows = unlabelled.substring(match.range.last + 1).isNotBlank()
             if (isSpeakerLabel(match.groupValues[2], textFollows)) match.groups[1]?.value.orEmpty() else match.value
         }
         filtered = squareBrackets.replace(filtered, "")
@@ -43,7 +44,8 @@ internal object SubtitleSdhFilter {
 
     /**
      * "JOHN:" and "[John]:" are always labels. A label in normal case only counts when it reads like a name and the
-     * line goes on after it ("John: Hello"), so a sentence that ends in a colon ("He said:") stays.
+     * cue goes on after it ("John: Hello", or "John:" with the speech on the next line), so a sentence that ends in a colon
+     * ("He said:") stays.
      */
     internal fun isSpeakerLabel(label: String, textFollows: Boolean): Boolean {
         if (label.startsWith("[")) return true

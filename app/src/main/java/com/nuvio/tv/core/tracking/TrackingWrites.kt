@@ -43,7 +43,9 @@ data class TrackingHistoryItem(
 
 data class TrackingScrobbleEvent(
     val media: TrackingMediaReference,
-    val progressPercent: Double
+    val progressPercent: Double,
+    /** Services that already get this play from elsewhere, such as a media server that scrobbles itself. */
+    val skippedProviders: Set<TrackingProviderId> = emptySet()
 )
 
 data class TrackingMutationResult(

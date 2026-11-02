@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Nuvio Flow</string>
     <string name="tv_channel_continue_watching">Megtekintés folytatása</string>
@@ -6,7 +7,6 @@
     <string name="type_series">Sorozat</string>
     <string name="type_series_plural">Sorozatok</string>
     <string name="type_unknown">Ismeretlen</string>
-
     <string name="web_manage_addons_title">Bővítmények kezelése</string>
     <string name="web_manage_addons_subtitle">Bővítmények, katalógusok és gyűjtemények kezelése</string>
     <string name="web_manage_addons_only_subtitle">Bővítmények telepítése vagy eltávolítása</string>
@@ -95,13 +95,11 @@
     <string name="web_import_error_source_missing_trakt_id">\"{collection}\" gyűjtemény, \"{folder}\" mappa, {index}. forrás: hiányzó Trakt-listaazonosító</string>
     <string name="web_import_success">{count} gyűjtemény importálva. Ellenőrizd őket, majd a módosítások alkalmazásához válaszd a Változtatások mentése gombot.</string>
     <string name="web_import_invalid_json">Érvénytelen JSON</string>
-
     <string name="home_no_addons">Nincsenek telepített bővítmények. A kezdéshez adj hozzá egyet.</string>
     <string name="home_no_catalog_addons">Nincsenek katalógusbővítmények. Telepíts egyet a tartalom megtekintéséhez.</string>
     <string name="auth_notice_nuvio_logged_out">Kijelentkeztél a Nuvio-fiókodból. Jelentkezz be újra.</string>
-    <string name="auth_notice_trakt_logged_out">Kijelentkeztél a Trakt-fiókodból. Csatlakoztasd újra a fiókot.</string>
+    <string name="auth_notice_trakt_logged_out">A Trakt-munkamenet lejárt. Csatlakozz újra a Beállítások > Tracking alatt (egy munkamenet kb. 7 napig tart).</string>
     <string name="error_generic">Hiba történt</string>
-
     <string name="action_retry">Próbáld újra</string>
     <string name="error_state_generic_issue">Hiba történt.</string>
     <string name="error_state_possible_fix">Lehetséges megoldás: %1$s</string>
@@ -135,7 +133,6 @@
     <string name="error_stream_tried_none">Kipróbált stream bővítmények: %1$s. Egyik sem adott vissza streameket a következőhöz: id=%2$s (típus=%3$s).</string>
     <string name="error_stream_tried_generic">Kipróbált stream bővítmények: %1$s. A streameket nem sikerült betölteni a következőhöz: id=%2$s (típus=%3$s).</string>
     <string name="error_stream_tried_issues">Kipróbált stream bővítmények: %1$s. A streameket nem sikerült betölteni a következőhöz: id=%2$s (típus=%3$s). Problémák: %4$s.</string>
-
     <string name="continue_watching">Megtekintés folytatása</string>
     <string name="cw_upcoming">Hamarosan</string>
     <string name="cw_next_up">Következő</string>
@@ -167,11 +164,9 @@
     <string name="cw_action_remove">Eltávolítás</string>
     <string name="cw_dialog_subtitle">Válaszd ki a műveletet.</string>
     <string name="home_poster_dialog_subtitle">Műveletek</string>
-
     <string name="catalog_from_addon">forrás: %1$s</string>
     <string name="action_see_all">Összes megtekintése</string>
     <string name="action_load_more">Továbbiak betöltése</string>
-
     <string name="hero_creator">Alkotó: %1$s</string>
     <string name="hero_director">Rendező: %1$s</string>
     <string name="hero_writer">Író: %1$s</string>
@@ -186,7 +181,6 @@
     <string name="hero_synopsis_read_more">Bővebben</string>
     <string name="hero_synopsis_dismiss_hint">A bezáráshoz nyomd meg a vissza gombot</string>
     <string name="cd_rating">Értékelés</string>
-
     <string name="episodes_season">%1$d. évad</string>
     <string name="episodes_specials">Különkiadások</string>
     <string name="episodes_episode">Epizód</string>
@@ -202,7 +196,6 @@
     <string name="episodes_open_comments">Az epizódhoz írt vélemények megnyitása</string>
     <string name="play_manually">Lejátszás forrásválasztással</string>
     <string name="episodes_season_actions">Évadműveletek</string>
-
     <string name="detail_added_to_library">Hozzáadva a könyvtárhoz</string>
     <string name="detail_removed_from_library">Eltávolítva a könyvtárból</string>
     <string name="detail_episode_marked_watched">Epizód megjelölve megnézettként</string>
@@ -219,7 +212,6 @@
     <string name="detail_marked_previous_watched">Megnézettként megjelölt korábbi epizódok: %1$d</string>
     <string name="playback_unavailable">A lejátszás nem érhető el</string>
     <string name="playback_unavailable_message">A jelenlegi beállítások mellett ez a tartalom nem játszható le.</string>
-
     <string name="detail_btn_play">Lejátszás</string>
     <string name="detail_btn_resume">Folytatás</string>
     <string name="detail_btn_play_episode">%1$d. évad %2$d. rész lejátszása</string>
@@ -287,7 +279,6 @@
     <string name="tmdb_entity_empty_title">Nem található tartalom</string>
     <string name="tmdb_entity_empty_subtitle">A TMDB jelenleg nem rendelkezik böngészhető tartalommal ehhez a választáshoz.</string>
     <string name="episodes_unavailable">Nem elérhető</string>
-    <!-- Status labels for series (some languages need gendered forms) -->
     <string name="series_status_ended">Befejezett</string>
     <string name="series_status_continuing">Folyamatban</string>
     <string name="series_status_current">Jelenlegi</string>
@@ -297,7 +288,6 @@
     <string name="series_status_rumored">Híresztelt</string>
     <string name="series_status_in_production">Gyártás alatt</string>
     <string name="series_status_post_production">Utómunka alatt</string>
-    <!-- Status labels for movies (allows gendered translations in languages that need it) -->
     <string name="movie_status_ended">Befejezve</string>
     <string name="movie_status_continuing">Folyamatban</string>
     <string name="movie_status_current">Aktuális</string>
@@ -311,17 +301,14 @@
     <string name="detail_lists_subtitle">Válaszd ki, mely listákba kerüljön be ez a tartalom.</string>
     <string name="action_save">Mentés</string>
     <string name="action_saving">Mentés\u2026</string>
-
     <string name="appearance_language">Alkalmazás nyelve</string>
     <string name="appearance_language_subtitle">Rendszernyelv felülbírálása</string>
     <string name="appearance_language_system">Rendszer nyelve</string>
     <string name="appearance_language_dialog_title">Nyelv kiválasztása</string>
     <string name="appearance_language_restart_hint">Indítsd újra az alkalmazást a nyelvi beállítások érvényesítéséhez.</string>
-
     <string name="appearance_font">Alkalmazás betűtípusa</string>
     <string name="appearance_font_subtitle">Válaszd ki a kívánt betűtípust</string>
     <string name="appearance_font_dialog_title">Betűtípus kiválasztása</string>
-
     <string name="appearance_title">Megjelenés</string>
     <string name="appearance_subtitle">Válaszd ki a színtémát, a betűtípust és a nyelvet</string>
     <string name="appearance_color_theme">Színtéma</string>
@@ -370,7 +357,6 @@
     <string name="appearance_launcher_artwork">Megjelenés a TV kezdőképernyőjén</string>
     <string name="appearance_launcher_artwork_subtitle">Válaszd ki, hogyan jelenjen meg a Nuvio a TV kezdőképernyőjén</string>
     <string name="ambient_mode_title">Ambient mód</string>
-    <string name="ambient_mode_subtitle">Borítóképek megjelenítése a katalógusaidból, amíg a TV tétlen</string>
     <string name="ambient_mode_enabled_subtitle">Háttérképek töltik ki a képernyőt, ha egy ideig nem használod a távirányítót</string>
     <string name="ambient_mode_timeout">Indítás ennyi idő után</string>
     <string name="ambient_mode_timeout_subtitle">Mennyi idő elteltével induljon el az Ambient mód</string>
@@ -405,10 +391,9 @@
     <string name="appearance_font_and_language">Betűtípus és nyelv</string>
     <string name="appearance_font_and_language_subtitle">Válaszd ki az alkalmazásban használt betűtípust és nyelvet</string>
     <string name="cd_selected">Kiválasztva</string>
-
     <string name="about_title">Névjegy</string>
     <string name="about_subtitle">Információk, frissítések és jogi nyilatkozatok</string>
-    <string name="about_made_with_love">Szeretettel (❤️) készítette a Tapframe és barátai</string>
+    <string name="about_made_with_love">A Tapframe és barátai nagyszerű munkájára építve ❤️ · Nuvio Arc: ysosrs123</string>
     <string name="about_version">Verzió: %1$s</string>
     <string name="about_update_banner_title">Automatikus frissítési sáv</string>
     <string name="about_update_banner_subtitle">Sáv megjelenítése, ha új verzió elérhető</string>
@@ -433,37 +418,35 @@
     <string name="about_licenses_attributions">Licencek és forrásmegjelölések</string>
     <string name="about_licenses_attributions_subtitle">Adatforrások, köszönetnyilvánítások és Android licencek</string>
     <string name="licenses_attributions_title">Licencek és forrásmegjelölések</string>
-    <string name="licenses_attributions_subtitle">A Nuvio TV által használt adatszolgáltatók, szolgáltatási köszönetnyilvánítások és Android lejátszási licencek.</string>
+    <string name="licenses_attributions_subtitle">A Nuvio Arc által használt adatszolgáltatók, szolgáltatási köszönetnyilvánítások és Android lejátszási licencek.</string>
     <string name="licenses_attributions_section_app">AZ ALKALMAZÁS LICENCE</string>
     <string name="licenses_attributions_section_data">ADATOK ÉS SZOLGÁLTATÁSOK</string>
     <string name="licenses_attributions_section_playback">ANDROID LEJÁTSZÁSI LICENCEK</string>
+    <string name="licenses_attributions_nuvio_title">Nuvio Arc (a Nuvio TV forkja)</string>
+    <string name="licenses_attributions_nuvio_body">A Nuvio TV módosított változata. Ennek a buildnek a forráskódja és licencfeltételei a fork tárolójában érhetők el. A Nuvio TV itt található: github.com/NuvioMedia/NuvioTV. Licenc: GNU General Public License v3.0.</string>
     <string name="licenses_attributions_section_ui">FELÜLETI KÖNYVTÁRAK</string>
     <string name="licenses_attributions_haze_title">Haze 1.7.2</string>
     <string name="licenses_attributions_haze_body">Háttérelmosáshoz használjuk. Készítette Chris Banes. Apache License 2.0 alatt érhető el.</string>
-    <string name="licenses_attributions_nuvio_title">Nuvio TV</string>
-    <string name="licenses_attributions_nuvio_body">A forráskód és a licencfeltételek elérhetők a projekt tárolójában. Licenc: GNU General Public License v3.0.</string>
     <string name="licenses_attributions_tmdb_title">The Movie Database (TMDB)</string>
-    <string name="licenses_attributions_tmdb_body">A Nuvio a TMDB API-t használja a filmek és tévéműsorok metaadataihoz, borítóképekhez, előzetesekhez, stáblistákhoz, gyártási adatokhoz, gyűjteményekhez és ajánlásokhoz. Ez a termék a TMDB API-t használja, de a TMDB nem támogatja és nem hagyta jóvá.</string>
+    <string name="licenses_attributions_tmdb_body">A Nuvio Arc a TMDB API-t használja a filmek és tévéműsorok metaadataihoz, borítóképekhez, előzetesekhez, stáblistákhoz, gyártási adatokhoz, gyűjteményekhez és ajánlásokhoz. Ez a termék a TMDB API-t használja, de a TMDB nem támogatja és nem hagyta jóvá.</string>
     <string name="licenses_attributions_trakt_title">Trakt</string>
-    <string name="licenses_attributions_trakt_body">A Nuvio a Trakthoz kapcsolódik fiókhitelesítéshez, a megtekintési előzmények és a megtekintési állapot szinkronizálásához, valamint a könyvtár, az értékelések, a listák és a vélemények kezeléséhez. A Nuvio nem áll kapcsolatban a Trakttal, és a Trakt nem támogatja.</string>
+    <string name="licenses_attributions_trakt_body">A Nuvio Arc a Trakt-hoz csatlakozik a fiók hitelesítéséhez, a megtekintési előzményekhez, a folyamat szinkronizálásához, a könyvtári adatokhoz, az értékelésekhez, a listákhoz és a véleményekhez. A Nuvio Arc nem áll kapcsolatban a Trakt-tal, és az nem hagyta jóvá.</string>
     <string name="licenses_attributions_simkl_title">Simkl</string>
-    <string name="licenses_attributions_simkl_body">A Nuvio a Simklhez kapcsolódik fiókhitelesítéshez, a várólisták, a megtekintési előzmények és a lejátszási állapot szinkronizálásához, valamint a lejátszási adatok automatikus küldéséhez. A filmek, sorozatok és animék követési adatait a Simkl szolgáltatja. A Nuvio nem áll kapcsolatban a Simkllel, és a Simkl nem támogatja.</string>
+    <string name="licenses_attributions_simkl_body">A Nuvio Arc a Simklhez kapcsolódik fiókhitelesítéshez, várólistákhoz, megtekintési előzményekhez, lejátszási folyamathoz és scrobblinghoz. A film-, sorozat- és animekövetési adatokat a Simkl szolgáltatja. A Nuvio Arc nem áll kapcsolatban a Simkllel, és a Simkl nem támogatja.</string>
     <string name="licenses_attributions_premiumize_title">Premiumize</string>
-    <string name="licenses_attributions_premiumize_body">A Nuvio a Premiumize-hoz kapcsolódik fiókhitelesítéshez, felhőkönyvtár-eléréshez, gyorsítótár-ellenőrzésekhez és felhős lejátszási funkciókhoz. A Nuvio nem áll kapcsolatban a Premiumize-zal, és a Premiumize nem támogatja.</string>
+    <string name="licenses_attributions_premiumize_body">A Nuvio Arc a Premiumize-hoz kapcsolódik fiókhitelesítéshez, felhőkönyvtár-eléréshez, gyorsítótár-ellenőrzésekhez és felhős lejátszási funkciókhoz. A Nuvio Arc nem áll kapcsolatban a Premiumize-zal, és a Premiumize nem támogatja.</string>
     <string name="licenses_attributions_torbox_title">TorBox</string>
-    <string name="licenses_attributions_torbox_body">A Nuvio a TorBox-hoz kapcsolódik fiókhitelesítéshez, felhőkönyvtár-eléréshez, gyorsítótár-ellenőrzésekhez és felhős lejátszási funkciókhoz. A Nuvio nem áll kapcsolatban a TorBox-szal, és a TorBox nem támogatja.</string>
+    <string name="licenses_attributions_torbox_body">A Nuvio Arc a TorBox-hoz kapcsolódik fiókhitelesítéshez, felhőkönyvtár-eléréshez, gyorsítótár-ellenőrzésekhez és felhős lejátszási funkciókhoz. A Nuvio Arc nem áll kapcsolatban a TorBox-szal, és a TorBox nem támogatja.</string>
     <string name="licenses_attributions_mdblist_title">MDBList</string>
-    <string name="licenses_attributions_mdblist_body">A Nuvio az MDBList szolgáltatását használja az értékelésekhez, a megtekintési előzményekhez és a lejátszás követéséhez. A Nuvio nem áll kapcsolatban az MDBListtel, és az MDBList nem támogatja.</string>
+    <string name="licenses_attributions_mdblist_body">A Nuvio Arc az MDBList-et használja az értékelésekhez és a külső pontszám-szolgáltatói adatokhoz. A Nuvio Arc nem áll kapcsolatban az MDBList-tel, és az nem hagyta jóvá.</string>
     <string name="licenses_attributions_introdb_title">IntroDB</string>
-    <string name="licenses_attributions_introdb_body">A Nuvio az IntroDB API-t használja a közösség által biztosított intro, összefoglaló, stáblista és előzetes időbélyegekhez, amelyeket az átugrási vezérlők használnak. A Nuvio nem áll kapcsolatban az IntroDB-vel, és az nem hagyta jóvá.</string>
+    <string name="licenses_attributions_introdb_body">A Nuvio Arc az IntroDB API-t használja a közösség által biztosított intro, összefoglaló, stáblista és előzetes időbélyegekhez, amelyeket az átugrási vezérlők használnak. A Nuvio Arc nem áll kapcsolatban az IntroDB-vel, és az nem hagyta jóvá.</string>
     <string name="licenses_attributions_imdb_title">IMDb nem kereskedelmi adatkészletek</string>
-    <string name="licenses_attributions_imdb_body">A Nuvio az IMDb nem kereskedelmi adatkészleteit, beleértve a title.ratings.tsv.gz fájlt, az IMDb értékelésekhez és szavazatszámokhoz használja. Az információk az IMDb (https://www.imdb.com) jóvoltából származnak. Engedéllyel felhasználva. Az IMDb adatai személyes és nem kereskedelmi célokra használhatók az IMDb feltételei alapján.</string>
+    <string name="licenses_attributions_imdb_body">A Nuvio Arc az IMDb nem kereskedelmi adatkészleteit, beleértve a title.ratings.tsv.gz fájlt, az IMDb értékelésekhez és szavazatszámokhoz használja. Az információk az IMDb (https://www.imdb.com) jóvoltából származnak. Engedéllyel felhasználva. Az IMDb adatai személyes és nem kereskedelmi célokra használhatók az IMDb feltételei alapján.</string>
     <string name="licenses_attributions_exoplayer_title">AndroidX Media3 ExoPlayer 1.8.0</string>
     <string name="licenses_attributions_exoplayer_body">Android lejátszó motorként használva. Licenc: Apache License, 2.0-s verzió.</string>
     <string name="licenses_attributions_libmpv_title">libmpv / libmpv-android</string>
     <string name="licenses_attributions_libmpv_body">Androidos lejátszómotorként használjuk. A libmpv-android illesztőréteg MIT-licenc alatt érhető el; az mpv/libmpv és a mellékelt natív összetevők az eredeti licencfeltételeiket tartják meg.</string>
-
-    <!-- SettingsScreen categories -->
     <string name="settings_experience">Felhasználói élmény</string>
     <string name="settings_account">Fiók</string>
     <string name="settings_profiles">Profilok</string>
@@ -482,7 +465,7 @@
     <string name="tracking_accounts_title">Fiókok</string>
     <string name="tracking_accounts_subtitle">Követési szolgáltatások csatlakoztatása és kezelése</string>
     <string name="tracking_sources_title">Források</string>
-    <string name="tracking_sources_subtitle">Válaszd ki, honnan töltse be a Nuvio a könyvtáradat és a megtekintési állapotot. A lejátszási adatokat minden csatlakoztatott szolgáltatásnak elküldi.</string>
+    <string name="tracking_sources_subtitle">Válaszd ki, honnan olvassa a Nuvio Arc a könyvtáradat és a megtekintési folyamatot. A lejátszás scrobblingja minden csatlakoztatott szolgáltatásnál működik.</string>
     <string name="tracking_trakt_features_title">Trakt funkciók</string>
     <string name="tracking_trakt_features_subtitle">Trakt-előzmények, vélemények és ajánlások</string>
     <string name="tracking_simkl_features_title">Simkl funkciók</string>
@@ -499,9 +482,9 @@
     <string name="tracking_status_connecting">Csatlakozás</string>
     <string name="tracking_finish_connection">Csatlakozás jóváhagyásának befejezése</string>
     <string name="tracking_connecting_provider">%1$s csatlakoztatása folyamatban…</string>
-    <string name="tracking_watch_progress_dialog_subtitle">Válaszd ki, melyik szolgáltatás adja meg, hol hagytad abba a lejátszást, és mi kerüljön a Megtekintés folytatása sorba. A lejátszási adatokat minden csatlakoztatott szolgáltatás megkapja.</string>
-    <string name="tracking_library_source_dialog_subtitle">Válaszd ki a Könyvtár adatforrását. A lejátszási adatokat minden csatlakoztatott szolgáltatás megkapja.</string>
-    <string name="tracking_trakt_progress_required">Akkor érhető el, ha a megtekintési állapot forrása a Trakt</string>
+    <string name="tracking_watch_progress_dialog_subtitle">Válaszd ki, melyik szolgáltatás adja meg, hol hagytad abba, és mi kerüljön a Megtekintés folytatása sorba. A scrobbling minden csatlakoztatott szolgáltatásnál aktív marad.</string>
+    <string name="tracking_library_source_dialog_subtitle">Válaszd ki, honnan olvassa a Nuvio Arc a Könyvtáradat. A lejátszás scrobblingja minden csatlakoztatott szolgáltatásnál működik.</string>
+    <string name="tracking_trakt_progress_required">Akkor elérhető, ha a Trakt a Megtekintési folyamat forrása</string>
     <string name="trakt_name">Trakt</string>
     <string name="simkl_name">Simkl</string>
     <string name="settings_network">Hálózati sebesség</string>
@@ -510,7 +493,7 @@
     <string name="settings_advanced_subtitle">Teljesítmény, navigáció, gyorsítótár és diagnosztika</string>
     <string name="experience_mode_essential">Alapvető</string>
     <string name="experience_mode_advanced">Haladó</string>
-    <string name="experience_mode_choose_title">Válaszd ki a Nuvio használati módját</string>
+    <string name="experience_mode_choose_title">Válaszd ki a Nuvio Arc élményt</string>
     <string name="experience_mode_choose_subtitle">Kezdj az alapbeállításokkal, vagy tedd elérhetővé az összes testreszabási lehetőséget. Bármikor válthatsz.</string>
     <string name="experience_mode_essential_card_subtitle">Egyszerű beállítások, bővítmények, alapvető lejátszási funkciók, Trakt és fiókbeállítások.</string>
     <string name="experience_mode_advanced_card_subtitle">Minden beállítás, elrendezés, katalógussorrend, gyűjtemények, beépülő modulok és diagnosztika.</string>
@@ -535,7 +518,6 @@
     <string name="essential_p2p_streams_subtitle">Peer-to-peer stream források engedélyezése.</string>
     <string name="essential_subtitle_language_subtitle">A feliratok előnyben részesített nyelve.</string>
     <string name="essential_audio_language_subtitle">A hangsáv előnyben részesített nyelve.</string>
-    <!-- Account / sign-in error messages -->
     <string name="account_error_incorrect_pin">Helytelen PIN.</string>
     <string name="account_error_sync_code_expired">A szinkronizálási kód lejárt.</string>
     <string name="account_error_invalid_sync_code">Érvénytelen szinkronizálási kód.</string>
@@ -647,10 +629,9 @@
     <string name="settings_integrations_section">Integrációk</string>
     <string name="settings_integrations_section_subtitle">Elérhető integrációk kezelése</string>
     <string name="settings_tmdb_subtitle">Metaadat-bővítési beállítások</string>
-    <string name="settings_mdblist_subtitle">Külső értékelési szolgáltatók</string>
+    <string name="settings_mdblist_subtitle">Megtekintések követése és értékelések</string>
     <string name="settings_animeskip_subtitle">Anime intro/outro átugrási időbélyegek</string>
     <string name="settings_debrid_subtitle">Kísérleti források felhőfiókokból</string>
-
     <string name="playback_title">Lejátszási beállítások</string>
     <string name="playback_subtitle">Videólejátszás és feliratok konfigurálása</string>
     <string name="cd_decrease">Csökkentés</string>
@@ -662,7 +643,6 @@
     <string name="action_none">Nincs</string>
     <string name="action_back">Vissza</string>
     <string name="action_close">Bezárás</string>
-
     <string name="supporters_contributors_title">Nuvio támogatása</string>
     <string name="supporters_contributors_subtitle">A Nuvio támogatói, valamint a TV-s és mobil platformokon dolgozó közreműködők.</string>
     <string name="supporters_contributors_supporters_copy">A támogatók és adományozók segítik a projekt fejlődését, az infrastruktúra finanszírozását és az új funkciók megvalósítását.</string>
@@ -723,7 +703,7 @@
     <string name="contributors_hide_kofi_qr">Ko-fi QR-kód elrejtése</string>
     <string name="contributors_profile_unavailable">A GitHub profil linkje nem érhető el.</string>
     <string name="playback_section_player_title">Lejátszó</string>
-    <string name="playback_section_player_title_desc">Alapértelmezett lejátszó, belső lejátszómotor és váltás hiba esetén.</string>
+    <string name="playback_section_player_title_desc">Belső motor és tartalék hiba esetére.</string>
     <string name="playback_section_stream_selection">Stream kiválasztása</string>
     <string name="playback_section_stream_selection_desc">Melyik stream induljon el, amikor megnyomod a Lejátszás gombot.</string>
     <string name="playback_section_up_next">Következik</string>
@@ -731,7 +711,7 @@
     <string name="playback_section_skip">Szakaszok átugrása</string>
     <string name="playback_section_skip_desc">Intrók, összefoglalók és stáblisták átugrása.</string>
     <string name="playback_section_interface">Lejátszó felülete</string>
-    <string name="playback_section_interface_desc">Lejátszás közben látható képernyőrétegek, óra és tartalomadatok.</string>
+    <string name="playback_section_interface_desc">Lejátszás közben megjelenő miniatűrök, rétegek, óra és részletek.</string>
     <string name="playback_section_audio_only_desc">Nyelvek, dekódolás és hangkimenet.</string>
     <string name="playback_section_video_desc">Képfrissítés illesztése, Dolby Vision és HDR.</string>
     <string name="playback_default_player">Alapértelmezett lejátszó</string>
@@ -743,7 +723,6 @@
     <string name="sub_languages_label">Nyelvek</string>
     <string name="sub_style_label">Stílus</string>
     <string name="autoplay_selected_count">%1$d kiválasztva</string>
-
     <string name="playback_loading_overlay">Betöltőképernyő</string>
     <string name="playback_loading_overlay_sub">Betöltőképernyő megjelenítése az első képkocka megjelenéséig.</string>
     <string name="playback_pause_overlay">Információk szüneteltetéskor</string>
@@ -773,8 +752,8 @@
     <string name="playback_internal_player_engine">Belső motor</string>
     <string name="playback_engine_exoplayer">ExoPlayer</string>
     <string name="playback_engine_mvplayer">Libmpv (Béta)</string>
-    <string name="playback_auto_switch_internal_player_on_error">Automatikus motorváltás indítási hiba esetén</string>
-    <string name="playback_auto_switch_internal_player_on_error_sub">Ha a stream indítása sikertelen, váltson automatikusan az ExoPlayer és libmpv között.</string>
+    <string name="playback_auto_switch_internal_player_on_error">Automatikus váltás ExoPlayerre indítási hiba esetén</string>
+    <string name="playback_auto_switch_internal_player_on_error_sub">Ha a stream indítása libmpv-ben sikertelen, automatikusan újrapróbálja ExoPlayerrel.</string>
     <string name="playback_external_forward_subtitles">Feliratok továbbítása külső lejátszónak</string>
     <string name="playback_external_forward_subtitles_sub">Lekéri a bővítményekből az előnyben részesített nyelvű feliratokat, és átadja őket a külső lejátszónak.</string>
     <string name="playback_external_send_skip_segments">Intrók és stáblisták időbélyegeinek küldése</string>
@@ -801,15 +780,11 @@
     <string name="playback_player_ask_desc">Lejátszó kiválasztása minden alkalommal.</string>
     <string name="playback_player_auto">Automatikus (A tartalomhoz legjobb)</string>
     <string name="playback_player_auto_desc">ExoPlayer filmekhez és sorozatokhoz · MPV animékhez</string>
-    <string name="playback_engine_exoplayer_desc">Legjobb kompatibilitás a jelenlegi Nuvio funkciókkal.</string>
-    <string name="playback_engine_mvplayer_desc">Libmpv-t használ a Nuvio OSD vezérlőivel. Kísérleti funkció.</string>
-
+    <string name="playback_engine_exoplayer_desc">Legjobb kompatibilitás a jelenlegi Nuvio Arc funkciókkal.</string>
+    <string name="playback_engine_mvplayer_desc">Libmpv-t használ a Nuvio Arc OSD vezérlőivel. Kísérleti funkció.</string>
     <string name="video_section">Videó</string>
     <string name="playback_true_black_letterbox">Valódi fekete sávok</string>
     <string name="playback_true_black_letterbox_sub">A kép körüli sávok HDR-ben is feketék maradnak. Kapcsold ki, ha világos csík jelenik meg rajtuk.</string>
-    <string name="playback_chapters_label">Fejezetek</string>
-    <string name="playback_exo_chapters_title">Fejezetek megjelenítése (ExoPlayer)</string>
-    <string name="playback_exo_chapters_sub">Az MKV-fájlok fejezeteinek beolvasása, hogy megjelenjenek a folyamatjelzőn, és lehessen köztük lépkedni. A lejátszás indítása után néhány kisebb extra lekérést igényel. Az mpv mindig megjeleníti a fejezeteket.</string>
     <string name="audio_trailer_section">Előzetes</string>
     <string name="audio_autoplay_trailers">Előzetesek automatikus lejátszása</string>
     <string name="audio_autoplay_trailers_sub">Előzetesek automatikus lejátszása a részletek oldalán és a lejátszás utáni képernyőn.</string>
@@ -821,7 +796,7 @@
     <string name="audio_lang_original_hint">A TMDB-adatbővítés bekapcsolása szükséges</string>
     <string name="audio_preferred_lang">Hang előnyben részesített nyelve</string>
     <string name="audio_skip_silence">Csend átugrása</string>
-    <string name="audio_skip_silence_sub">Néma szakaszok átugrása lejátszás közben</string>
+    <string name="audio_skip_silence_sub">Néma szakaszok átugrása lejátszás közben. Nincs hatása, amíg a hang passthrough-val (bitstream) megy ki</string>
     <string name="audio_remember_delay_per_device">Késleltetés megjegyzése eszközönként</string>
     <string name="audio_remember_delay_per_device_sub">Menti és visszaállítja a lejátszón belüli hangkésleltetést az aktuális hangkimenethez</string>
     <string name="audio_advanced_section">Speciális hangbeállítások</string>
@@ -833,12 +808,11 @@
     <string name="audio_decoder_prefer_app">Alkalmazás dekódereinek előnyben részesítése (FFmpeg)</string>
     <string name="audio_decoder_priority">Dekóder prioritása</string>
     <string name="audio_enable_downmix_title">Lekeverés engedélyezése</string>
-    <string name="audio_enable_downmix_subtitle">Az FFmpeg lekeverését (downmix) használja. Szükséges hozzá az Alkalmazás dekódereinek előnyben részesítése (FFmpeg). Ha ki van kapcsolva, a hang a korábbi Android/eszköz szintű feldolgozáson megy át.</string>
+    <string name="audio_enable_downmix_subtitle">Az alkalmazás által dekódolt hangot a kiválasztott csatornaszámra keveri le. Az erősítőd által elfogadott formátumok továbbra is érintetlenül, bitstreamként mennek ki. A Csak az eszköz dekóderei beállítással nem érhető el.</string>
     <string name="audio_tunneled">Alagutazott (tunneled) lejátszás</string>
     <string name="audio_tunneled_sub">Hang/videó szinkronizálása hardveres szinten. Javíthatja a lejátszást egyes Android TV eszközökön.</string>
     <string name="audio_force_optical_passthrough">AC-3 átkódolás kényszerítése (optikai/SPDIF)</string>
     <string name="audio_force_optical_passthrough_sub">Valós időben Dolby Digital 5.1-re átkódolja a többcsatornás formátumokat (TrueHD, DTS, AAC stb.) optikai/SPDIF kapcsolatokhoz.</string>
-    <!-- DV7 Handling Mode -->
     <string name="dv7_handling_title">Dolby Vision Profile 7 kezelése</string>
     <string name="dv7_handling_dialog_subtitle">Válaszd ki, hogyan dolgozza fel a lejátszó a DV Profile 7 streameket.</string>
     <string name="dv7_mode_auto">Automatikus (ajánlott)</string>
@@ -856,7 +830,7 @@
     <string name="audio_strip_hdr10plus_title">HDR10+ metaadatok eltávolítása</string>
     <string name="audio_strip_hdr10plus_sub">Eltávolítja a HDR10+ dinamikus metaadatokat a streamekből. Ha a Konvertálás DV8.1-re is be van kapcsolva, az eltávolítás a konvertálás után fut.</string>
     <string name="audio_dv7_preserve_mapping_title">DV leképezés megőrzése (DV7-ről DV8.1-re)</string>
-    <string name="audio_dv7_preserve_mapping_sub">Megőrzi az alkotó által szándékolt eredeti tónusleképezést, képkockánként egy kicsit több feldolgozás árán.</string>
+    <string name="audio_dv7_preserve_mapping_sub">Kéri a mapping megőrzését, de a beépített libdovi C API ezt nem tudja teljesíteni: a lejátszás a szokásos 8.1-es konvertálásra vált (a mapping nem marad meg). Egyszeri DV7_NATIVE figyelmeztetés kerül a naplóba.</string>
     <string name="dv7_libdovi_mode_caption" translatable="false">Conversion mode (auto-selected, do not change unless instructed). Pick one to force it; None uses auto. Active only when DV7 Handling is Convert to DV8.1.</string>
     <string name="dv7_libdovi_mode_row_title" translatable="false">Conversion mode</string>
     <string name="dv7_libdovi_mode_none_title" translatable="false">None</string>
@@ -889,7 +863,6 @@
     <string name="audio_decoder_prefer_device_desc">Hardveres dekóderek használata, ha elérhetőek, egyébként FFmpeg. A legtöbb eszközhöz ez ajánlott.</string>
     <string name="audio_decoder_prefer_app_desc">FFmpeg dekóderek használata, ha elérhetőek. Jobb formátumtámogatás, de magasabb CPU-használat.</string>
     <string name="audio_decoder_controls">Meghatározza, hogy hardveres vagy szoftveres (FFmpeg) dekódereket használjon-e a rendszer a hanghoz és videóhoz</string>
-
     <string name="sub_section">Feliratok</string>
     <string name="sub_not_set">Nincs beállítva</string>
     <string name="sub_forced_lang">Kényszerített feliratok</string>
@@ -918,7 +891,6 @@
     <string name="sub_advanced_section">Speciális felirat-megjelenítés</string>
     <string name="sub_libass">Libass használata ASS/SSA feliratokhoz</string>
     <string name="sub_libass_sub">Kísérleti: fejlett ASS/SSA-megjelenítés stílusokkal, pozicionálással és animációkkal</string>
-    <string name="sub_libass_mode">Libass megjelenítési mód</string>
     <string name="sub_org_none">Nincs (alapértelmezett sorrend)</string>
     <string name="sub_org_by_lang">Nyelv szerint</string>
     <string name="sub_org_by_addon">Bővítmény szerint</string>
@@ -927,7 +899,6 @@
     <string name="sub_org_by_addon_desc">Feliratok csoportosítása forrás (bővítmény) szerint.</string>
     <string name="autoplay_preload_next_episode">Következő epizód forrásainak előtöltése</string>
     <string name="autoplay_preload_next_episode_sub">A forráskeresés már a következő epizód gombjának megjelenése előtt elindul a háttérben.</string>
-
     <string name="autoplay_reuse_last_link">Utolsó link újrafelhasználása</string>
     <string name="autoplay_reuse_last_link_sub">A legutóbb működő forrás automatikus lejátszása ugyanahhoz a filmhez/epizódhoz, ha a gyorsítótár még érvényes</string>
     <string name="autoplay_last_link_cache">Utolsó forrás megőrzési ideje</string>
@@ -965,6 +936,8 @@
     <string name="autoplay_scope">Automatikus lejátszáshoz használható források</string>
     <string name="autoplay_timeout_title">Forrásválasztás időkorlátja</string>
     <string name="autoplay_timeout_sub">Várakozási idő a bővítményekre a kiválasztás előtt.</string>
+    <string name="addon_stream_timeout_title">Bővítmény válaszidő-korlátja</string>
+    <string name="addon_stream_timeout_sub">Mennyi ideje van minden bővítménynek a források visszaadására, mielőtt kihagyásra kerül. Növeld, ha egy lassú bővítmény, például az AIOStreams, nem mutat találatot.</string>
     <string name="autoplay_timeout_instant">Azonnal</string>
     <string name="autoplay_timeout_unlimited">Korlátlan</string>
     <string name="autoplay_allowed_addons">Engedélyezett bővítmények</string>
@@ -985,7 +958,6 @@
     <string name="autoplay_regex_matches">Illeszkedik a stream nevére/címére/leírására/bővítményére/URL-jére. Példa: 4K|2160p|Remux</string>
     <string name="autoplay_regex_presets">Sablonok</string>
     <string name="autoplay_invalid_regex">Érvénytelen regex minta</string>
-
     <string name="layout_title">Elrendezés beállításai</string>
     <string name="layout_subtitle">Kezdőlap elrendezése, tartalom láthatósága és a poszterek viselkedése</string>
     <string name="layout_classic">Klasszikus nézet</string>
@@ -995,9 +967,9 @@
     <string name="layout_grid_desc">Minden tartalom függőleges rácsban, kiemelt (hero) szekcióval</string>
     <string name="layout_modern_desc">Rögzített kiemelt rész egyetlen aktív sorral a gyorsabb böngészésért</string>
     <string name="layout_section_home">Kezdőlap elrendezése</string>
-    <string name="layout_section_home_desc">Válaszd ki a felépítést és a kiemelt tartalom forrását.</string>
+    <string name="layout_section_home_desc">A Modern nézet beállításai.</string>
     <string name="layout_landscape_posters">Fekvő poszterek</string>
-    <string name="layout_landscape_posters_sub">Fekvő kártyák használata minden nézetben.</string>
+    <string name="layout_landscape_posters_sub">Fekvő kártyák csak a Kezdőlapon vagy mindenhol.</string>
     <string name="layout_preview_row">Előnézeti sor megjelenítése</string>
     <string name="layout_preview_row_sub">A következő sor részleges előnézete Modern elrendezésben.</string>
     <string name="layout_hero_catalogs">Kiemelt katalógusok</string>
@@ -1090,8 +1062,6 @@
     <string name="layout_trailer_play_in_background_sub">Az előzetes a háttérkép helyén indul el, miközben az oldal látható marad.</string>
     <string name="layout_trailer_pause_on_scroll">Szünet görgetéskor</string>
     <string name="layout_trailer_pause_on_scroll_sub">Az előzetes szünetel, ha lefelé görgetsz, majd folytatódik, amikor visszatérsz az oldal tetejére.</string>
-    <string name="layout_trailer_4k">4K előzetesek</string>
-    <string name="layout_trailer_4k_sub">Előzetesek lejátszása 1080p feletti felbontásban, ha elérhető. Jóval több memóriát használ, ezért 2 GB vagy kevesebb RAM-mal rendelkező eszközökön alapból ki van kapcsolva.</string>
     <string name="layout_detail_group_episodes">Epizódok</string>
     <string name="layout_detail_group_trailers">Előzetesek</string>
     <string name="layout_detail_group_metadata">Metaadatok</string>
@@ -1215,12 +1185,10 @@
     <string name="mdblist_unavailable">Nem sikerült szinkronizálni az MDBListtel. Próbáld újra.</string>
     <string name="mdblist_rate_limited">Az MDBList kérési korlátját elértük. A szinkronizálás a korlát feloldása után folytatódik.</string>
     <string name="mdblist_revoke_failed">A fiókot leválasztottuk erről az eszközről. A hozzáférés teljes visszavonásához távolítsd el az alkalmazást az MDBList-fiókod beállításaiban.</string>
-
-
-    <string name="mdblist_title">MDBList értékelések</string>
-    <string name="mdblist_subtitle">Külső értékelések beállítása a részletek oldalon</string>
+    <string name="mdblist_title">MDBList</string>
+    <string name="mdblist_subtitle">Külső értékelések és az MDBList-fiókod</string>
     <string name="mdblist_enable_title">MDBList értékelések engedélyezése</string>
-    <string name="mdblist_enable_subtitle">Értékelések lekérése külső szolgáltatóktól a részletek képernyőn</string>
+    <string name="mdblist_enable_subtitle">Értékelésjelvények megjelenítése az MDBListről. A megtekintések követéséhez jelentkezz be a Tracking alatt.</string>
     <string name="mdblist_api_key_title">API-kulcs</string>
     <string name="mdblist_api_key_subtitle">Szükséges az értékelések lekéréséhez az MDBList-ről</string>
     <string name="mdblist_ratings_credentials_subtitle">Használd a Követés menüben csatlakoztatott MDBList-fiókodat, vagy adj meg külön API-kulcsot az értékelésekhez.</string>
@@ -1257,7 +1225,6 @@
     <string name="mdblist_library_lists_summary">%2$d listából %1$d látható</string>
     <string name="tracking_mdblist_features_title">MDBList-funkciók</string>
     <string name="tracking_mdblist_features_subtitle">MDBList-specifikus beállítások</string>
-
     <string name="debrid_title">Kapcsolódó szolgáltatások</string>
     <string name="debrid_subtitle">Fiókok csatlakoztatása lejátszási linkekhez és a könyvtár eléréséhez</string>
     <string name="debrid_experimental_notice">Ezek az integrációk kísérleti jellegűek; később megmaradhatnak, változhatnak vagy megszűnhetnek.</string>
@@ -1348,8 +1315,6 @@
     <string name="debrid_stream_codec_h264">H.264 / AVC</string>
     <string name="debrid_stream_codec_hevc">HEVC / H.265</string>
     <string name="debrid_stream_codec_av1">AV1</string>
-
-    <!-- Debrid stream filter dialogs (per-resolution / quality / size / multi-choice pickers) -->
     <string name="debrid_stream_per_resolution_limit_title">Felbontásonkénti korlát</string>
     <string name="debrid_stream_per_resolution_limit_subtitle">Rendezés után korlátozza az azonos felbontású (2160p, 1080p, 720p) találatok számát.</string>
     <string name="debrid_stream_per_quality_limit_title">Minőségenkénti korlát</string>
@@ -1380,7 +1345,6 @@
     <string name="debrid_stream_release_groups_required">Kötelező kiadócsoportok</string>
     <string name="debrid_stream_release_groups_excluded">Kizárt kiadócsoportok</string>
     <string name="debrid_stream_release_groups_input_subtitle">Soronként egy csoportot adj meg.</string>
-
     <string name="debrid_formatter_title">Webes szerkesztő</string>
     <string name="debrid_formatter_subtitle">Konfiguráld a forrás megjelenítését, a szűrőket és a rendezést egy másik eszközről.</string>
     <string name="debrid_formatter_configure">Webes szerkesztő megnyitása</string>
@@ -1391,7 +1355,6 @@
     <string name="settings_stream_size_badges_title">Fájlméretjelzők</string>
     <string name="settings_stream_size_badges_description">Fájlméretjelzők megjelenítése a forrástalálatoknál és a lejátszó forráspanelein.</string>
     <string name="settings_stream_badges_in_player_title">Megjelenítés a lejátszóban</string>
-    <string name="settings_stream_badges_in_player_description">A lejátszott videó és hang jelvényeinek megjelenítése a lejátszó címe alatt. Olyan jelvénycsomag szükséges, amely felismeri az egyszerű szöveget, például a 2160p vagy az Atmos jelölést.</string>
     <string name="settings_stream_player_badges_title">Lejátszó jelvényei</string>
     <string name="settings_stream_player_badges_description">A lejátszó által használt jelvénycsomag kiválasztása.</string>
     <string name="settings_stream_player_badges_same">Megegyezik a stream jelvényeivel</string>
@@ -1424,8 +1387,6 @@
     <string name="streams_size">MÉRET %1$s</string>
     <string name="action_import">Importálás</string>
     <string name="action_delete">Törlés</string>
-
-    <!-- Anime-Skip -->
     <string name="animeskip_title">Anime Skip</string>
     <string name="animeskip_subtitle">Az Anime Skip kliensazonosítójának beállítása anime főcímek és stáblisták átugrásához</string>
     <string name="animeskip_enable_title">Anime Skip engedélyezése</string>
@@ -1437,7 +1398,6 @@
     <string name="animeskip_dialog_placeholder">Írd be az azonosítót</string>
     <string name="animeskip_invalid_client_id">Érvénytelen azonosító</string>
     <string name="action_clear">Törlés</string>
-
     <string name="tmdb_title">TMDB adatbővítés</string>
     <string name="tmdb_subtitle">Válaszd ki, mely metaadat-mezők származzanak a TMDB-ről</string>
     <string name="tmdb_enable_title">TMDB adatbővítés engedélyezése</string>
@@ -1468,9 +1428,7 @@
     <string name="tmdb_more_like_this_subtitle">A TMDB által ajánlott tartalmak háttérképei a részletek oldalán és a lejátszás utáni képernyőn</string>
     <string name="tmdb_collections_title">Gyűjtemények</string>
     <string name="tmdb_collections_subtitle">TMDB filmgyűjtemények megjelenési sorrendben</string>
-
     <string name="tmdb_language_dialog_title">TMDB nyelv</string>
-
     <string name="trakt_description">Szinkronizáld a várólistádat, a megtekintési állapotot, a folytatható tartalmakat, a lejátszási adatokat és a saját listáidat a Trakttal.</string>
     <string name="trakt_connected_as">Csatlakoztatott fiók: %1$s</string>
     <string name="trakt_account_login">Fiókbejelentkezés</string>
@@ -1490,10 +1448,10 @@
     <string name="trakt_token_refreshes">Trakt token frissítése: %1$s múlva</string>
     <string name="trakt_login_instruction">Nyomd meg a Bejelentkezés gombot a Trakt hitelesítéshez. Egy QR-kód fog megjelenni.</string>
     <string name="trakt_missing_credentials">Hiányzó TRAKT_CLIENT_ID / TRAKT_CLIENT_SECRET a local.properties fájlban.</string>
-    <string name="trakt_watch_progress_title">Megtekintési állapot</string>
+    <string name="trakt_watch_progress_title">Megtekintési folyamat</string>
     <string name="trakt_watch_progress_subtitle">Válaszd ki a lejátszás folytatásához és a Megtekintés folytatása sorhoz használt adatforrást</string>
-    <string name="trakt_watch_progress_dialog_title">Megtekintési állapot</string>
-    <string name="trakt_watch_progress_dialog_subtitle">Válaszd ki, hogy a lejátszás folytatásához és a Megtekintés folytatása sorhoz a Trakt vagy a Nuvio Sync adatait használja-e a Nuvio. A lejátszási adatokat továbbra is elküldi a Traktnak.</string>
+    <string name="trakt_watch_progress_dialog_title">Megtekintési folyamat</string>
+    <string name="trakt_watch_progress_dialog_subtitle">Válaszd ki, melyik forrás adja a folytatást és a Megtekintés folytatása sort. A csatlakoztatott szolgáltatások felé a scrobbling ettől függetlenül aktív marad.</string>
     <string name="trakt_watch_progress_source_trakt">Trakt</string>
     <string name="trakt_watch_progress_source_nuvio">Nuvio Sync</string>
     <string name="trakt_library_source_title">Könyvtár forrása</string>
@@ -1536,7 +1494,7 @@
     <string name="trakt_stat_watched_hours">Megtekintési idő (óra)</string>
     <string name="trakt_disconnect">Leválasztás</string>
     <string name="trakt_disconnect_title">Lecsatlakozol a Traktról?</string>
-    <string name="trakt_disconnect_subtitle">Ez megszünteti a kapcsolatot a Trakt fiókod és a Nuvio között.</string>
+    <string name="trakt_disconnect_subtitle">Ez megszünteti a kapcsolatot a Trakt fiókod és a Nuvio Arc között.</string>
     <string name="trakt_login">Bejelentkezés</string>
     <string name="trakt_retry">Újra</string>
     <string name="trakt_back">Vissza</string>
@@ -1548,7 +1506,6 @@
     <string name="trakt_hide_unaired">Még nem vetített epizódok elrejtése</string>
     <string name="trakt_all_history">Teljes előzmény</string>
     <string name="trakt_days_format">%1$d nap</string>
-
     <string name="debug_title">Hibakeresés</string>
     <string name="debug_subtitle">Fejlesztői eszközök és funkciókapcsolók (csak debug build esetén)</string>
     <string name="debug_section_popup">Ablakok / dialógusok tesztelése</string>
@@ -1588,7 +1545,6 @@
     <string name="debug_generate_library_placeholder">Elemek száma</string>
     <string name="debug_generate_library_button">Generálás</string>
     <string name="debug_generating_library">Generálás\u2026</string>
-
     <string name="profile_title">Profilok</string>
     <string name="profile_subtitle">Fiókhoz tartozó felhasználói profilok kezelése.</string>
     <string name="profile_manage_button">Profilok kezelése</string>
@@ -1687,17 +1643,12 @@
     <string name="profile_pin_overlay_mismatch">A PIN-kódok nem egyeznek. Add meg újra az új PIN-t.</string>
     <string name="profile_pin_overlay_forgot_hint">Elfelejtetted a PIN-t? Állítsd alaphelyzetbe a Nuvio fiókodból a weboldalon.</string>
     <string name="profile_pin_overlay_back_hint">A megszakításhoz nyomd meg a Vissza gombot</string>
-
-
-    <!-- Essential addon setup wizard -->
     <string name="essential_addon_setup_title">Bővítmények beállítása</string>
     <string name="essential_addon_setup_subtitle">Telepíts egy bővítményt a streaming megkezdéséhez. Később továbbiakat is hozzáadhatsz a Bővítmények menüből.</string>
     <string name="essential_addon_show_qr">QR-kód megjelenítése</string>
-    <!-- Collection editor fallbacks -->
     <string name="collection_editor_no_trakt_lists_found">Nem találhatók Trakt listák</string>
     <string name="collection_editor_untitled_folder">Névtelen</string>
     <string name="collection_editor_untitled_collection">Névtelen gyűjtemény</string>
-    <!-- AddonManagerScreen -->
     <string name="addon_title">Bővítmények</string>
     <string name="addon_readonly_notice">Az elsődleges profil bővítményeit használod, ezek nem módosíthatók</string>
     <string name="addon_install_title">Bővítmény telepítése</string>
@@ -1743,7 +1694,6 @@
     <string name="addon_confirm_total_addons">Összes bővítmény: %1$d</string>
     <string name="addon_confirm_total_catalogs">Összes katalógus: %1$d</string>
     <string name="addon_catalogs_types">Katalógusok: %1$d – Típusok: %2$s</string>
-
     <string name="catalog_order_title">A kezdőlap katalógusainak sorrendje</string>
     <string name="catalog_order_subtitle">A kezdőlap katalógusainak sorrendjét módosítja (Klasszikus + Modern + Rács).</string>
     <string name="catalog_order_follow_addons">Bővítmények sorrendjének követése</string>
@@ -1752,8 +1702,6 @@
     <string name="catalog_order_disabled_on_home">Letiltva a kezdőlapon</string>
     <string name="catalog_order_enable">Engedélyezés</string>
     <string name="catalog_order_disable">Letiltás</string>
-
-
     <string name="stream_retry">Újra</string>
     <string name="stream_no_streams">Nem találhatók források</string>
     <string name="stream_no_streams_hint">Próbálj meg több bővítményt telepíteni a források kereséséhez</string>
@@ -1768,7 +1716,7 @@
     <string name="stream_type_torrent">Torrent</string>
     <string name="stream_type_youtube">YouTube</string>
     <string name="p2p_consent_title">P2P Streamelés</string>
-    <string name="p2p_consent_body">Ez a stream peer-to-peer (P2P) technológiát használ. A P2P engedélyezésével tudomásul veszed és elfogadod, hogy:\n\n\u2022 Az IP címed látható lesz a hálózat más résztvevői számára\n\u2022 Kizárólag te vagy a felelős a megtekintett tartalomért\n\u2022 Megerősíted, hogy jogod van streamelni ezt a tartalmat a te joghatóságodban\n\u2022 A Nuvio nem tárol, terjeszt és nem is felügyel semmilyen P2P tartalmat\n\u2022 A Nuvio nem vállal felelősséget a P2P streamelésből eredő jogi következményekért\n\nEzt a funkciót kizárólag a saját felelősségedre használod. A P2P bármikor kikapcsolható a Beállításokban.</string>
+    <string name="p2p_consent_body">Ez a stream peer-to-peer (P2P) technológiát használ. A P2P engedélyezésével tudomásul veszed és elfogadod, hogy:\n\n\u2022 Az IP címed látható lesz a hálózat más résztvevői számára\n\u2022 Kizárólag te vagy a felelős a megtekintett tartalomért\n\u2022 Megerősíted, hogy jogod van streamelni ezt a tartalmat a te joghatóságodban\n\u2022 A Nuvio Arc nem tárol, terjeszt és nem is felügyel semmilyen P2P tartalmat\n\u2022 A Nuvio Arc nem vállal felelősséget a P2P streamelésből eredő jogi következményekért\n\nEzt a funkciót kizárólag a saját felelősségedre használod. A P2P bármikor kikapcsolható a Beállításokban.</string>
     <string name="p2p_consent_enable">P2P engedélyezése</string>
     <string name="p2p_consent_cancel">Mégse</string>
     <string name="settings_p2p_title">P2P Streamelés</string>
@@ -1803,7 +1751,6 @@
     <string name="stream_player_external">Külső</string>
     <string name="stream_filter_all">Összes</string>
     <string name="stream_episode_label">S%1$d E%2$d</string>
-
     <string name="player_no_external_player">Nem található külső lejátszó</string>
     <string name="player_loading_preparing">Stream előkészítése…</string>
     <string name="player_loading_detecting_format">Stream formátumának észlelése…</string>
@@ -1835,8 +1782,6 @@
     <string name="subtitle_timing_press_back_cancel">Nyomd meg a Vissza gombot a megszakításhoz</string>
     <string name="subtitle_timing_captured_at">Rögzítve: %1$s</string>
     <string name="subtitle_timing_capturing">Rögzítés…</string>
-
-    <!-- ParentalGuideOverlay -->
     <string name="parental_nudity">Meztelenség</string>
     <string name="parental_violence">Erőszak</string>
     <string name="parental_profanity">Trágár nyelvezet</string>
@@ -1847,7 +1792,6 @@
     <string name="parental_severity_mild">Enyhe</string>
     <string name="player_ends_at">Befejezés: %1$s</string>
     <string name="player_live_watched">ÉLŐ  %1$s</string>
-    <!-- Season/episode code shown in player UI (e.g. S01E02). %1$d = season, %2$d = episode. -->
     <string name="season_episode_format">S%1$d E%2$d</string>
     <string name="player_subtitle_delay">Felirat késleltetése</string>
     <string name="player_error_title">Lejátszási hiba</string>
@@ -1870,8 +1814,6 @@
     <string name="player_more_aspect_ratio">Képarány</string>
     <string name="player_more_open_external">Megnyitás külső lejátszóban</string>
     <string name="player_error_no_stream_url">Nincs megadva stream URL</string>
-
-
     <string name="stream_info_section_source">FORRÁS</string>
     <string name="stream_info_section_file">FÁJL</string>
     <string name="stream_info_section_video">VIDEÓ</string>
@@ -1893,13 +1835,11 @@
     <string name="stream_info_subtitle_source_addon">Bővítmény</string>
     <string name="stream_info_subtitle_source_embedded">Beépített</string>
     <string name="stream_info_player_engine">Lejátszómotor</string>
-
     <string name="sources_title">Források</string>
     <string name="sources_reload">Frissítés</string>
     <string name="sources_close">Bezárás</string>
     <string name="sources_playing">Lejátszás alatt</string>
     <string name="sources_no_streams">Nem található forrás</string>
-
     <string name="episodes_panel_close">Bezárás</string>
     <string name="episodes_panel_back">Vissza</string>
     <string name="episodes_panel_reload">Frissítés</string>
@@ -1916,7 +1856,6 @@
     <string name="player_aspect_tunneling_unavailable">Alagutazott (tunneled) lejátszás közben nem elérhető</string>
     <string name="player_aspect_mode_slight_zoom">Enyhe zoom</string>
     <string name="player_aspect_mode_cinema_zoom">Mozi zoom</string>
-
     <string name="audio_dialog_title">Hang</string>
     <string name="audio_dialog_tab_tracks">Hang</string>
     <string name="audio_dialog_tab_mix">Keverés</string>
@@ -1928,14 +1867,13 @@
     <string name="audio_mix_persist_off">Mentés munkamenetek között: KI</string>
     <string name="audio_mix_range">Tartomány: %1$d dB - %2$d dB</string>
     <string name="audio_mix_range_saved">Tartomány: %1$d dB - %2$d dB (mentve)</string>
-    <string name="audio_mix_unavailable">Az erősítés nem érhető el ezen az eszközön</string>
-    <string name="audio_center_mix_label">Lekeverés: középső csatorna szintje</string>
+    <string name="audio_mix_unavailable">Passthrough közben nem érhető el - az erősítés csak a PCM-re dekódolt hangra hat</string>
+    <string name="audio_center_mix_label">Lekeverés: Középső keverési szint</string>
     <string name="audio_center_mix_value_db">%1$d dB</string>
     <string name="audio_center_mix_help">A középső csatorna keverési szintje dB-ben, a metaadatokban megadott vagy az alapértelmezett értékhez (-3 dB) képest</string>
     <string name="audio_center_mix_unavailable">A középső csatorna keverési szintje csak aktív FFmpeg-lekeverés mellett állítható.</string>
     <string name="audio_maintain_original_audio_on_downmix_title">Eredeti hang megtartása lekeveréskor</string>
     <string name="audio_maintain_original_audio_on_downmix_subtitle">Ha le van tiltva, a lekeverés normalizálása csökkentheti az általános hangerőt.</string>
-
     <string name="subtitle_dialog_title">Feliratok</string>
     <string name="subtitle_no_builtin">Nincs elérhető beépített felirat</string>
     <string name="subtitle_loading_addon">Külső feliratok betöltése a bővítményekből\u2026</string>
@@ -1979,13 +1917,10 @@
     <string name="subtitle_style_weight">Vastagság</string>
     <string name="panel_failed_load_streams">Nem sikerült betölteni a streameket</string>
     <string name="panel_failed_load_episodes">Nem sikerült betölteni az epizódokat</string>
-
     <string name="pause_you_are_watching">Most ezt nézed</string>
     <string name="pause_cast_label">Szereplők</string>
     <string name="pause_back_to_details">Vissza a részletekhez</string>
     <string name="pause_as_character">mint %1$s</string>
-
-    <!-- PostPlayOverlay -->
     <string name="next_episode_label">Következő epizód</string>
     <string name="next_episode_finding_source">Forrás keresése\u2026</string>
     <string name="next_episode_playing_via">Lejátszás (%1$s) %2$d mp múlva</string>
@@ -2019,8 +1954,6 @@
     <string name="skip_generic">Átugrás</string>
     <string name="display_mode_refresh">Képfrissítés</string>
     <string name="display_mode_resolution">Felbontás</string>
-
-
     <string name="search_keyboard_hint">A kereséshez nyomd meg a billentyűzet Kész gombját</string>
     <string name="search_placeholder">Filmek és sorozatok keresése</string>
     <string name="search_start_title">Kezdj el keresni</string>
@@ -2036,7 +1969,6 @@
     <string name="search_no_results_title">Nincs találat</string>
     <string name="search_no_results_subtitle">Próbálkozz más kulcsszavakkal</string>
     <string name="search_error_no_catalogs">Nincsenek kereshető katalógusok a telepített bővítményekben</string>
-
     <string name="library_syncing">Trakt könyvtár szinkronizálása\u2026</string>
     <string name="library_title">Könyvtár</string>
     <string name="library_filter_list">Lista</string>
@@ -2173,12 +2105,8 @@
     <string name="cloud_library_type_usenet">Usenet</string>
     <string name="cloud_library_type_web">Web</string>
     <string name="cloud_library_type_files">Fájlok</string>
-
-    <!-- Cloud library repository errors -->
     <string name="cloud_library_error_provider_unavailable">A felhőkönyvtár nem érhető el ennél a szolgáltatónál: %1$s.</string>
     <string name="cloud_library_error_disabled">A felhőkönyvtár ki van kapcsolva.</string>
-
-    <!-- AccountSettingsContent -->
     <string name="account_loading">Betöltés\u2026</string>
     <string name="account_sync_description">Könyvtár, megtekintési állapot, bővítmények és beépülő modulok szinkronizálása az eszközök között.</string>
     <string name="account_sync_restart_note">A szinkronizálás nem valós idejű az aktív eszközök között. Indítsd újra ezt az eszközt bejelentkezés után, vagy ha máshol végzett módosításokat szeretnél érvényesíteni.</string>
@@ -2200,7 +2128,6 @@
     <string name="account_signed_in_as">Bejelentkezve mint</string>
     <string name="account_generate_sync_signed_in_desc">Hozz létre egy kódot, hogy más eszközök is szinkronizálhassanak ezzel a fiókkal.</string>
     <string name="account_unknown_device">Ismeretlen eszköz</string>
-
     <string name="auth_signin_title">Bejelentkezés</string>
     <string name="auth_signin_tv_disabled">Az e-mail és jelszó megadása TV-n le van tiltva. Folytasd a bejelentkezést QR-kóddal.</string>
     <string name="auth_signin_qr_btn">Folytatás QR-kóddal</string>
@@ -2250,7 +2177,6 @@
     <string name="custom_server_save_failed">Nem sikerült elmenteni a szerver konfigurációját.</string>
     <string name="custom_server_session_clear_failed">Nem sikerült biztonságosan törölni a jelenlegi munkamenetet. A szerver nem változott.</string>
     <string name="custom_server_restart_failed">A szerver elmentve, de az alkalmazás nem tudott automatikusan újraindulni. Indítsd újra kézzel.</string>
-
     <string name="auth_qr_title">Bejelentkezés QR-kóddal</string>
     <string name="auth_qr_tagline">Nézd a könyvtárad tartalmait bárhol</string>
     <string name="auth_qr_finishing">Bejelentkezés befejezése\u2026</string>
@@ -2270,7 +2196,6 @@
     <string name="auth_qr_back">Vissza</string>
     <string name="auth_qr_terms_prefix">A regisztrációval / bejelentkezéssel elfogadom a</string>
     <string name="auth_qr_terms_link">Feltételeket</string>
-
     <string name="sync_generate_title">Szinkronizációs kód generálása</string>
     <string name="sync_generate_subtitle">Hozz létre egy PIN-kódot a szinkronizációs kód védelméhez. Oszd meg a kódot más eszközökkel.</string>
     <string name="sync_generate_code_label">A te szinkronizációs kódod</string>
@@ -2280,7 +2205,6 @@
     <string name="sync_generate_pin_placeholder">PIN megadása</string>
     <string name="sync_generate_generating">Generálás\u2026</string>
     <string name="sync_generate_code_btn">Kód generálása</string>
-
     <string name="sync_claim_title">Eszköz összekapcsolása</string>
     <string name="sync_claim_subtitle">Add meg a másik eszközről származó szinkronizációs kódot és PIN-t az összekapcsoláshoz.</string>
     <string name="sync_claim_success">Eszköz összekapcsolva! A bővítmények és beépülő modulok mostantól szinkronizálva lesznek.</string>
@@ -2290,7 +2214,6 @@
     <string name="sync_claim_pin_label">PIN</string>
     <string name="sync_claim_pin_placeholder">PIN megadása</string>
     <string name="sync_claim_linking">Összekapcsolás\u2026</string>
-
     <string name="plugin_readonly_notice">Az elsődleges profil beépülő moduljait használod – ezek nem módosíthatók</string>
     <string name="plugin_repositories_section">Tárolók (%1$d)</string>
     <string name="plugin_providers_section">Szolgáltatók (%1$d)</string>
@@ -2336,7 +2259,6 @@
     <string name="plugin_test_no_results">Nincs találat</string>
     <string name="plugin_test_found_streams">Találat: %1$d forrás</string>
     <string name="plugin_version">Verzió: %1$s</string>
-
     <string name="profile_selection_title">Ki nézi?</string>
     <string name="profile_selection_subtitle">Válassz egy profilt a folytatáshoz</string>
     <string name="profile_selection_hint">Tartsd lenyomva a profil kezeléséhez</string>
@@ -2347,22 +2269,18 @@
     <string name="profile_delete_confirm_subtitle">Ez véglegesen törli a profilt és annak minden adatát, beleértve a könyvtárat, az előzményeket és a bővítmény beállításokat. Ez a művelet nem vonható vissza.</string>
     <string name="profile_delete_btn">Profil törlése</string>
     <string name="profile_saving">Mentés\u2026</string>
-
     <string name="cast_detail_error">Hiba történt</string>
     <string name="cast_detail_retry">Újra</string>
     <string name="cast_detail_filmography">Filmográfia</string>
     <string name="cast_detail_born">Született: %1$s</string>
     <string name="cast_detail_born_died">Született: %1$s – † %2$s</string>
     <string name="cast_detail_age">%1$d éves</string>
-
     <string name="catalog_see_all_from">innen: %1$s</string>
     <string name="catalog_see_all_empty_title">Nincsenek elérhető tételek</string>
     <string name="catalog_see_all_empty_subtitle">Próbálkozz másik katalógussal, vagy térj vissza később</string>
-
-    <string name="layout_selection_welcome">Üdvözöl a Nuvio</string>
+    <string name="layout_selection_welcome">Üdvözöl a Nuvio Arc</string>
     <string name="layout_selection_subtitle">Válaszd ki a kezdőképernyő elrendezését</string>
     <string name="layout_selection_continue">Folytatás</string>
-
     <string name="update_title">Alkalmazásfrissítés</string>
     <string name="update_available">Frissítés elérhető</string>
     <string name="update_downloading">Frissítés letöltése</string>
@@ -2374,7 +2292,6 @@
     <string name="update_no_release_notes">Ehhez a verzióhoz nem tartozik kiadási jegyzet.</string>
     <string name="update_latest_version">A legfrissebb verziót használod.</string>
     <string name="update_unknown_sources">A folytatáshoz engedélyezd a telepítést ismeretlen forrásokból.</string>
-    <!-- AccountScreen -->
     <string name="account_title">Fiók</string>
     <string name="account_sign_in_description">Jelentkezz be a könyvtár, a megtekintési állapot, a bővítmények és a beépülő modulok eszközök közötti szinkronizálásához. Ha a Trakt nincs csatlakoztatva, a könyvtár szinkronizálásához a Nuvio Sync használható. A megtekintési állapothoz a Traktot és a Nuvio Syncet is választhatod.</string>
     <string name="account_sync_code_title">Szinkronizációs kód</string>
@@ -2382,14 +2299,10 @@
     <string name="account_linked_devices">Összekapcsolt eszközök (%1$d)</string>
     <string name="account_no_linked_devices">Nincsenek összekapcsolt eszközök</string>
     <string name="account_unlink">Leválasztás</string>
-
-    <!-- EpisodeRatingsSection -->
     <string name="ratings_loading">Epizódértékelések betöltése\u2026</string>
     <string name="ratings_unavailable">Az epizódértékelések nem érhetők el.</string>
     <string name="ratings_load_error">Nem sikerült betölteni az értékeléseket.</string>
     <string name="ratings_season_summary">%1$d. évad – %2$d rész</string>
-
-    <!-- SearchDiscoverSection -->
     <string name="discover_title">Felfedezés</string>
     <string name="discover_load_more">Továbbiak betöltése</string>
     <string name="discover_loading">Betöltés\u2026</string>
@@ -2402,20 +2315,10 @@
     <string name="discover_empty_no_catalog_subtitle">Válassz egy katalógust a böngészéshez</string>
     <string name="discover_empty_no_content_title">Nincs tartalom</string>
     <string name="discover_empty_no_content_subtitle">Próbálkozz másik műfajjal vagy katalógussal</string>
-
-    <!-- AddonManagerScreen -->
-
-    <!-- PluginScreen -->
-
-    <!-- ProfileSettingsContent -->
     <string name="profile_edit_title_id">%1$d. profil szerkesztése</string>
-
-    <!-- PlaybackAudioSettings -->
     <string name="audio_passthrough_info">A hangátvitel (passthrough – TrueHD, DTS, AC-3 stb.) automatikus. Kompatibilis erősítőhöz vagy soundbarhoz HDMI-n csatlakozva a veszteségmentes hang dekódolás nélkül továbbítódik.</string>
     <string name="audio_dv_title">DV7 – HEVC használata DV-támogatás nélkül</string>
     <string name="audio_dv_sub">Dolby Vision Profile 7 leképzése szabványos HEVC-re a DV-t nem támogató eszközökön</string>
-
-    <!-- SidebarNavigation / MainActivity -->
     <string name="nav_home">Kezdőlap</string>
     <string name="nav_discover">Felfedezés</string>
     <string name="nav_search">Keresés</string>
@@ -2427,7 +2330,6 @@
     <string name="action_select">Kiválasztás</string>
     <string name="settings_rounded_ui">Lekerekített felület</string>
     <string name="cd_expand_sidebar">Oldalsáv kibontása</string>
-
     <string name="update_checking">Frissítések keresése\u2026</string>
     <string name="update_waiting_for_stable">A következő stabil verziót akkor kapod meg, amikor megjelenik</string>
     <string name="update_download_complete">A letöltés befejeződött. Telepítésre kész.</string>
@@ -2437,41 +2339,22 @@
     <string name="update_open_settings">Beállítások megnyitása</string>
     <string name="update_install">Telepítés</string>
     <string name="update_ignore">Mellőzés</string>
-
-    <!-- Update flow errors -->
     <string name="update_error_check_failed">Frissítés ellenőrzése sikertelen</string>
     <string name="update_error_download_failed">Letöltés sikertelen</string>
     <string name="update_error_apk_missing">A letöltött fájl hiányzik</string>
-
-    <!-- Profile PIN errors -->
     <string name="profile_pin_save_error">Nem sikerült menteni a PIN-kódot. Próbáld újra.</string>
     <string name="profile_pin_locked">A profil zárolva van. Próbáld újra %1$d mp múlva.</string>
     <string name="profile_pin_invalid">Érvénytelen PIN. Próbáld újra.</string>
     <string name="profile_pin_verify_error">Nem sikerült ellenőrizni a PIN-kódot. Próbáld újra.</string>
     <string name="profile_pin_incorrect">A jelenlegi PIN-kód helytelen.</string>
     <string name="profile_pin_current_required">Ennek a profilnak már van PIN-kódja. A módosításhoz add meg a jelenlegi PIN-kódot.</string>
-
-    <!-- Account Screen -->
-
-    <!-- Sync screens -->
-
-    <!-- Search -->
     <string name="discover_disabled_title">A felfedezés ki van kapcsolva</string>
     <string name="discover_disabled_subtitle">Engedélyezd a Felfedezést az Elrendezés beállításaiban</string>
-
-    <!-- Library -->
-
-    <!-- Error messages (shared) -->
     <string name="error_network_required">A funkció használatához Wi-Fi vagy Ethernet kapcsolat szükséges</string>
     <string name="error_server_ports_unavailable">Nem sikerült elindítani a szervert. Minden port foglalt.</string>
-
-    <!-- Plugin errors -->
     <string name="plugin_repo_added_with_providers">Hozzáadva: %1$s, %2$d szolgáltatóval</string>
     <string name="plugin_repo_removed">Tároló eltávolítva</string>
     <string name="plugin_repo_refreshed">Tároló frissítve</string>
-
-    <!-- Trakt errors -->
-
     <string name="trakt_error_code_expired">Az eszközkód lejárt. Kezdd újra.</string>
     <string name="trakt_error_code_used">Az eszközkódot már felhasználták. Kezdd újra.</string>
     <string name="trakt_error_denied">A Trakt hitelesítés elutasítva.</string>
@@ -2494,27 +2377,13 @@
     <string name="trakt_status_rate_limited_slowing_polling">Kérési korlát elérve. Ritkább lekérdezésre váltás…</string>
     <string name="trakt_user_fallback">Trakt felhasználó</string>
     <string name="trakt_error_failed_start">A Trakt hitelesítés indítása sikertelen</string>
-
-    <!-- General errors -->
     <string name="error_unknown">Ismeretlen hiba</string>
     <string name="addon_error_not_found">Bővítmény nem található</string>
-
-    <!-- Account errors -->
-
-    <!-- Search errors -->
-
-    <!-- Home errors -->
     <string name="home_error_no_addons">Nincsenek telepített bővítmények</string>
     <string name="home_error_no_catalog_addons">Nincsenek telepített katalógusbővítmények</string>
-
-    <!-- Player errors -->
     <string name="player_error_failed_start_torrent">Nem sikerült elindítani a torrentet: %1$s</string>
-
-    <!-- Playback subtitle settings -->
-
     <string name="ratings_season_label">S%1$d</string>
     <string name="ratings_episode_label">E%1$d</string>
-
     <string name="cd_play">Lejátszás</string>
     <string name="cd_pause">Szünet</string>
     <string name="cd_subtitles">Feliratok</string>
@@ -2522,10 +2391,6 @@
     <string name="cd_sources">Források</string>
     <string name="cd_switch_player_engine">Lejátszómotor váltása</string>
     <string name="cd_episodes">Epizódok</string>
-    <string name="player_chapter_number">%1$d. fejezet</string>
-    <string name="player_chapters">Fejezetek</string>
-    <string name="player_chapters_title">Fejezetek (%1$d)</string>
-    <string name="player_chapter_remaining">%1$s van hátra</string>
     <string name="cd_playback_speed">Lejátszási sebesség</string>
     <string name="cd_aspect_ratio">Képarány</string>
     <string name="cd_open_external_player">Megnyitás külső lejátszóban</string>
@@ -2548,7 +2413,7 @@
     <string name="cd_preview">Előnézet</string>
     <string name="cd_test">Tesztelés</string>
     <string name="cd_unlink">Leválasztás</string>
-    <string name="cd_nuvio_logo">NuvioTV</string>
+    <string name="cd_nuvio_logo">Nuvio Arc</string>
     <string name="cd_trakt_logo">Trakt logó</string>
     <string name="cd_trakt_qr">Trakt aktivációs QR-kód</string>
     <string name="cd_imdb">IMDb</string>
@@ -2561,13 +2426,10 @@
     <string name="cd_collapse">Összecsukás: %1$s</string>
     <string name="cd_qr_login">QR-kód a bejelentkezéshez</string>
     <string name="cd_nuvio">Nuvio</string>
-
     <string name="debug_signin_success">Sikeres bejelentkezés</string>
     <string name="debug_generate_description">Debug-generált %1$s elem #%2$d</string>
     <string name="debug_generate_result_failed">Sikertelen: %1$s</string>
     <string name="debug_generate_library_result_added">%1$d elem hozzáadva a könyvtárhoz</string>
-
-    <!-- Collection Management -->
     <string name="collections_header">Gyűjtemények</string>
     <string name="collections_delete_confirm_title">Gyűjtemény törlése?</string>
     <string name="collections_delete_confirm">Törlés</string>
@@ -2604,8 +2466,6 @@
     <string name="collections_valid_summary">%1$d gyűjtemény, %2$d mappa</string>
     <string name="collections_confirm_import">Importálás megerősítése</string>
     <string name="collections_folder_count">%1$d mappa</string>
-
-    <!-- Collection Editor -->
     <string name="collections_editor_row_title">Sor címe</string>
     <string name="collections_editor_save">Mentés</string>
     <string name="collections_editor_backdrop">Háttérkép</string>
@@ -2703,7 +2563,7 @@
     <string name="collections_editor_tmdb_list_helper">Példa: https://www.themoviedb.org/list/8504994 vagy 8504994.</string>
     <string name="collections_editor_tmdb_person_id">Személy azonosítója</string>
     <string name="collections_editor_tmdb_person_helper">Példa: https://www.themoviedb.org/person/31-tom-hanks vagy 31.</string>
-    <string name="collections_editor_tmdb_title_helper">A sor/fül neveként jelenik meg. Ha üres, a Nuvio létrehoz egyet a forrásból.</string>
+    <string name="collections_editor_tmdb_title_helper">A sor/fül neveként jelenik meg. Ha üres, a Nuvio Arc létrehoz egyet a forrásból.</string>
     <string name="collections_editor_tmdb_quick_genres">Műfaj gyors kiválasztása</string>
     <string name="collections_editor_tmdb_quick_languages">Nyelv gyors kiválasztása</string>
     <string name="collections_editor_tmdb_quick_countries">Ország gyors kiválasztása</string>
@@ -2839,11 +2699,7 @@
     <string name="cast_error_load_details_for">Nem sikerült betölteni a részleteket ehhez: %1$s</string>
     <string name="tmdb_entity_error_load_named">Nem sikerült betölteni a következőt: %1$s</string>
     <string name="tmdb_entity_error_load">Nem sikerült betölteni a TMDB adatait</string>
-
-    <!-- Catalog see-all fallback -->
     <string name="catalog_see_all_title_fallback">Katalógus</string>
-
-    <!-- Collection editor: emoji categories -->
     <string name="collections_editor_emoji_category_streaming">Streaming</string>
     <string name="collections_editor_emoji_category_genres">Műfajok</string>
     <string name="collections_editor_emoji_category_sports">Sport</string>
@@ -2856,7 +2712,6 @@
     <string name="collections_editor_emoji_category_objects">Tárgyak</string>
     <string name="collections_editor_emoji_category_flags">Zászlók</string>
     <string name="collections_editor_emoji_category_symbols">Szimbólumok</string>
-    <!-- Collection editor: TMDB picker placeholders + genres -->
     <string name="collections_editor_tmdb_network_placeholder_example">213 a Netflixhez, 49 az HBO-hoz, 2739 a Disney+-hoz</string>
     <string name="collections_editor_tmdb_collection_placeholder_example">10 a Star Wars gyűjteményhez</string>
     <string name="collections_editor_tmdb_company_placeholder_example">Marvel Studios, 420, vagy céges URL</string>
@@ -2869,7 +2724,6 @@
     <string name="collections_editor_tmdb_genre_drama">Dráma</string>
     <string name="collections_editor_tmdb_genre_crime">Krimi</string>
     <string name="collections_editor_tmdb_genre_reality">Valóságshow</string>
-    <!-- Auto-play regex presets -->
     <string name="autoplay_regex_preset_any_1080p_plus">Bármely 1080p+</string>
     <string name="autoplay_regex_preset_4k_remux">4K / Remux</string>
     <string name="autoplay_regex_preset_1080p_standard">1080p Standard</string>
@@ -2883,11 +2737,7 @@
     <string name="autoplay_regex_preset_english">Angol</string>
     <string name="autoplay_regex_preset_no_cam_ts">CAM/TS kizárása</string>
     <string name="autoplay_regex_preset_no_remux_hdr">REMUX/HDR kizárása</string>
-
-    <!-- Playback settings sections -->
-    <string name="playback_player_internal_desc">A NuvioTV beépített lejátszójának használata</string>
-
-    <!-- Player runtime: torrent overlay + tracks -->
+    <string name="playback_player_internal_desc">A Nuvio Arc beépített lejátszójának használata</string>
     <string name="player_torrent_peer_info">%1$d seed · %2$d peer</string>
     <string name="player_torrent_buffered_status">%1$s pufferelve · %2$s · %3$s</string>
     <string name="player_torrent_status">%1$s · %2$s</string>
@@ -2899,8 +2749,6 @@
     <string name="player_torrent_loading_status">%1$s letöltve · %2$s · %3$s</string>
     <string name="player_track_audio_fallback">Hang %1$d</string>
     <string name="player_track_subtitle_fallback">Felirat %1$d</string>
-
-    <!-- Player runtime: error recovery -->
     <string name="player_error_stream_blocked">\n\nA stream forrás blokkolva van vagy korlátozott. Próbálj meg egy másik forrást.</string>
     <string name="player_error_stream_removed">\n\nA stream link lejárt vagy eltávolították. Próbálj meg egy másik forrást.</string>
     <string name="player_error_stream_expired">\n\nA stream link lejárt. Próbálj meg egy másik forrást.</string>
@@ -2914,13 +2762,10 @@
     <string name="player_error_mpv_playback_failed">A libmpv lejátszás inicializálása sikertelen</string>
     <string name="player_error_torrent">Torrenthiba: %1$s</string>
     <string name="player_error_playback_fallback">Lejátszási hiba</string>
-    <!-- Subtitle timing recovery -->
     <string name="subtitle_timing_file_no_lines">Nem találhatók feliratsorok ebben a fájlban.</string>
     <string name="subtitle_timing_load_lines_failed">A feliratsorok betöltése sikertelen.</string>
     <string name="subtitle_download_failed_http">A felirat letöltése sikertelen (HTTP %1$d)</string>
     <string name="subtitle_download_empty_content">A letöltött felirat üres.</string>
-
-    <!-- Collection import errors -->
     <string name="collections_import_error_empty_input">Üres bemenet</string>
     <string name="collections_import_error_expected_array">Érvénytelen formátum: tömböt (array) vártunk</string>
     <string name="collections_import_error_empty_array">Üres tömb: nem találhatók gyűjtemények</string>
@@ -2937,8 +2782,6 @@
     <string name="collections_import_error_missing_tmdb_type">\&quot;%1$s\&quot; gyűjtemény, \&quot;%2$s\&quot; mappa, %3$d. forrás: hiányzó TMDB forrástípus</string>
     <string name="collections_import_error_missing_trakt_list_id">\&quot;%1$s\&quot; gyűjtemény, \&quot;%2$s\&quot; mappa, %3$d. forrás: hiányzó Trakt lista ID</string>
     <string name="collections_import_error_json_parse">JSON értelmezési hiba: %1$s</string>
-
-    <!-- Library messages -->
     <string name="library_synced">Könyvtár szinkronizálva</string>
     <string name="library_error_refresh_failed">A könyvtár frissítése sikertelen</string>
     <string name="library_list_created">Lista létrehozva</string>
@@ -2950,13 +2793,10 @@
     <string name="library_list_order_updated">Lista sorrendje frissítve</string>
     <string name="library_error_reorder_lists_failed">A listák átrendezése sikertelen</string>
     <string name="library_list_fallback_title">Lista</string>
-    <!-- Library privacy display labels (mapped from API value, not used as a key) -->
     <string name="library_privacy_private">Privát</string>
     <string name="library_privacy_link">Link birtokában</string>
     <string name="library_privacy_friends">Barátok</string>
     <string name="library_privacy_public">Nyilvános</string>
-
-    <!-- Trakt errors -->
     <string name="trakt_error_auth_required">Trakt hitelesítés szükséges</string>
     <string name="trakt_library_error_request_failed">Trakt kérés sikertelen</string>
     <string name="trakt_library_error_create_list_failed">A lista létrehozása sikertelen</string>
@@ -2990,10 +2830,10 @@
     <string name="simkl_visit">Simkl megnyitása</string>
     <string name="simkl_sync_info_action">Hogyan működik a szinkronizálás</string>
     <string name="simkl_sync_info_title">Hogyan működik a Simkl szinkronizálás</string>
-    <string name="simkl_sync_info_description">A Nuvio legfeljebb %1$d percenként egyszer ellenőrzi a Simklt. A másik alkalmazásban vagy a Simkl weboldalán végzett módosítások megjelenése ennyi ideig tarthat.</string>
+    <string name="simkl_sync_info_description">A Nuvio Arc legfeljebb %1$d percenként egyszer ellenőrzi a Simklt. A másik alkalmazásban vagy a Simkl weboldalán végzett módosítások megjelenése ennyi ideig tarthat.</string>
     <string name="simkl_sync_info_activity">Minden frissítés először azt ellenőrzi, hogy a Simkl jelez-e változást, és csak a módosításokat tölti le. Ez követi a Simkl API szabályait, csökkenti a felesleges adatforgalmat, és segít a szolgáltatás stabilan tartásában.</string>
-    <string name="simkl_sync_info_manual">A Nuvióban végzett módosítások azonnal átkerülnek a Simklre. Használd a Szinkronizálás most funkciót, ha hamarabb szeretnéd, hogy a Nuvio ellenőrizze a távoli változásokat.</string>
-    <string name="simkl_sync_info_library_statuses">A Simkl Félretéve (On Hold) vagy Abbahagyott (Dropped) listájára helyezett sorozatok nem jelennek meg a Megtekintés folytatása sorban. Addig maradnak elrejtve, amíg valamelyik listán szerepelnek.</string>
+    <string name="simkl_sync_info_manual">A Nuvióban végzett módosítások azonnal átkerülnek a Simklre. Használd a Szinkronizálás most funkciót, ha hamarabb szeretnéd, hogy a Nuvio Arc ellenőrizze a távoli változásokat.</string>
+    <string name="simkl_sync_info_library_statuses">A Simkl On Hold vagy Dropped listáira helyezett sorozatok nem jelennek meg a Megtekintés folytatása sorban. Addig maradnak elrejtve, amíg bármelyik listán szerepelnek.</string>
     <string name="simkl_sync_info_docs">Olvasd el a Simkl szinkronizálási útmutatót</string>
     <string name="error_open_browser_failed">A böngésző megnyitása nem sikerült</string>
     <string name="simkl_missing_credentials">Hiányzó SIMKL_CLIENT_ID</string>
@@ -3017,8 +2857,6 @@
     <string name="cd_simkl_qr">Simkl aktivációs QR-kód</string>
     <string name="cd_simkl_logo">Simkl logó</string>
     <string name="trakt_error_mark_watched_failed">A megnézettként való megjelölés a Trakt-on sikertelen (%1$d)</string>
-
-    <!-- Detail / poster options errors -->
     <string name="detail_error_update_library_failed">A könyvtár frissítése sikertelen</string>
     <string name="detail_error_load_lists_failed">A listák betöltése sikertelen</string>
     <string name="detail_error_update_lists_failed">A listák frissítése sikertelen</string>
@@ -3026,12 +2864,8 @@
     <string name="detail_error_update_episode_watched_failed">Az epizód megnézett állapotának frissítése sikertelen</string>
     <string name="poster_options_error_load_lists_failed">A listák betöltése sikertelen</string>
     <string name="poster_options_error_update_lists_failed">A listák frissítése sikertelen</string>
-
-    <!-- Search errors -->
     <string name="search_error_load_addons_failed">A bővítmények betöltése sikertelen</string>
     <string name="search_error_failed">A keresés sikertelen</string>
-
-    <!-- Stream / TMDB / addons fallbacks -->
     <string name="stream_unknown">Ismeretlen stream</string>
     <string name="stream_embedded_group">Beágyazott streamek</string>
     <string name="stream_embedded_fallback_name">Beágyazott stream</string>
@@ -3041,11 +2875,7 @@
     <string name="web_tmdb_company_fallback">TMDB Stúdió %1$d</string>
     <string name="web_tmdb_collection_fallback">TMDB Gyűjtemény %1$d</string>
     <string name="web_error_invalid_request_body">Érvénytelen kéréstörzs</string>
-
-    <!-- Subtitle preferred language fallback -->
     <string name="language_english">Angol</string>
-
-    <!-- Supporters / contributors / sponsors errors -->
     <string name="supporters_error_load">A támogatók betöltése sikertelen.</string>
     <string name="contributors_error_load">A közreműködők betöltése sikertelen.</string>
     <string name="sponsors_error_load">A szponzorok betöltése sikertelen.</string>
@@ -3053,39 +2883,25 @@
     <string name="contributors_error_api_http">A közreműködők API-jának hibája: %1$d</string>
     <string name="supporters_error_api_http">Az adományok API-jának hibája: %1$d</string>
     <string name="sponsors_error_api_http">A szponzorok API-jának hibája: %1$d</string>
-
-    <!-- Contributor role badges -->
     <string name="contributor_role_translator">Fordító</string>
     <string name="contributor_role_maintainer">Karbantartó</string>
-
-    <!-- Network / safe API errors -->
     <string name="network_error_empty_response_body">Üres választörzs</string>
     <string name="network_error_unknown">Ismeretlen hiba történt</string>
-
-    <!-- Network settings: fast.com errors -->
     <string name="network_fast_error_script_path_missing">fast.com: szkript elérési útja nem található</string>
     <string name="network_fast_error_token_missing">fast.com: token nem található a csomagban</string>
     <string name="torrent_error_start_timeout">A torrentstream nem indult el %1$d másodpercen belül</string>
-
-    <!-- Torrent service / TorrServer binary errors -->
-
-    <!-- Player runtime: stream / external link errors -->
     <string name="player_torrent_starting_engine">A P2P motor indítása…</string>
     <string name="player_torrent_rebuffer_status">%1$s pufferelve</string>
     <string name="player_stream_error_invalid_external_url">Érvénytelen külső URL</string>
     <string name="player_stream_error_open_external_link_failed">Nem sikerült megnyitni a külső linket</string>
     <string name="player_stream_error_invalid_url">Érvénytelen stream URL</string>
     <string name="player_stream_error_missing_content_type">Hiányzó tartalomtípus</string>
-
-    <!-- Meta repository: addon detail error fragments -->
     <string name="meta_error_detail_no_metadata_for_id">nem adott vissza metaadatot ehhez az azonosítóhoz</string>
     <string name="meta_error_detail_addon_unreachable">nem sikerült elérni a bővítmény szerverét</string>
     <string name="meta_error_detail_addon_connection_failed">a csatlakozás a bővítményhez sikertelen</string>
     <string name="meta_error_detail_addon_timeout">a bővítmény kérés időtúllépés miatt megszakadt</string>
     <string name="meta_error_detail_addon_cleartext_blocked">a bővítmény nem biztonságos HTTP kapcsolatot használ, amelyet az Android blokkol</string>
     <string name="meta_error_detail_addon_request_failed">a bővítmény kérés sikertelen</string>
-
-    <!-- Stream repository: addon detail error fragments + fetch -->
     <string name="stream_error_detail_no_streams_for_id">nem adott vissza streamet ehhez az azonosítóhoz</string>
     <string name="stream_error_detail_addon_unreachable">nem sikerült elérni a bővítmény szerverét</string>
     <string name="stream_error_detail_addon_connection_failed">a csatlakozás a bővítményhez sikertelen</string>
@@ -3093,27 +2909,16 @@
     <string name="stream_error_detail_addon_cleartext_blocked">a bővítmény nem biztonságos HTTP kapcsolatot használ, amelyet az Android blokkol</string>
     <string name="stream_error_detail_addon_request_failed">a bővítmény kérés sikertelen</string>
     <string name="stream_error_fetch_failed">A streamek lekérése sikertelen</string>
-
-    <!-- Trakt: paginated fetch + comments -->
     <string name="trakt_library_error_paginated_fetch_failed">A Trakt többoldalas lekérés sikertelen (%1$d)</string>
-
-    <!-- Home: poster long-press list picker errors -->
     <string name="home_poster_lists_error_load_failed">A listák betöltése sikertelen</string>
     <string name="home_poster_lists_error_update_failed">A listák frissítése sikertelen</string>
-
-    <!-- Profile selection: PIN overlay messages -->
     <string name="profile_pin_saved_for_profile">PIN mentve ehhez: %1$s.</string>
     <string name="profile_pin_lock_removed_for_profile">PIN-zár eltávolítva ehhez: %1$s.</string>
-
-    <!-- Trakt: Related / comments / list items error fallbacks -->
     <string name="trakt_related_error_request_failed">Nem sikerült lekérni a hasonló tartalmakat a Traktról</string>
     <string name="trakt_comments_error_request_failed">Nem sikerült lekérni a véleményeket a Traktról</string>
     <string name="trakt_library_error_fetch_list_items">A listaelemek lekérése sikertelen</string>
-
     <string name="watchlist_removed">Eltávolítva a várólistáról</string>
     <string name="watchlist_added">Hozzáadva a várólistához</string>
-
-    <!-- Debrid: filter rule rows (title + subtitle pairs) -->
     <string name="debrid_picker_preferred_resolutions_title">Előnyben részesített felbontások</string>
     <string name="debrid_picker_preferred_resolutions_subtitle">Kiválasztott felbontások előresorolása, alapértelmezett sorrendben.</string>
     <string name="debrid_picker_required_resolutions_title">Kötelező felbontások</string>
@@ -3160,8 +2965,6 @@
     <string name="debrid_picker_required_release_groups_subtitle">Csak a kiválasztott kiadócsoportok megjelenítése.</string>
     <string name="debrid_picker_excluded_release_groups_title">Kizárt kiadócsoportok</string>
     <string name="debrid_picker_excluded_release_groups_subtitle">Kiválasztott kiadócsoportok elrejtése.</string>
-
-    <!-- Debrid: selection count + size range labels -->
     <string name="debrid_selection_count_any">Bármely</string>
     <plurals name="debrid_selection_count_value">
         <item quantity="one">%d kiválasztva</item>
@@ -3171,8 +2974,6 @@
     <string name="debrid_size_range_up_to">Legfeljebb %1$d GB</string>
     <string name="debrid_size_range_min_plus">%1$d GB+</string>
     <string name="debrid_size_range_min_max">%1$d-%2$d GB</string>
-
-    <!-- Subtitle selection: unknown language fallback -->
     <string name="subtitle_language_unknown">Ismeretlen</string>
     <string name="external_playback_notification_text">Lejátszás külső lejátszóban</string>
     <string name="external_playback_channel_description">Az alkalmazás futtatása a háttérben a külső lejátszó használata közben</string>
@@ -3204,8 +3005,6 @@
     <string name="web_stream_badge_error_url_required">Adj meg egy jelvény JSON URL-t.</string>
     <string name="web_stream_badge_error_url_scheme">A jelvény URL-nek http:// vagy https:// előtaggal kell kezdődnie.</string>
     <string name="web_stream_badge_error_import_limit">Legfeljebb %1$d jelvény URL-t importálhatsz.</string>
-
-    <!-- Playback — Buffer & Network settings -->
     <string name="playback_section_buffer_network">Puffer és hálózat</string>
     <string name="playback_section_buffer_network_desc">Mennyi tartalom maradjon a memóriában, és hogyan töltődjenek le a streamek.</string>
     <string name="playback_net_device_memory_info">Eszköz memóriája: %1$s | Ajánlott biztonságos határ: %2$d MB</string>
@@ -3370,5 +3169,775 @@
     <string name="autosync_label_synced">Automatikusan időzítve</string>
     <string name="stream_resume_from_time">Folytatás innen: %1$s</string>
     <string name="stream_resume_from_percent">Folytatás innen: %1$d%%</string>
+    <string name="cw_no_artwork">Nincs grafika</string>
+    <string name="detail_eyebrow_episodes">Epizódok</string>
+    <string name="detail_trailer_error_age_restricted">Ez az előzetes korhatáros a YouTube-on, ezért itt nem játszható le.</string>
+    <string name="detail_trailer_error_unavailable">Ez az előzetes nem érhető el a YouTube-on.</string>
+    <string name="detail_trailer_error_sign_in">A YouTube bejelentkezést kér az előzetes lejátszásához.</string>
+    <string name="theme_color_copper">Réz</string>
+    <string name="appearance_screensaver_group_title">Képernyővédő</string>
+    <string name="appearance_screensaver_group_subtitle">Mit mutat a képernyő, ha egy ideig nem használod a távirányítót</string>
+    <string name="appearance_screensaver_enabled">Sötétítés tétlenségkor</string>
+    <string name="appearance_screensaver_enabled_subtitle">Bizonyos tétlenség után sötét rétegre halványul. Bármelyik gomb megnyomása felébreszti a képernyőt.</string>
+    <string name="appearance_screensaver_timeout">Tétlenségi idő</string>
+    <string name="appearance_screensaver_timeout_subtitle">Mennyi idő után sötétítsen</string>
+    <string name="appearance_screensaver_timeout_option">%1$d perc</string>
+    <string name="appearance_screensaver_dim">Sötétítés erőssége</string>
+    <string name="appearance_screensaver_dim_subtitle">Milyen sötét legyen a réteg. Alatta a képernyő halványan látható marad.</string>
+    <string name="appearance_screensaver_dim_option">%1$d%%</string>
+    <string name="appearance_screensaver_dim_gentle">A képernyő jól látható marad</string>
+    <string name="appearance_screensaver_dim_balanced">Sötét, de olvasható</string>
+    <string name="appearance_screensaver_dim_strong">Alig látható</string>
+    <string name="appearance_app_icon_look_classic">Klasszikus</string>
+    <string name="appearance_app_icon_look_card">Kártya</string>
+    <string name="appearance_app_icon_look_card_lettering">Kártya felirattal</string>
+    <string name="appearance_app_icon_choice_transparent">%1$s, átlátszó</string>
+    <string name="appearance_app_icon_transparent_background">Átlátszó háttér</string>
+    <string name="appearance_app_icon_transparent_hint">Saját kártyát rajzoló launcherekhez, mint a Projectivy</string>
+    <string name="appearance_app_icon_mint">Menta</string>
+    <string name="licenses_attributions_avatars_title">Nézőparti-avatarok</string>
+    <string name="licenses_attributions_avatars_body">A DiceBearrel készültek, ezeknek a terveknek a felhasználásával: \"Fun Emoji\" (Davis Uche) és \"Adventurer\" (Lisa Wischofsky), CC BY 4.0 licenc alatt (creativecommons.org/licenses/by/4.0). \"Lorelei\" (Lisa Wischofsky), \"Notionists\" (Zoish), \"Pixel Art\" és \"Thumbs\" (DiceBear), CC0 1.0. \"Bottts\" (Pablo Stanley), személyes és kereskedelmi célra szabadon használható. Az állatarcok a Twemojiból származnak (Twitter, Inc. és más közreműködők), CC BY 4.0 licenc alatt.</string>
+    <string name="licenses_attributions_media_servers_title">Jellyfin, Emby és Silo</string>
+    <string name="licenses_attributions_media_servers_body">A Nuvio Arc a saját Jellyfin, Emby vagy Silo szerveredhez csatlakozik. A nevek és logók a tulajdonosaikat illetik. A Nuvio Arc nem áll kapcsolatban a Jellyfin, az Emby vagy a Silo projekttel, és azok nem hagyták jóvá.</string>
+    <string name="licenses_attributions_trash_title">TRaSH Guides</string>
+    <string name="licenses_attributions_trash_body">Kiadócsoport-listák. MIT licenc.</string>
+    <string name="licenses_attributions_libdovi_title">libdovi</string>
+    <string name="licenses_attributions_libdovi_body">Dolby Vision metaadatok értelmezése. Készítette: quietvoid. MIT licenc.</string>
+    <string name="licenses_attributions_ffmpeg_title">FFmpeg</string>
+    <string name="licenses_attributions_ffmpeg_body">Hangdekódolás. Licenc: LGPL 2.1 vagy újabb.</string>
+    <string name="licenses_attributions_dav1d_title">dav1d</string>
+    <string name="licenses_attributions_dav1d_body">AV1 videó szoftveres dekódolása. Készítette: a VideoLAN és a dav1d szerzői. BSD 2-Clause licenc.</string>
+    <string name="licenses_attributions_cpu_features_title">cpu_features</string>
+    <string name="licenses_attributions_cpu_features_body">Processzorfunkciók felismerése az AV1 dekóderhez. Készítette: Google. Apache 2.0 licenc.</string>
+    <string name="licenses_attributions_kodi_title">Kodi</string>
+    <string name="licenses_attributions_kodi_body">A TrueHD MAT csomagolás és a hang lekeverése a Kodiból származik. Licenc: GPL 2.0 vagy újabb.</string>
+    <string name="settings_experience_subtitle">Alapvető vagy Haladó</string>
+    <string name="settings_account_subtitle">Fiók és szinkronizálás állapota</string>
+    <string name="settings_profiles_subtitle">Felhasználói profilok kezelése</string>
+    <string name="settings_layout_subtitle">Kezdőlap felépítése és poszterstílusok</string>
+    <string name="settings_playback_subtitle">Lejátszó, feliratok és automatikus lejátszás</string>
+    <string name="settings_tracking_subtitle">Trakt- és Simkl-kapcsolatok kezelése</string>
+    <string name="settings_about_subtitle">Verzió és irányelvek</string>
+    <string name="stream_auto_play_quality_rank">Legjobb minőség</string>
+    <string name="network_bounded_test_subtitle">Legfeljebb 64 MiB tesztadatot olvas be 20 másodperc alatt. A hálózati forgalom ennél nagyobb lehet. A megszakításhoz válaszd ki újra.</string>
+    <string name="network_testing_http">HTTP válaszidő ellenőrzése</string>
+    <string name="network_http_response_label">HTTP válasz</string>
+    <string name="network_test_busy">Egy másik hálózati teszt fut vagy éppen befejeződik. Próbáld újra kicsit később.</string>
+    <string name="network_test_playback_active">A sebességteszt előtt állítsd le a lejátszást.</string>
+    <string name="network_test_timed_out">A forrásellenőrzés időtúllépés miatt megszakadt. Nincs sebességeredmény.</string>
+    <string name="network_test_unavailable">A tesztforrások nem adtak használható mintát. Próbáld újra később.</string>
+    <string name="network_test_network_changed">Megváltozott a hálózat. Futtasd újra a tesztet a jelenlegi kapcsolaton.</string>
+    <string name="network_test_provider_scope">Cloudflare HTTP válaszidő és rövid fast.com letöltési minta. Nem ad javaslatot a lejátszási beállításokra.</string>
+    <string name="network_test_result_scope">%1$s · %2$s · %3$s. Rövid letöltési minta ezekhez a forrásokhoz és ehhez a kapcsolathoz; nem javaslat a lejátszási beállításokra.</string>
+    <string name="network_test_partial">Néhány tesztkapcsolat sikertelen volt.</string>
+    <string name="advanced_clear_image_cache">Kép-gyorsítótár törlése</string>
+    <string name="advanced_clear_image_cache_subtitle">Törli a gyorsítótárazott posztereket, grafikákat és katalógusadatokat, majd friss képekkel újratölti a Kezdőlapot</string>
+    <string name="advanced_clear_image_cache_working">Törlés…</string>
+    <string name="advanced_clear_image_cache_done">Gyorsítótár törölve - a Kezdőlap frissül</string>
+    <string name="settings_debug_subtitle">Fejlesztői eszközök és funkciókapcsolók</string>
+    <string name="playback_section_general">Általános</string>
+    <string name="playback_section_general_desc">Alapvető lejátszási viselkedés.</string>
+    <string name="playback_section_player">Lejátszó &amp; streamválasztás</string>
+    <string name="playback_section_player_desc">Lejátszó kiválasztása, automatikus lejátszás és forrásszűrés.</string>
+    <string name="playback_player">Lejátszó</string>
+    <string name="playback_section_audio">Hang &amp; videó</string>
+    <string name="playback_section_audio_desc">Hangbeállítások és videokompatibilitás.</string>
+    <string name="playback_afr_open">Nyitva</string>
+    <string name="playback_afr_closed">Zárva</string>
+    <string name="audio_tunneled_sub_prefer_app">Nem érhető el, ha a Dekóder prioritása értéke Alkalmazás dekódereinek előnyben részesítése</string>
+    <string name="audio_use_system_passthrough">Rendszer passthrough</string>
+    <string name="audio_use_system_passthrough_sub">A TrueHD és DTS-HD hangot az Androidon keresztül (rendszerútvonal) küldi az erősítőnek a Nuvio Arc (IEC-útvonal) helyett. Akkor használd, ha a veszteségmentes formátumok zajosak, elcsúsznak vagy nincs hangjuk.</string>
+    <string name="audio_surround_header">Térhangzás</string>
+    <string name="audio_surround_reset_iec_probe">IEC-próba eredményének törlése</string>
+    <string name="audio_surround_reset_iec_probe_sub">Újra teszteli az IEC 61937 kimenetet. Akkor használd, ha erősítő- vagy bemenetváltás után a veszteségmentes formátumok PCM-re váltanak.</string>
+    <string name="audio_surround_iec_probe_checking">Veszteségmentes passthrough ellenőrzése.</string>
+    <string name="audio_surround_iec_probe_available">A veszteségmentes passthrough megnyílt. Ezen a kapcsolaton az alkalmazás megpróbálja a TrueHD-t és a DTS-HD-t.</string>
+    <string name="audio_surround_iec_probe_unavailable">A veszteségmentes passthrough nem érhető el ezen a kapcsolaton. A TrueHD és a DTS-HD az eszköz alapértelmezését használja.</string>
+    <string name="audio_surround_format_mode">Térhangzás formátuma</string>
+    <string name="audio_surround_format_dialog_subtitle">Válaszd ki, hogyan kerüljenek a térhangzású formátumok a hangrendszeredhez.</string>
+    <string name="audio_surround_mode_auto">Automatikus (ajánlott)</string>
+    <string name="audio_surround_mode_auto_desc">Átengedi azokat a formátumokat, amelyeket a hangrendszered a jelentése szerint dekódolni tud, a többit az alkalmazás dekódolja.</string>
+    <string name="audio_surround_mode_manual">Kézi</string>
+    <string name="audio_surround_mode_manual_desc">Formátumonként megadhatod, hogy a hangrendszered tudja-e dekódolni. Akkor használd, ha az automatikus jelentés hibás.</string>
+    <string name="audio_surround_tv_arc_soundbar">A hang a tévén keresztül jut el a soundbarhoz (ARC)</string>
+    <string name="audio_surround_tv_arc_soundbar_sub">Az Automatikus Dolby Digital 5.1-ben küldi azokat a formátumokat, amelyeket a soundbar nem fogad, a többi dekódolt hangot pedig sztereóként. A Dolby Digitalt és a Dolby Digital Plust változatlanul átengedi.</string>
+    <string name="audio_surround_allow_ac3">Dolby Digital (AC-3) képes erősítő</string>
+    <string name="audio_surround_allow_ac3_sub">Kikapcsolva az alkalmazás PCM-re dekódolja az AC-3-at. Csak akkor kapcsold ki, ha az erősítőd vagy a tévéd nem tudja dekódolni az AC-3-at.</string>
+    <string name="audio_surround_allow_eac3">Dolby Digital Plus (E-AC-3) képes erősítő</string>
+    <string name="audio_surround_allow_eac3_sub">A DD+ és a DD+ Atmos tartozik ide. Kikapcsolva PCM-re dekódol. Csak akkor kapcsold ki, ha az erősítőd nem tudja dekódolni a Dolby Digital Plust.</string>
+    <string name="audio_surround_allow_truehd">Dolby TrueHD képes erősítő</string>
+    <string name="audio_surround_allow_truehd_sub">A TrueHD és a TrueHD Atmos tartozik ide. Kikapcsolva PCM-re dekódol, és az Atmos elvész. Csak akkor kapcsold ki, ha az erősítőd nem tudja dekódolni a TrueHD-t.</string>
+    <string name="audio_surround_allow_dts">DTS képes erősítő</string>
+    <string name="audio_surround_allow_dts_sub">Kikapcsolva PCM-re dekódolja a DTS-t. Kapcsold ki, ha az erősítőd vagy a tévéd nem tudja dekódolni a DTS-t - néhány tévé már nem licenceli.</string>
+    <string name="audio_surround_allow_dtshd">DTS-HD képes erősítő</string>
+    <string name="audio_surround_allow_dtshd_sub">A DTS-HD MA, a HRA és a DTS:X tartozik ide. Kikapcsolva PCM-re dekódol, és a DTS:X elvész. Kapcsold ki, ha az erősítőd a DTS-t kezeli, de a DTS-HD-t nem.</string>
+    <string name="audio_surround_transcode_denied">Letiltott formátumok átkódolása AC-3-ra</string>
+    <string name="audio_surround_transcode_denied_sub">A fent kikapcsolt formátumokat PCM helyett Dolby Digital 5.1-re kódolja újra. 2 csatornás PCM-re korlátozott erősítőkhöz; hagyd kikapcsolva, ha a tiéd fogad többcsatornás PCM-et.</string>
+    <string name="audio_surround_channel_target">Dekódolás csatornacélja</string>
+    <string name="audio_surround_channel_target_dialog_subtitle">Az alkalmazás által dekódolt hang csatornakiosztása. Az Automatikus azt követi, amit a hangrendszered jelent; válassz kiosztást, ha ez a jelentés hibás vagy kihagyja a mélynyomót.</string>
+    <string name="audio_surround_channel_auto">Automatikus</string>
+    <string name="audio_surround_channel_auto_desc">A hangrendszered által jelentett csatornaszámot használja (2.0, 5.1 vagy 7.1).</string>
+    <string name="audio_surround_channel_2_0">2.0 sztereó</string>
+    <string name="audio_surround_channel_2_0_desc">Két csatorna. Tévékhez, sztereó erősítőkhöz és 2.0 soundbarokhoz.</string>
+    <string name="audio_surround_channel_5_1">5.1</string>
+    <string name="audio_surround_channel_5_1_desc">Teljes térhangzás mélynyomóval. 5.1-es erősítőkhöz és soundbarokhoz.</string>
+    <string name="audio_surround_channel_7_1">7.1</string>
+    <string name="audio_surround_channel_7_1_desc">Teljes térhangzás hátsó csatornákkal és mélynyomóval. 7.1-es erősítőkhöz.</string>
+    <string name="audio_forget_rejections_title">Megtanult hangelutasítások elfelejtése</string>
+    <string name="audio_forget_rejections_sub">Azokat a formátumokat, amelyeket az erősítőd nem volt hajlandó megnyitni, az alkalmazás már nem küldi passthrough-ként. Ezzel újra kipróbálhatók.</string>
+    <string name="audio_forget_rejections_none">Nincs megtanult adat</string>
+    <string name="audio_forget_rejections_done">A megtanult hangelutasítások törölve</string>
+    <string name="audio_forget_tunnel_stalls_title">Alagút-akadások elfelejtése</string>
+    <string name="audio_forget_tunnel_stalls_sub">Alagút kikapcsolva: %1$s. Ezzel a következő videó újra megpróbálhatja.</string>
+    <string name="audio_forget_tunnel_stalls_none">Nincs megjegyzett adat.</string>
+    <string name="audio_forget_tunnel_stalls_done">Alagút-akadások elfelejtve</string>
+    <string name="audio_inject_hdr10_sei_title">HDR10 metaadatok beszúrása eltávolításkor</string>
+    <string name="audio_inject_hdr10_sei_sub">A HDR10 alaprétegre csupaszított DV8 (Profile 8) tartalomhoz hozzáadja a forrás mastering metaadatait (MaxCLL/MaxFALL és csúcsfényerő), hogy a DV nélküli HDR10 tévék helyesen végezzék a tone mappinget. Csak akkor aktív, ha a DV kezelése DV eltávolítása vagy HDR10 alapréteg; a Profile 7-re és a Dolby Vision lejátszásra nincs hatással.</string>
+    <string name="diag_value_not_advertised">Nincs jelezve (a natív lejátszás ettől még működhet)</string>
+    <string name="diag_label_dv_el_type">DV7 EL típus</string>
+    <string name="diag_value_dv7_native_route">Natív kétrétegű útvonal használatban (az Android nem jelzi)</string>
+    <string name="diag_value_el_all_layers_fmt">%1$s · RPU + BL + EL, mindhárom réteg használva</string>
+    <string name="diag_value_el_converted_fmt">%1$s · BL + RPU, 8.1-re konvertálva (EL nincs használva)</string>
+    <string name="diag_value_el_base_only_fmt">%1$s · csak BL (RPU és EL nincs használva)</string>
+    <string name="diag_label_dv_hdr_mastering">DV HDR mastering</string>
+    <string name="diag_label_dv_rpu_drops">DV RPU eldobások</string>
+    <string name="sub_tertiary_lang">Harmadlagos nyelv</string>
+    <string name="sub_addon_subtitles">Bővítményfeliratok</string>
+    <string name="sub_addon_subtitles_desc">Lejátszás közben feliratokat kér le a telepített bővítményekből. Kikapcsolva csak a fájlba ágyazott feliratok érhetők el.</string>
+    <string name="autoplay_quality_rules_title">Minőségi szabályok</string>
+    <string name="autoplay_quality_rules_subtitle">Szűrők, rendezés és kiadócsoport-szintek a Kapcsolódó szolgáltatásokban.</string>
+    <string name="stream_sort_sources">Források rendezése</string>
+    <string name="stream_sort_sources_sub">A streamlista sorrendje. A Legjobb minőség elöl a Minőségi szabályaidat használja.</string>
+    <string name="stream_sort_sources_source_order">Források sorrendje</string>
+    <string name="stream_sort_sources_best_first">Legjobb minőség elöl</string>
+    <string name="autoplay_eager_ready_title">Gyorsabb indulás lassú forrásoknál</string>
+    <string name="autoplay_eager_ready_sub">A kiválasztási időkorlát elérésekor azonnal előkészíti a lejátszást, és nem vár a leglassabb bővítményre. A részletek oldalán és a Megtekintés folytatásánál érvényes.</string>
+    <string name="autoplay_mode_quality">Legjobb minőség</string>
+    <string name="autoplay_mode_quality_desc">A forrásokat felbontás, HDR, forrástípus, hang (veszteségmentes elöl) és konténer szerint rangsorolja, majd a legjobbat játssza le.</string>
+    <string name="layout_landscape_posters_off">Ki</string>
+    <string name="layout_landscape_posters_off_desc">Álló poszterek mindenhol</string>
+    <string name="layout_landscape_posters_home_only">Csak a Kezdőlapon</string>
+    <string name="layout_landscape_posters_home_only_desc">Fekvő kártyák a Kezdőlapon, állók a Könyvtárban, a Keresésben és a listákban</string>
+    <string name="layout_landscape_posters_everywhere">Mindenhol</string>
+    <string name="layout_landscape_posters_everywhere_desc">Fekvő kártyák a Kezdőlapon, a Könyvtárban, a Keresésben és a listákban</string>
+    <string name="layout_hide_side_icons">Oldalsó ikonok elrejtése</string>
+    <string name="layout_hide_side_icons_sub">A bal szélen lévő menüikonok elrejtése, amíg a menü zárva van. A menü megnyitásához nyomd meg a Bal vagy a Vissza gombot.</string>
+    <string name="layout_watched_titles">Megnézett címek</string>
+    <string name="layout_watched_titles_sub">A végignézett filmek és sorozatok megjelenítése, sötétítése vagy elrejtése.</string>
+    <string name="layout_watched_titles_dialog_title">Megnézett címek</string>
+    <string name="layout_watched_titles_show">Megjelenítés</string>
+    <string name="layout_watched_titles_show_desc">A megnézett címek változatlanok maradnak, pipával.</string>
+    <string name="layout_watched_titles_dim">Sötétítés</string>
+    <string name="layout_watched_titles_dim_desc">A megnézett címek a helyükön maradnak, sötétebben, pipával.</string>
+    <string name="layout_watched_titles_hide">Elrejtés</string>
+    <string name="layout_watched_titles_hide_desc">A megnézett filmek és a teljesen megnézett sorozatok kimaradnak a Kezdőlap soraiból és a bannerből. A Megtekintés folytatása sort ez nem érinti.</string>
+    <string name="layout_trailer_logo">Logó a kártya előzetese felett</string>
+    <string name="layout_trailer_logo_sub">A cím logójának megjelenítése a kártyán lejátszott előzetes felett.</string>
+    <string name="layout_preset_extra_large">Extra nagy</string>
+    <string name="layout_addon_landscape_backdrop_logo">Háttérkép logóval a bővítmények fekvő soraiban</string>
+    <string name="layout_addon_landscape_backdrop_logo_sub">Azok a sorok, amelyeket egy bővítmény már fekvő formában mutat, a saját képeiket használják. Bekapcsolva ott is a háttérkép jelenik meg a cím logójával.</string>
+    <string name="mdblist_account_title">Fiók</string>
+    <string name="mdblist_account_subtitle">Az MDBList-felhasználóneved. Frissítéshez válaszd ki.</string>
+    <string name="mdblist_plan_title">Csomag</string>
+    <string name="mdblist_plan_subtitle">Az MDBList-előfizetésed szintje</string>
+    <string name="mdblist_plan_supporter">Támogató</string>
+    <string name="mdblist_plan_free">Ingyenes</string>
+    <string name="mdblist_requests_title">Mai API-kérések</string>
+    <string name="mdblist_requests_subtitle">Az értékelések és a megtekintés-szinkronizálás is beleszámít a napi keretbe</string>
+    <string name="mdblist_ratings_heading">Értékelésjelvények</string>
+    <string name="debrid_stream_release_groups_preferred">Előnyben részesített kiadócsoportok</string>
+    <string name="trakt_watch_progress_source_mdblist">MDBList</string>
+    <string name="trakt_watch_progress_mdblist_selected">Megtekintési folyamat forrása: MDBList</string>
+    <string name="profile_avatar_category_local">Vidám készlet · ez az eszköz</string>
+    <string name="profile_local_avatar_note">Csak ezen az eszközön látszik. A többi eszközön a Nuvio-avatar marad.</string>
+    <string name="player_more_short">Továbbiak</string>
+    <string name="player_layout_more_fixed">Rögzítve a jobb szélen</string>
+    <string name="player_layout_more_hidden_help">A Továbbiak gomb és a menüjében lévő műveletek rejtve vannak. Jelenítsd meg a Továbbiak gombot a felugró menü visszaállításához, vagy vegyél ki belőle egy műveletet, hogy közvetlenül látsszon.</string>
+    <string name="player_layout_more_fixed_help">Az OK gombbal elrejtheted vagy megjelenítheted a Továbbiak gombot. A jobb szélen marad. A felugró menü tartalmát úgy módosíthatod, hogy a többi műveletet átviszed a menü határán.</string>
+    <string name="player_error_placeholder_stream">Ez a stream a szolgáltató hibakártyájának tűnik, nem a videónak. Próbálj másik forrást.</string>
+    <string name="audio_listening_section">Hangzás</string>
+    <string name="audio_night_mode_label">Éjszakai mód</string>
+    <string name="audio_night_mode_off">Ki</string>
+    <string name="audio_night_mode_light">Enyhe</string>
+    <string name="audio_night_mode_medium">Közepes</string>
+    <string name="audio_night_mode_strong">Erős</string>
+    <string name="audio_night_mode_help">Felhangosítja a halk részeket. A hangosak úgy maradnak, ahogy keverték.</string>
+    <string name="audio_night_mode_unavailable">Passthrough közben kikapcsolva: a hang módosítatlanul jut el az erősítőhöz.</string>
+    <string name="audio_night_mode_settings_sub">Felhangosítja a halk részeket, a hangosak úgy maradnak, ahogy keverték. Az alkalmazás által dekódolt hangra hat, passthrough közben nem.</string>
+    <string name="audio_night_mode_dialog_subtitle">Kiegyenlíti a hangos és halk részeket. TV-hangszórón, soundbaron és PCM-et kapó erősítőn működik. A passthrough hangot soha nem módosítja.</string>
+    <string name="audio_night_mode_off_desc">A hang úgy, ahogy keverték.</string>
+    <string name="audio_night_mode_light_desc">Finom emelés halk jelenetekhez és halk beszédhez.</string>
+    <string name="audio_night_mode_medium_desc">Estére. A halk beszéd és az effektek felerősödnek, a hangos jelenetek megtartják az erejüket.</string>
+    <string name="audio_dialogue_boost_label">Párbeszéd erősítése</string>
+    <string name="audio_dialogue_boost_value_db">+%1$d dB</string>
+    <string name="audio_dialogue_boost_help">Emeli a középső csatornát, ahol a beszéd nagy része van. Kikapcsolttól +12 dB-ig.</string>
+    <string name="audio_dialogue_boost_stereo">Ez a sáv sztereó, ezért nincs külön beszédcsatorna, amit emelni lehetne.</string>
+    <string name="audio_dialogue_boost_mixed">A hang már sztereóra keverve érkezik az alkalmazásba. A használatához kapcsold be a downmixet a hangbeállításokban.</string>
+    <string name="audio_dialogue_boost_mpv_multichannel">MPV-vel ez akkor működik, ha a hang sztereóra van keverve, például a TV hangszóróin.</string>
+    <string name="audio_night_mode_strong_desc">Késő éjszakára és kis szobákba. A legegyenletesebb hang. A halk részek jelentősen felerősödnek, a leghangosabbak kissé halkulnak.</string>
+    <string name="subtitle_panel_languages">Nyelvek</string>
+    <string name="library_empty_mdblist_title">Nincs %1$s a várólistádon</string>
+    <string name="library_empty_mdblist_subtitle">A részleteknél a + gombbal adhatsz elemeket az MDBList-várólistádhoz</string>
+    <string name="library_empty_mdblist_not_auth_title">Az MDBList nincs csatlakoztatva</string>
+    <string name="library_empty_mdblist_not_auth_subtitle">Az MDBList-várólistád megtekintéséhez csatlakoztasd az MDBList-et a Beállításokban</string>
+    <string name="library_transfer_row_title">Könyvtár átvitele</string>
+    <string name="library_transfer_row_subtitle">Elemek másolása vagy áthelyezése a könyvtárforrások között</string>
+    <string name="library_transfer_source_title">Másolás innen</string>
+    <string name="library_transfer_source_subtitle">Válaszd ki, melyik könyvtárból másoljon</string>
+    <string name="library_transfer_dest_title">Másolás ide</string>
+    <string name="library_transfer_dest_subtitle">Válaszd ki, melyik könyvtárba másoljon</string>
+    <string name="library_transfer_title">Könyvtár átvitele</string>
+    <string name="library_transfer_working">Folyamatban</string>
+    <string name="library_transfer_plan">%1$d másolandó, %2$d már megvan, %3$d nem párosítható</string>
+    <string name="library_transfer_linked_warning">Megjegyzés: a módosítások a célhoz kapcsolt szolgáltatásokat is érinthetik (például egy Trakttal szinkronizált MDBList-listát).</string>
+    <string name="library_transfer_result">%1$d átmásolva, %2$d már megvolt, %3$d nem párosítható</string>
+    <string name="library_transfer_removed">%1$d eltávolítva a forrásból</string>
+    <string name="library_transfer_kept">%1$d megmaradt a forrásban (az eltávolítás megtekintési előzményt vagy értékelést törölne)</string>
+    <string name="library_transfer_copy">Másolás</string>
+    <string name="library_transfer_move">Áthelyezés (másolás, majd eltávolítás a forrásból)</string>
+    <string name="library_transfer_none">Nincs mit másolni</string>
+    <string name="cd_playback_stats">Lejátszási statisztika</string>
+    <string name="player_stats_unavailable_mpv">A libmpv motorhoz nem érhető el statisztika</string>
+    <string name="player_dead_source_failover">A forrás nem érhető el - következő forrás kipróbálása (%1$d/%2$d)</string>
+    <string name="player_dead_source_failover_named">A forrás nem érhető el, próba: %3$s (%1$d/%2$d)</string>
+    <string name="player_error_startup_timeout">A lejátszás nem indult el - lehet, hogy a videodekóder nem válaszol. Az eszköz újraindítása általában megoldja. Nyomd meg a vissza gombot és próbáld újra, vagy válassz másik streamet.</string>
+    <string name="player_error_startup_video_track_unsupported">A lejátszás nem indult el - ez az eszköz nem tudja lejátszani a stream videoformátumát. Nyomd meg a vissza gombot, és válassz másik streamet.</string>
+    <string name="player_error_startup_no_stream_data">A lejátszás nem indult el - a stream nem küldött időben adatot. Lehet, hogy a forrás lassú vagy nem érhető el. Nyomd meg a vissza gombot az újrapróbáláshoz, vagy válassz másik streamet.</string>
+    <string name="search_row_updating">Frissül</string>
+    <string name="network_error_addon_timeout">A bővítménykérés időtúllépés miatt megszakadt</string>
+    <string name="debrid_picker_preferred_release_groups_title">Előnyben részesített kiadócsoportok</string>
+    <string name="debrid_picker_preferred_release_groups_subtitle">A kiválasztott kiadócsoportok kerülnek előre, a megadott sorrendben.</string>
+    <string name="debrid_filters_reset_title">Visszaállítás az ajánlott alapértékekre</string>
+    <string name="debrid_filters_reset_subtitle">Visszaállítja a TRaSH szerinti szűrési és rendezési alapértékeket.</string>
+    <string name="debrid_filters_show_everything_title">Minden megjelenítése</string>
+    <string name="debrid_filters_show_everything_subtitle">Törli az összes szűrőt és találati korlátot; az okos rendezés megmarad.</string>
+    <string name="debrid_filters_show_everything_action">Mind megjelenítése</string>
+    <string name="playback_net_device_memory_auto">Ennek az eszköznek %1$s memóriája van. Az alkalmazás legfeljebb %2$d MB-ot pufferel előre, memóriahiánykor kevesebbet.</string>
+    <string name="playback_net_native_memory_sub">Az alkalmazás az eszközhöz méretezi a puffert, és natív memóriában tartja, gyorsabb tekeréssel. Bekapcsolva az alábbi puffer- és hálózati értékeket is beállítja ehhez az eszközhöz.</string>
+    <string name="playback_buffer_custom_desc">Az alkalmazás saját értékei helyett az alábbiakat használja. Kikapcsolva: bekapcsolt ExoPlayer natív memória mellett az alkalmazás 15 és 45 s között pufferel az eszközhöz választott méreten belül; anélkül a Media3 alap pufferét használja.</string>
+    <string name="playback_buffer_ahead">Előre pufferelés</string>
+    <string name="playback_buffer_ahead_sub">A filmből mennyi álljon készen az aktuális hely előtt. Az alkalmazás folyamatosan feltölti. Több segít az ingadozó szervereken; a határ az eszköz memóriája.</string>
+    <string name="playback_buffer_ahead_reach">Ez az eszköz kb. %2$d s-nyi 4K remuxot és %3$d s-nyi webes fájlt tart (%1$d MB szabad a legutóbbi lejátszáskor).</string>
+    <string name="playback_buffer_ahead_over_remux">Több, mint amennyit ez az eszköz egy 4K remuxból tartani tud (kb. %1$d s). A könnyebb filmek így is kihasználják.</string>
+    <string name="playback_buffer_remux_cannot_fill">Egy 4K remux ezt nem tudja kitölteni ezen az eszközön (kb. %1$d s fér el): a lejátszás akkor indul, amikor megtelik a memória.</string>
+    <string name="playback_buffer_back_fitted">A Cél puffer mérete értékén belül marad. %1$d MB-nál az alkalmazás legfeljebb kb. %2$d s-ot tart meg belőle (%3$d MB 80 Mbit/s-nál), így legalább 5 s marad előre.</string>
+    <string name="playback_buffer_back_fitted_none">A Cél puffer mérete értékén belül marad. %1$d MB-nál nincs hely rá, ezért az alkalmazás helyette 5 s-ot tart előre.</string>
+    <string name="playback_buffer_managed_desc">A lejátszás indításakor szabad memória alapján állítja be a puffert, és csökkenti, ha az eszköznek kevés a memóriája. Kapcsold ki, ha a Cél puffer mérete értékét magad választanád: ilyenkor az alkalmazás megtartja a választott méretet, ha fogy a memória, és ha az eszköznek tényleg elfogy, az Android bezárhatja a lejátszót. Kis eszközökön a nagyobb méret akadozást okozhat.</string>
+    <string name="playback_buffer_target_size_sub">A videó előre pufferelésére használt memória. A felső határ az eszköz teljes memóriájához igazodik. Ha a Managed memory budget be van kapcsolva, az alkalmazás a lejátszás indításakor szabad memória alapján állítja be a méretet, és memóriahiány idején kisebbre veszi a puffert.</string>
+    <string name="playback_buffer_target_stutter_warning">Ennek az eszköznek %1$s memóriája van. %2$d MB felett a lejátszás akadozhat.</string>
+    <string name="playback_buffer_allow_large_desc">A Cél puffer mérete legfeljebb 2 GB lehet. Csak 4 GB vagy több memóriájú eszközökhöz; kisebbeken a nagy méret akadozást vagy összeomlást okoz.</string>
+    <string name="playback_net_custom_desc">A kapcsolatok kézzel állíthatók be. Kikapcsolva az alkalmazás egy kapcsolatot használ, és elegendő memóriájú eszközökön az Automatikus gyorsítás többet ad hozzá, ha egy filmnek szüksége van rá.</string>
+    <string name="playback_net_auto_speedup">Automatikus gyorsítás</string>
+    <string name="playback_net_auto_speedup_sub">Segít a távoli szerverekről gyakran pufferelő filmeknél. Az alkalmazás nagyobb letöltési ablakot kér az eszköztől, és elegendő memóriájú eszközökön további letöltéseket ad hozzá, ha a film még mindig lemarad. Ki: egy normál letöltés.</string>
+    <string name="playback_net_auto_speedup_custom_note">Ha a Kapcsolatok egy számra van állítva, a saját kapcsolati beállításaid érvényesek. Csak a nagyobb letöltési ablak marad érvényben.</string>
+    <string name="playback_net_connections">Kapcsolatok</string>
+    <string name="playback_net_connections_sub">Hány kapcsolat tölti egyszerre a streamet. Az Automatikus egyet használ, és elég memóriával rendelkező eszközökön az Automatikus gyorsítás többet ad hozzá, ha egy filmnek szüksége van rá.</string>
+    <string name="playback_net_connections_auto">Automatikus</string>
+    <string name="playback_net_connection_count_small_box">Ennek az eszköznek %1$s memóriája van. 2-nél több kapcsolat esetén a lejátszás akadozhat.</string>
+    <string name="playback_net_chunk_size_small_note">A 8 MB-nál kisebb darabok lassúak a Real-Debriden, és a TorBox elutasíthatja őket.</string>
+    <string name="diag_label_serving_host">Kiszolgáló gép</string>
+    <string name="diag_label_file">Fájl</string>
+    <string name="diag_label_dv_applied">Alkalmazott DV</string>
+    <string name="diag_value_dv_no_conversion_fmt">Nincs konvertálás - a forrás Profile %1$s, változatlanul átengedve</string>
+    <string name="diag_value_dv_converted">Konvertálva: P7 \u2192 8.1 (libdovi)</string>
+    <string name="diag_value_dv_configured_not_observed">Konvertálás beállítva, még nem volt észlelhető</string>
+    <string name="diag_value_dv_base_layer">DV figyelmen kívül hagyva - HDR10 alapréteg</string>
+    <string name="diag_label_audio_path">Hangútvonal</string>
+    <string name="diag_label_audio_caps">A hanglánc jelentése</string>
+    <string name="playback_estimated_memory_parts">Becsült memóriahasználat: kb. %1$d MB (puffer %2$d MB + letöltések %3$d MB)</string>
+    <string name="playback_estimated_memory_buffer">Becsült memóriahasználat: kb. %1$d MB (puffer %2$d MB)</string>
+    <string name="stream_test_serving_host_label">Kiszolgáló gép: %1$s</string>
+    <string name="stream_test_file_label">Fájl: %1$s</string>
+    <string name="stream_test_row_warning_suffix">" \u26a0"</string>
+    <string name="stream_test_verdict_leave_off">Javaslat: hagyd kikapcsolva a párhuzamos kapcsolatokat - egyetlen kapcsolat már %1$s sebességet ad, ami több mint a cím bitrátájának 2\u00d7-ese.</string>
+    <string name="stream_test_verdict_recommend">Javaslat: %1$d kapcsolat / %2$d MB-os darabok - %3$s. A legkevesebb memóriát használó beállítás, amely eléri a cím bitrátájának 2\u00d7-esét; feljebb lehetnek gyorsabb beállítások, de azok több memóriát használnak lejátszási előny nélkül.</string>
+    <string name="stream_test_verdict_marginal">Legjobb eredmény: %1$d kapcsolat / %2$d MB-os darabok, %3$s - a cím %4$s átlagos bitrátája felett, de a 2\u00d7-es tartalékcél alatt. A lejátszás működni fog, de magas bitrátájú jeleneteknél vagy tekeréskor pufferelhet.</string>
+    <string name="stream_test_verdict_cannot_sustain">Ez a kapcsolat nem bírja el ezt a címet - a leggyorsabb tesztelt beállítás (%1$d kapcsolat / %2$d MB-os darabok) %3$s sebességet ért el, ami a cím %4$s átlagos bitrátája alatt van. Pufferelésre számíts; válassz alacsonyabb bitrátájú változatot.</string>
+    <string name="stream_test_verdict_fastest_nobitrate">Leggyorsabb stabil: %1$d kapcsolat / %2$d MB-os darabok, %3$s. A cím bitrátája ismeretlen - személyre szabott javaslathoz előbb játssz le egy videót.</string>
+    <string name="stream_test_caveat">Csak a nyers letöltési sebességet méri - a valós lejátszás a puffereléstől, a dekódolástól és a szerver terhelésétől is függ, és a célpuffert is a memóriában tartja.</string>
+    <string name="stream_test_label_parallel_dyn">Párhuzamos kapcsolat (%1$d kapcs. / %2$d MB-os darabok)</string>
+    <string name="stream_test_btn_measuring_dyn">Mérés: %1$s\u2026</string>
+    <string name="stream_test_baseline_unavailable_label">Nem elérhető</string>
+    <string name="stream_test_baseline_unavailable">A stream nem adott használható mintát. Lehet, hogy a hivatkozása lejárt, vagy a válasza nem támogatott.</string>
+    <string name="stream_test_baseline_host_label">Alapmérés forrása: %1$s</string>
+    <string name="stream_test_baseline_scope">%1$s · %2$s MiB / %3$s s mérve · bemelegítés nélkül · %4$s</string>
+    <string name="stream_test_cell_failed">%1$s sikertelen (%2$s) - a mérés folytatódik</string>
+    <string name="stream_test_cell_skipped">%1$s kihagyva - %2$s</string>
+    <string name="stream_test_cell_rate_limited">%1$s elvetve - a forrás korlátozta a sebességet, így nem ezzel a kapcsolatszámmal futott</string>
+    <string name="stream_test_cell_retry_wait">%1$s elutasítva - %2$ds várakozás, majd egy újabb próba</string>
+    <string name="stream_test_note_rate_limited">Sebességkorlátozva</string>
+    <string name="stream_test_note_no_transfer">Nincs adatátvitel</string>
+    <string name="stream_test_note_skipped">Kihagyva</string>
+    <string name="stream_test_detail_rate_limited">a forrás elutasította ezt a kapcsolatszámot</string>
+    <string name="stream_test_detail_no_transfer">a korlátozás miatt szinte nem mozgott adat</string>
+    <string name="stream_test_note_skipped_generic">meghaladja az eszköz keretét</string>
+    <string name="assessment_value_on">Be</string>
+    <string name="assessment_value_off">Ki</string>
+    <string name="assessment_value_your_call">Te döntesz</string>
+    <string name="assessment_value_leave_as_is">Maradjon így</string>
+    <string name="assessment_value_auto">Automatikus</string>
+    <string name="assessment_value_seconds">%1$d s</string>
+    <string name="assessment_value_afr_start_stop">Be - induláskor &amp; leállításkor</string>
+    <string name="assessment_value_afr_start">Be - csak induláskor</string>
+    <string name="assessment_unit_mb">%1$d MB</string>
+    <string name="assessment_unit_kb">%1$d KB</string>
+    <string name="assessment_current_parallel_on">Be - %1$d \u00d7 %2$s</string>
+    <string name="assessment_item_parallel">Párhuzamos kapcsolatok</string>
+    <string name="assessment_item_chunk">Darabméret</string>
+    <string name="assessment_item_network_master">Egyéni hálózat</string>
+    <string name="assessment_item_perf_mode">ExoPlayer natív memória</string>
+    <string name="assessment_item_buffer_master">Egyéni lejátszási pufferek</string>
+    <string name="assessment_item_managed_budget">Kezelt memóriakeret</string>
+    <string name="assessment_item_target_buffer">Cél puffer mérete</string>
+    <string name="assessment_item_allow_large">Nagyobb cél puffer engedélyezése</string>
+    <string name="assessment_item_max_buffer">Maximális puffer időtartam</string>
+    <string name="assessment_item_vod_cache">VOD lemezes gyorsítótár</string>
+    <string name="assessment_item_afr">Automatikus képfrissítés &amp; felbontás</string>
+    <string name="assessment_item_res_match">Felbontás egyeztetése</string>
+    <string name="assessment_item_dv7">Dolby Vision kezelése</string>
+    <string name="assessment_item_dv5">DV5 konvertálása DV8.1-re</string>
+    <string name="assessment_item_strip_hdr10plus">HDR10+ metaadatok eltávolítása</string>
+    <string name="assessment_item_tunneling">Alagutazott (tunneled) lejátszás</string>
+    <string name="assessment_grounds_parallel_off">Egyetlen kapcsolat %1$s sebességet mért - ez már \u2265 a cím bitrátájának 2\u00d7-ese; a párhuzamosítás csak memóriát visz el, előny nélkül</string>
+    <string name="assessment_grounds_parallel_rec">Mért érték: %1$s, %2$d \u00d7 %3$d MB mellett - a legolcsóbb beállítás, amely a biztonságos memóriakereten belül eléri a bitráta 2\u00d7-esét</string>
+    <string name="assessment_grounds_parallel_rec_unsafe">Mért érték: %1$s, %2$d \u00d7 %3$d MB mellett - eléri a bitráta 2\u00d7-esét, de a biztonságos kereten belül egyik beállítás sem érte el; ez túllépi a biztonságos határt</string>
+    <string name="assessment_grounds_parallel_marginal">Leggyorsabb mért érték: %1$s, %2$d \u00d7 %3$d MB mellett - a cím bitrátája felett, de a 2\u00d7-es tartalék alatt; kevés tartalékra számíts</string>
+    <string name="assessment_grounds_parallel_cannot">Leggyorsabb mért érték: %1$s, %2$d \u00d7 %3$d MB mellett - a cím saját bitrátája alatt; ez a kapcsolat nem bírja el a streamet</string>
+    <string name="assessment_grounds_parallel_fastest">Leggyorsabb mért érték: %1$s, %2$d \u00d7 %3$d MB mellett - a cím bitrátája nem volt ismert, így nincs ítélet arról, hogy elég-e</string>
+    <string name="assessment_grounds_chunk">A fenti kapcsolatszámmal párban, ugyanabból a mérésből</string>
+    <string name="assessment_grounds_perf_mode">A remux méretű puffereket a Java heapen kívül tartja, hogy a szemétgyűjtés ne akassza meg a képkockákat; a memóriakorlátok az eszköz %1$s szintjéhez igazodnak (biztonságos %2$d MB / figyelmeztetés %3$d MB), és %4$d kapcsolat felett kötelező</string>
+    <string name="assessment_grounds_perf_mode_unsupported">Android 8.0 vagy újabb szükséges</string>
+    <string name="assessment_grounds_native_auto">Az alkalmazás az eszközhöz méretezi a puffert (%1$s memória, legfeljebb %2$d MB, memóriahiánykor kevesebb), és natív memóriában tartja</string>
+    <string name="assessment_grounds_buffer_custom_times">Az alábbi pufferprofil állítja be a pufferidőket; a méret automatikus marad</string>
+    <string name="assessment_grounds_managed_on">A lejátszás indításakor szabad memória alapján méretezi a puffert, és csökkenti, ha az eszköznek kevés a memóriája; fix méret egyikre sem képes</string>
+    <string name="assessment_value_target_auto">Automatikus (legfeljebb %1$d MB)</string>
+    <string name="assessment_grounds_target_auto">Bekapcsolt Kezelt memóriakeret mellett az alkalmazás a lejátszás indításakor választja ki</string>
+    <string name="assessment_grounds_allow_large_small_box">Csak 4 GB vagy több memóriájú eszközökhöz; ezen az eszközön (%1$s) a nagy méret akadozást vagy összeomlást okoz</string>
+    <string name="assessment_grounds_allow_large_managed">Nincs hatása, amíg a Kezelt memóriakeret be van kapcsolva</string>
+    <string name="assessment_grounds_network_for_parallel">Bekapcsolja a fent ajánlott párhuzamos kapcsolatokat</string>
+    <string name="assessment_grounds_network_parallel_only">Csak párhuzamos kapcsolatokhoz kell; itt egy kapcsolat is elég gyors</string>
+    <string name="assessment_grounds_network_untested">Csak párhuzamos kapcsolatokhoz kell, és nem volt tesztelt stream, ami alapján dönteni lehetne</string>
+    <string name="assessment_grounds_max_buffer">Egy %1$d MB-os cél \u2248%2$d s-ot tart ebből a címből (%3$s) - az ezen felüli másodpercek nem jöhetnek létre</string>
+    <string name="assessment_grounds_max_buffer_nobitrate">A cím bitrátája nem ismert - a bájtkorlát nem számítható ki; a felső határ %1$d s marad</string>
+    <string name="assessment_grounds_vod_off">Nincs elég szabad hely egy hasznos gyorsítótárhoz (az 1 GB tartalék után \u2265 100 MB kell) - a lejátszás így is közvetlenül streamelne</string>
+    <string name="assessment_grounds_afr_on">A kijelző több képfrissítést jelent a jelenlegi felbontáson (%1$s)</string>
+    <string name="assessment_grounds_afr_already">Már be van kapcsolva - az Induláskor, illetve Induláskor &amp; leállításkor ízlés kérdése: kevesebb HDMI-újraszinkron, vagy a felület visszatér 60 Hz-re</string>
+    <string name="assessment_grounds_afr_single">Egyetlen képfrissítésű kijelző a jelenlegi felbontáson - nincs mire váltani</string>
+    <string name="assessment_grounds_res_on">A kijelző több felbontást kínál (%1$s)</string>
+    <string name="assessment_grounds_res_single">Egyetlen felbontású kijelző - nincs mire váltani</string>
+    <string name="assessment_grounds_display_unknown">Erről a képernyőről nem lehetett megvizsgálni a kijelzőt - hagyd így, és ellenőrizd szemre</string>
+    <string name="assessment_grounds_dv7_auto">Az Automatikus ezen az eszközön erre áll be: %1$s</string>
+    <string name="assessment_grounds_dv7_unknown">A kijelző nem jelenti a HDR-típusait - az Automatikus így is óvatosságból alaprétegre csupaszít; ellenőrizd szemre</string>
+    <string name="assessment_grounds_dv5_on">A kijelző nem dekódol DV-t, de van P8 dekóder és libdovi híd - konvertálj, hogy a DV5 címek megtartsák a dinamikus metaadatokat</string>
+    <string name="assessment_grounds_dv5_off_display">A kijelző natívan dekódolja a DV-t - a konvertálás felesleges munka</string>
+    <string name="assessment_grounds_dv5_off_nopath">Nincs P8 dekóder / libdovi híd a konvertáláshoz</string>
+    <string name="assessment_grounds_strip_on">A kijelző nem jelent HDR10+-t - a dinamikus metaadatok csak félrevezetnék a megjelenítőt</string>
+    <string name="assessment_grounds_strip_off">A kijelző jelent HDR10+-t - a dinamikus metaadatok maradjanak</string>
+    <string name="assessment_grounds_tunneling">Egyes dekódereknél a tekerés/gyorstekerés és a hangszinkron furcsaságai nem kérdezhetők le - ellenőrizd ezen a láncon, mielőtt bekapcsolva hagyod</string>
+    <string name="assessment_dv7_native">natív DV7 pass-through</string>
+    <string name="assessment_dv7_convert">konvertálás DV8.1-re libdovival</string>
+    <string name="assessment_dv7_strip">HEVC alapréteg (HDR10)</string>
+    <string name="assessment_dv7_strip_besteffort">csupaszítás alaprétegre (ismeretlen képességek)</string>
+    <string name="assessment_dv7_tonemap">eltávolítás és tone mapping</string>
+    <string name="assessment_profile_fast_title">Gyors indulás</string>
+    <string name="assessment_profile_fast_sub">\u2248%1$d s-mal a megnyomás után indul; a legkisebb tartalék akadás ellen</string>
+    <string name="assessment_profile_balanced_title">Kiegyensúlyozott</string>
+    <string name="assessment_profile_balanced_sub">Középút az indulás és az akadás elleni tartalék között</string>
+    <string name="assessment_profile_stall_title">Akadásálló</string>
+    <string name="assessment_profile_stall_sub">A legnagyobb tartalék; a leglassabb indulás</string>
+    <string name="assessment_section_header">Eszközfelmérés</string>
+    <string name="assessment_run_title">Eszközfelmérés futtatása</string>
+    <string name="assessment_run_running">Felmérés\u2026</string>
+    <string name="assessment_run_subtitle">A kapcsolatodat az utoljára lejátszott streamen méri, és ellenőrzi az eszköz adatait. A legjobb eredményhez előbb játszd le a legnagyobb igényű címedet - a legnehezebb esetre hangolt beállítások a könnyebb tartalmat is jól viszik, fordítva nem.</string>
+    <string name="assessment_no_stream">Nincs utoljára lejátszott stream - az eszközsorok így is lefutnak. A mért sorokhoz előbb játszd le a legnagyobb igényű szokásos címedet, majd futtasd újra.</string>
+    <string name="assessment_header_title">Eszközadatok</string>
+    <string name="assessment_header_device">Eszköz</string>
+    <string name="assessment_header_device_auto">%1$s - puffer legfeljebb %2$d MB / veszély %3$d MB felett</string>
+    <string name="assessment_header_display">Kijelző</string>
+    <string name="assessment_header_display_unknown">Erről a képernyőről nem vizsgálható</string>
+    <string name="assessment_header_stream">Utolsó stream</string>
+    <string name="assessment_header_stream_none">Nincs</string>
+    <string name="assessment_header_bitrate">Bitráta</string>
+    <string name="assessment_header_hdr">HDR</string>
+    <string name="assessment_section_measured">Mért - a streameden tesztelve</string>
+    <string name="assessment_section_calculated">Ehhez az eszközhöz számítva</string>
+    <string name="assessment_section_priority">Válassz prioritást - pufferprofilok</string>
+    <string name="assessment_section_verify">Észlelt - ellenőrizd magad</string>
+    <string name="assessment_measured_skipped">Nincs utoljára lejátszott stream - a mérés kimaradt. Játssz le valamit, majd futtasd újra a mért sorokhoz.</string>
+    <string name="assessment_currently">Jelenleg: %1$s</string>
+    <string name="assessment_profile_values">indulás %1$d s \u00b7 újrapufferelés %2$d s \u00b7 min. %3$d s</string>
+    <string name="assessment_profile_suggested_stable">Javasolt - a kapcsolatod stabil maradt a mérés alatt</string>
+    <string name="assessment_profile_suggested_variable">Javasolt - a kapcsolatod ingadozott a mérés alatt</string>
+    <string name="assessment_stability_line">Kapcsolat stabilitása a mérés alatt: CoV %1$s, %2$d érvényes mérésből (az alacsonyabb stabilabb). A küszöb becslés; a profilokról te döntesz.</string>
+    <string name="assessment_error_prefix">Mérési hiba: %1$s - az alábbi számított sorok továbbra is érvényesek</string>
+    <string name="assessment_footer">A mért sorokat ezen az eszközön teszteltük; a számított sorok lekérdezhető adatokból származnak. Alkalmazáskor csak a mért és a számított sorok, valamint a kiválasztott profil íródik ki - az ellenőrzendő sorok soha nem változnak automatikusan. A Visszaállítás a legutóbbi alkalmazást vonja vissza.</string>
+    <string name="stream_test_verdict_recommend_trade">Javaslat: %1$d kapcsolat / %2$d MB-os darabok - %3$s (a cím bitrátájának %4$s\u00d7-ese). Ezt választottuk a %5$d \u00d7 %6$d MB (2\u00d7+) helyett, mert az eszköz memóriakeretén %7$d MB \u2248 %8$d s lejátszási puffert hagy %9$d MB \u2248 %10$d s helyett - itt a puffer mélysége többet ér a feltöltés sebességénél.</string>
+    <string name="assessment_grounds_parallel_trade">Mért érték: %1$s, %2$d \u00d7 %3$d MB mellett - eléri a bitráta 1.5\u00d7-esét, és %6$d MB \u2248 %7$d s puffert hagy; a 2\u00d7-es beállítás (%4$d \u00d7 %5$d MB) csak %8$d MB \u2248 %9$d s-ot hagyna</string>
+    <string name="assessment_parallel_small_box_cap">Ennek az eszköznek %1$s memóriája van, ezért legfeljebb 2 kapcsolat ajánlott</string>
+    <string name="assessment_grounds_max_buffer_current">A jelenlegi %1$d MB-os célnál: \u2248 %2$d s a tényleges érték, bármit mutat a másodperc-csúszka - előbb a bájtok szabnak határt</string>
+    <string name="assessment_item_engine">Belső motor</string>
+    <string name="assessment_value_engine_exo">ExoPlayer</string>
+    <string name="assessment_value_engine_auto">Automatikus</string>
+    <string name="assessment_value_engine_mvp">MPV Player (libmpv)</string>
+    <string name="assessment_grounds_engine_ok">Minden alábbi felmért sor az ExoPlayer útvonalra vonatkozik</string>
+    <string name="assessment_grounds_engine_switch">Minden alábbi felmért sor az ExoPlayer útvonalra vonatkozik - az MPV lejátszóval ezek a beállítások nem érvényesülnek</string>
+    <string name="assessment_item_ac3">AC-3 átkódolás kényszerítése (optikai/SPDIF)</string>
+    <string name="assessment_grounds_ac3_hdmi">A hangútvonal: %1$s (%2$s) - HDMI-láncon ez a beállítás csak veszteséges AC-3-má alakítja a veszteségmentes passthrough-t</string>
+    <string name="assessment_grounds_ac3_unknown">Innen nem sikerült optikai útvonalat megerősíteni - ez a beállítás csak optikai/SPDIF kimenetre való</string>
+    <string name="assessment_apply_title">Ajánlott beállítások alkalmazása</string>
+    <string name="assessment_apply_arm_sub">A Mért és a Számított sorokat írja, valamint a kiválasztott profilt - az ellenőrzendő sorokhoz soha nem nyúl. A visszaállításhoz pillanatkép készül.</string>
+    <string name="assessment_apply_confirm_sub">Megerősítéshez nyomd meg újra - kb. %1$d beállítás lesz kiírva</string>
+    <string name="assessment_apply_applying">Alkalmazás\u2026</string>
+    <string name="assessment_apply_done_sub">Alkalmazva - %1$d beállítás kiírva \u00b7 a jelenlegi értékek frissítéséhez futtasd újra a felmérést</string>
+    <string name="assessment_revert_title">Visszaállítás a felmérés előtti beállításokra</string>
+    <string name="assessment_revert_sub">Visszaállít minden értéket, amelyet a legutóbbi alkalmazáskor mentett, majd törli a pillanatképet</string>
+    <string name="assessment_stability_insufficient">Kapcsolat stabilitása: ebben a futásban nincs elég érvényes minta (%1$d mérés \u2265 4 részablakkal) - nincs profiljavaslat</string>
+    <string name="assessment_profile_values_capped">indulás %1$d s \u00b7 újrapufferelés %2$d s \u00b7 min. %3$d s - memória miatt korlátozva %4$d s-ról</string>
+    <string name="assessment_profile_suggested_tag">Javasolt</string>
+    <string name="assessment_grounds_res_choice">A kijelző több felbontást kínál (%1$s) - egyeztetéssel a felskálázást a panel skálázója végzi az eszköz helyett; hogy melyik néz ki jobban, a paneltől függ, ezért te döntesz</string>
+    <string name="assessment_grounds_res_inert">Egyetlen felbontású kijelző - ez a beállítás itt hatástalan</string>
+    <string name="assessment_already_set">\u2713 Már be van állítva</string>
+    <string name="player_pill_play">Lejátszás</string>
+    <string name="player_pill_pause">Szünet</string>
+    <string name="player_pill_restart">Újrakezdés</string>
+    <string name="player_pill_episodes">Epizódok</string>
+    <string name="player_pill_next_episode">Következő epizód</string>
+    <string name="ui_scale_title">Felület méretezése</string>
+    <string name="ui_scale_group_subtitle">A teljes felület méretezése 85% és 115% között</string>
+    <string name="panel_audio_adjustments">Hangbeállítások</string>
+    <string name="panel_audio_back_to_tracks">Vissza a sávokhoz</string>
+    <string name="v2_glass_preset">Üvegbeállítás</string>
+    <string name="v2_glass_clear">Átlátszó</string>
+    <string name="v2_glass_light_frost">Enyhén matt</string>
+    <string name="v2_glass_balanced">Kiegyensúlyozott</string>
+    <string name="v2_glass_frosted">Matt</string>
+    <string name="v2_glass_preset_hint">Válassz egy kiinduló megjelenést, majd állítsd külön az átlátszóságot és az elmosást.</string>
+    <string name="v2_glass_fine_tuned">Finomhangolva. Egy beállítás kiválasztása mindkét értéket visszaállítja.</string>
+    <string name="v2_glass_transparency">Üveg átlátszósága</string>
+    <string name="v2_glass_blur_strength">Üveg elmosásának erőssége</string>
+    <string name="v2_glass_transparency_hint">A nagyobb értékek többet mutatnak a háttérből, a szöveg kontrasztja megmarad.</string>
+    <string name="v2_glass_blur_hint">A minőségi korlátodon belül lágyítja a támogatott háttereket. A lejátszó videója elmosás nélkül átlátszó marad.</string>
+    <string name="v2_glass_blur_unavailable">Az elmosás mentve van, de ezen az eszközön vagy minőségi szinten nem érhető el. A lejátszó videója elmosás nélkül átlátszó marad.</string>
+    <string name="playback_show_loading_source">Stream forrásának és fájlnevének megjelenítése</string>
+    <string name="playback_show_loading_source_sub">A lejátszás betöltése közben megjeleníti a szolgáltatót és a fájlnevet.</string>
+    <string name="v2_settings_background">Oldal háttere</string>
+    <string name="v2_settings_background_help">A Megjelenési stílus követése a Cinematic Glass stílusnál a cím grafikáját, a Pure Liquid Dark stílusnál sötét redőket használ. A Minimális Beállítások megtartja az egyszerű hátterét. A Kiemelt háttér mindig a kiválasztott cím grafikáját használja; a Beállítások az utoljára kiválasztott címet tartja meg.</string>
+    <string name="v2_settings_background_default">Megjelenési stílus követése</string>
+    <string name="v2_settings_background_hero">Kiemelt háttér</string>
+    <string name="v2_settings_background_posters">Poszterháttér</string>
+    <string name="v2_settings_background_midnight">Éjkék</string>
+    <string name="v2_settings_background_charcoal">Antracit</string>
+    <string name="layout_trailer_feathered">Lágy szélű előzetesablak</string>
+    <string name="subtitle_bitmap_style_note">A képfeliratok mérete a szöveges feliratok méretétől külön van mentve. A betűtípus, a körvonal és a szín a kép része.</string>
+    <string name="subtitle_bitmap_mpv_note">Az MPV nem támogatja a képfeliratok átméretezését. Használd az ExoPlayert, ha a képfeliratok méretét a szövegtől függetlenül állítanád.</string>
+    <string name="subtitle_style_image_size">Képfelirat mérete</string>
+    <string name="v2_accent_fixed_hint">A Színtémát használja, hacsak nincs kiválasztva a grafikából vett kiemelőszín.</string>
+    <string name="about_fork_updates_subtitle">Frissítések a Nuvio Arc GitHubon közzétett kiadásaiból.</string>
+    <string name="playback_speculative_stream_search">Források keresése Lejátszás előtt</string>
+    <string name="playback_speculative_stream_search_sub">Böngészés közben keres a bővítményekben, hogy gyorsabb legyen a forrásválasztás. Egyes bővítmények keresés közben tartalmat adhatnak hozzá vagy tölthetnek le. Kikapcsolva a Lejátszásig vár. A médialinkek és a szolgáltatói feloldás a lejátszás kiválasztásáig várnak, kivéve egy epizód vége felé, amikor a tekerési miniatűrök előkészítik a következőt.</string>
+    <string name="playback_source_line_badges">Forrásjelvények a részletek oldalán</string>
+    <string name="playback_source_line_badges_sub">A Lejátszás előtt talált forrás jelvényeinek megjelenítése a cím alatt: felbontás, Dolby Vision vagy HDR, hangformátum és méret. Kikapcsolva a jelvények rejtve maradnak, de a keresés jelzése és a kész pipa megmarad.</string>
+    <string name="playback_source_line_release_group">Kiadócsoport a részletek oldalán</string>
+    <string name="playback_source_line_release_group_sub">A kiadócsoport nevének megjelenítése a forrásjelvények mellett. Kikapcsolva a jelvények megmaradnak, a név pedig rejtve marad.</string>
+    <string name="details_source_line_searching">Legjobb forrás keresése</string>
+    <string name="details_source_line_ready">Kész</string>
+    <string name="debrid_cached_playback_links">Gyorsítótárazott lejátszási linkek újrahasználata</string>
+    <string name="debrid_cached_playback_links_description">Újrahasználja a lejátszás közben már feloldott linkeket. Új linkek csak forrás kiválasztása után, vagy röviddel egy epizód vége előtt oldódnak fel, amikor a tekerési miniatűrök előkészítik a következőt.</string>
+    <string name="dv7_mode_native_fel">Natív DV7 FEL/MEL (Amlogic)</string>
+    <string name="dv7_mode_native_fel_desc">Egyedi FEL kernellel futó Ugoos AM9 Pro kell hozzá, amely még nem érhető el. Minden más eszközön úgy működik, mint az Automatikus.</string>
+    <string name="stream_test_parallel_scope">%1$.1f MiB / %2$.2f s mérve · %3$.1f MiB teljes hasznos adat</string>
+    <string name="stream_test_parallel_scope_detail">Bemelegítés nélkül. Csak a válasz hasznos adata; a teljes hálózati forgalom nagyobb lehet. Cellánként legfeljebb 72 MiB vagy 20 másodperc. A nagyon rövid minták nem érhetők el.</string>
+    <string name="diagnostic_run_timed_out">Az összehasonlítás elérte a kétperces korlátot. Az eredmények hiányosak; nem készült javaslat.</string>
+    <string name="diagnostic_run_payload_limit">Az összehasonlítás elérte az adatkeretét. Az eredmények hiányosak; nem készült javaslat.</string>
+    <string name="diagnostic_comparison_limits">Legfeljebb 2 perc és 576 MiB hasznos válaszadat az összes mérésre és újrapróbálásra együtt. A teljes hálózati forgalom nagyobb lehet.</string>
+    <string name="stream_diagnostic_quick">Gyors forrásellenőrzés</string>
+    <string name="stream_diagnostic_advanced">Haladó forrás-összehasonlítás</string>
+    <string name="stream_diagnostic_quick_limits">Egy kapcsolat, legfeljebb 15 másodperc és 72 MiB hasznos válaszadat. Nincs beállítási javaslat. A teljes hálózati forgalom nagyobb lehet.</string>
+    <string name="stream_diagnostic_observation">Megfigyelve: %1$s, %2$s. Az eredmények ezt a forrást és hálózatot írják le abban az időpontban; a későbbi sebességről vagy lejátszási teljesítményről nem mondanak semmit.</string>
+    <string name="stream_diagnostic_mux_bitrate">Becsült teljes fájl bitráta: %1$s</string>
+    <string name="assessment_profile_changed">Megváltozott a profil. A beállítások alkalmazása előtt futtasd újra a felmérést.</string>
+    <string name="assessment_update_failed">A beállítások frissítése nem fejeződött be. Az esetleg mentett pillanatkép továbbra is elérhető a Visszaállításhoz.</string>
+    <string name="diagnostic_route_partial">Az útvonal adatai hiányosak lehetnek</string>
+    <string name="network_test_route_unavailable">A jelenlegi hálózatot nem lehetett megfigyelni. Próbáld újra, amikor van kapcsolat.</string>
+    <string name="assessment_inputs_changed">Megváltozott a forrás, a beállítások vagy az eszköz adatai. Alkalmazás előtt futtasd újra a felmérést.</string>
+    <string name="assessment_bitrate_video">Videosáv bitrátája</string>
+    <string name="assessment_bitrate_file">Teljes fájl becsült bitrátája</string>
+    <string name="assessment_source_observed">Forrás utoljára megfigyelve</string>
+    <string name="assessment_observation_unknown">A megfigyelés ideje nem érhető el</string>
+    <string name="assessment_measurement_scope">Az eredmények ezt a forrást és kapcsolatot tükrözik a teszt idején. A videó bitrátája nem tartalmazza a hangot/konténert; a fájl bitrátája átlag. A platform jelentéseit, köztük a régebbi Android-verziók kikövetkeztetett hangútvonalait, ellenőrizni kell. A későbbi teljesítmény nem ismert.</string>
+    <string name="assessment_test_observed">Felmérés kezdete</string>
+    <string name="assessment_network_observed">Megfigyelt kapcsolat</string>
+    <string name="assessment_default_network">Alapértelmezett hálózat</string>
+    <string name="player_speed_unavailable">A lejátszási sebesség a jelenlegi lejátszási módban nem érhető el.</string>
+    <string name="player_layout_title">Lejátszó gombjai</string>
+    <string name="player_layout_settings_subtitle">A lejátszó gombjainak előnézete, megjelenítése vagy elrejtése és áthelyezése</string>
+    <string name="player_layout_help">Válaszd ki minden gomb láthatóságát és csoportját, majd vidd előrébb vagy hátrébb a csoporton belül. A gombok csak akkor jelennek meg, ha az aktuális lejátszás támogatja őket.</string>
+    <string name="player_layout_original_preview">Előnézet: eredeti alapértékek. Egy gomb szerkesztése egyéni elrendezést hoz létre; a Visszaállítás csak Mentéskor lép életbe.</string>
+    <string name="player_layout_shown">Látható</string>
+    <string name="player_layout_hidden">Rejtett</string>
+    <string name="player_layout_left">Bal</string>
+    <string name="player_layout_centre">Közép</string>
+    <string name="player_layout_right">Jobb</string>
+    <string name="player_layout_earlier">Előrébb</string>
+    <string name="player_layout_later">Hátrébb</string>
+    <string name="player_layout_reset">Alapértékek visszaállítása</string>
+    <string name="player_layout_stale">Ez a profil vagy a mentett elrendezés megváltozott. Mentés előtt válaszd a Mégse gombot, és nyisd meg újra a szerkesztőt.</string>
+    <string name="player_layout_save_failed">Nem sikerült menteni. Próbáld újra.</string>
+    <string name="player_layout_saving">Mentés…</string>
+    <string name="player_layout_load_failed">Nem sikerült megnyitni a gombszerkesztőt. Próbáld újra.</string>
+    <string name="player_layout_group_position">%1$s %2$d</string>
+    <string name="player_layout_visual_help">Megjelenítéshez vagy elrejtéshez nyomd meg az OK gombot. Áthelyezéshez tartsd nyomva az OK gombot, vagy válaszd lent az Áthelyezést.</string>
+    <string name="player_layout_preview_title">Lejátszó előnézete</string>
+    <string name="player_layout_selected">%1$s · %2$s</string>
+    <string name="player_layout_move_help">Áthelyezés: a nyilakkal változtathatsz a helyén; balra vagy jobbra a terület is váltható. Az OK lerakja; a Vissza visszavonja ezt az áthelyezést.</string>
+    <string name="player_layout_idle_help">A További műveletek utáni gombok annak felugró menüjében nyílnak meg. A lenti További műveletek részben szerkesztheted őket; a felugró menü csak előnézet.</string>
+    <string name="player_layout_defaults_help">Eredeti alapértékek. A szerkesztés egyéni elrendezést hoz létre. Az Alapértékek visszaállítása Mentéskor lép életbe.</string>
+    <string name="player_layout_move">Áthelyezés</string>
+    <string name="player_layout_selected_group">%1$s · %2$s</string>
+    <string name="player_layout_preview_unavailable">Megjelenik, ha elérhető</string>
+    <string name="player_layout_hidden_buttons">Rejtett és nem elérhető</string>
+    <string name="player_layout_more_buttons">További műveletek</string>
+    <string name="player_layout_button_style">Stílus: %1$s</string>
+    <string name="player_layout_style_previous">Ikonok</string>
+    <string name="player_layout_style_labelled">Címkék</string>
+    <string name="player_layout_preview_movie">Előnézet: film</string>
+    <string name="player_layout_preview_episode">Előnézet: epizód</string>
+    <string name="player_layout_in_more">A További műveletek között</string>
+    <string name="player_layout_more_expanded">Továbbiak menü: nyitva</string>
+    <string name="player_layout_more_empty">Nincsenek további műveletek</string>
+    <string name="player_layout_more_collapsed">Továbbiak menü: zárva</string>
+    <string name="subtitle_font_family">Felirat betűtípusa</string>
+    <string name="subtitle_font_renderer_default">A megjelenítő alapértelmezése</string>
+    <string name="subtitle_edge_style">Szöveg széle</string>
+    <string name="subtitle_edge_drop_shadow">Vetett árnyék</string>
+    <string name="subtitle_shadow_note">Finom sötét árnyék. MPV-nél ez váltja a háttérdobozt.</string>
+    <string name="subtitle_font_and_weight">Betűtípus és vastagság</string>
+    <string name="playback_seeking">Tekerés</string>
+    <string name="playback_seeking_sub">Milyen gyorsan gyorsul a balra vagy jobbra nyomva tartás, és mennyit vár a film a miniatűrön, mielőtt ugrik. Miniatűrök nélkül mindig azonnal ugrik, amint elengedi a gombot.</string>
+    <string name="playback_seeking_gentle">Kíméletes</string>
+    <string name="playback_seeking_gentle_desc">Lassan és egyenletesen. Minden miniatűr elhalad; ugrás előtt 2 mp-et vár.</string>
+    <string name="playback_seeking_balanced">Kiegyensúlyozott</string>
+    <string name="playback_seeking_balanced_desc">Lassan indul, aztán gyorsul. Ugrás előtt vár egy pillanatot.</string>
+    <string name="playback_seeking_fast">Gyors</string>
+    <string name="playback_seeking_fast_desc">Mint a hivatalos alkalmazás. Nagy lépések, azonnal ugrik, amint elengedi a gombot.</string>
+    <string name="playback_seeking_confirm">Megerősítés OK gombbal</string>
+    <string name="playback_seeking_confirm_desc">A bal és jobb gomb csak a jelölőt mozgatja. A film akkor ugrik, amikor megnyomja az OK gombot, miniatűrökkel vagy nélkülük. A Vissza megszakítja.</string>
+    <string name="seek_thumbnails_title">Tekerési miniatűrök</string>
+    <string name="seek_thumbnails_subtitle">Miniatűrök a címből a folyamatsáv felett, amíg tekersz.</string>
+    <string name="seek_thumbnails_mode_off">Ki</string>
+    <string name="seek_thumbnails_mode_off_desc">Tekerés közben nincsenek miniatűrök.</string>
+    <string name="seek_thumbnails_mode_hd">1080p-ig</string>
+    <string name="seek_thumbnails_mode_hd_desc">SD és HD címek (480p-től 1080p-ig). A 4K címeknél csak az idő látszik.</string>
+    <string name="seek_thumbnails_mode_all">Minden felbontás, 4K is</string>
+    <string name="seek_thumbnails_mode_all_desc">SD, HD és 4K címek. Kisebb eszközökön néhány 4K miniatűr csak szünetben vagy a megtekintés befejezése után készül el.</string>
+    <string name="seek_thumbnails_prepare_title">Miniatűrök készítése lejátszás előtt</string>
+    <string name="seek_thumbnails_prepare_subtitle">Elkészíti a cím tekerési miniatűrjeit, mielőtt a lejátszás elindul.</string>
+    <string name="seek_thumbnails_prepare_off">Ki</string>
+    <string name="seek_thumbnails_prepare_off_desc">Azonnal indul a lejátszás; a miniatűrök szünetben és a megtekintés befejezése után készülnek.</string>
+    <string name="seek_thumbnails_prepare_on">Be</string>
+    <string name="seek_thumbnails_prepare_on_desc">Elkészíti a cím tekerési miniatűrjeit, mielőtt elindul. A \"Megtekintés indítása most\" vagy a Vissza gomb bármikor elindítja a lejátszást.</string>
+    <string name="seek_thumbnails_prepare_on_small_desc">Ezen az eszközön a 4K filmek a miniatűrjeik elkészülte után töltődnek be.</string>
+    <string name="seek_thumbnails_before_play_title">Miniatűrök lejátszás előtt</string>
+    <string name="seek_thumbnails_before_play_subtitle">Hány miniatűr készül el, mielőtt egy cím elindul. A többi nézés közben készül, a szokásos sűrűségig.</string>
+    <string name="seek_thumbnails_before_play_full">Teljes</string>
+    <string name="seek_thumbnails_before_play_full_desc">Az egész cím sűrűn lefedve, mielőtt elindul. A leghosszabb várakozás.</string>
+    <string name="seek_thumbnails_before_play_faster">Gyorsabb</string>
+    <string name="seek_thumbnails_before_play_faster_desc">Feleannyi miniatűr az indulás előtt, az egész címre elosztva.</string>
+    <string name="seek_thumbnails_before_play_fastest">Leggyorsabb</string>
+    <string name="seek_thumbnails_before_play_fastest_desc">Negyedannyi az indulás előtt. A legrövidebb várakozás.</string>
+    <string name="seek_thumbnails_from_copy_title">Miniatűrök másolatból</string>
+    <string name="seek_thumbnails_from_copy_subtitle">Gyorsabb miniatűrök 4K-s címekhez 1080p-s vagy 720p-s másolatból, Usenet-címekhez pedig nem a Usenetről származó másolatból. Egy gyorsítótárazott TorBox-másolat néhány percre felkerülhet a listádra.</string>
+    <string name="seek_thumbnails_clear_title">Mentett miniatűrök törlése</string>
+    <string name="seek_thumbnails_clear_subtitle">A cím következő lejátszásakor újra elkészülnek.</string>
+    <string name="seek_thumbnails_cleared">A mentett miniatűrök törölve</string>
+    <string name="seek_thumbnails_stored_empty">Üres</string>
+    <string name="seek_thumbnails_stored_under_1mb">&lt; 1 MB</string>
+    <string name="seek_thumbnails_stored_mb">%1$d MB</string>
+    <string name="seek_thumbnails_memory_estimate">Tekerési miniatűrökkel együtt: legfeljebb %1$d MB</string>
+    <string name="seek_thumbnails_generating">Miniatűrök készítése</string>
+    <string name="seek_thumbnails_ready">A miniatűrök elkészültek</string>
+    <string name="seek_thumbnails_ready_detail">%1$d miniatűr · lejátszás indítása</string>
+    <string name="seek_thumbnails_time_left_seconds">Kb. %1$d s van hátra</string>
+    <string name="seek_thumbnails_time_left_minutes">Kb. %1$d min %2$d s van hátra</string>
+    <string name="seek_thumbnails_film_loads_after">4K ezen az eszközön: a film akkor töltődik be, amikor ez elkészül</string>
+    <string name="seek_thumbnails_count">%1$d / %2$d</string>
+    <string name="seek_thumbnails_start_now">Megtekintés indítása most</string>
+    <string name="seek_thumbnails_settings_hint">Be- vagy kikapcsolható itt: Beállítások › Lejátszás › Player Interface</string>
+    <string name="seek_thumbnails_progress_chip">Miniatűrök %1$d%%</string>
+    <string name="party_title">Nézőparti</string>
+    <string name="party_settings_subtitle">Nézzétek ugyanazt ugyanabban a pillanatban, más-más otthonból</string>
+    <string name="party_settings_row_subtitle">Parti létrehozása vagy csatlakozás kóddal</string>
+    <string name="party_create">Parti létrehozása</string>
+    <string name="party_close">Bezárás</string>
+    <string name="party_join">Csatlakozás</string>
+    <string name="party_leave">Kilépés a partiból</string>
+    <string name="party_end">Parti befejezése</string>
+    <string name="party_create_description">Nézd ezt másokkal, akik máshol laknak. Mindenki a saját példányát játssza le ugyanabból a címből, a parti pedig együtt tartja őket.</string>
+    <string name="party_not_available">Ez a cím nem osztható meg partiban.</string>
+    <string name="party_create_hint">Hozz létre egy partit, majd indítsd el a lejátszást. A kódot beíró vendégek ugyanahhoz a címhez kerülnek.</string>
+    <string name="party_join_description">Írd be a házigazdától kapott hat karakteres kódot.</string>
+    <string name="party_code_invalid">Ez nem partikód. A kódok hat betűből vagy számból állnak.</string>
+    <string name="party_ended_by_host">A házigazda befejezte a partit.</string>
+    <string name="party_share_code">Oszd meg ezt a kódot</string>
+    <string name="party_joined_code">Ebben a partiban vagy</string>
+    <string name="party_connecting">Csatlakozás…</string>
+    <string name="party_reconnecting">Újracsatlakozás…</string>
+    <string name="party_problem_unreachable">A parti relay-szerverei nem érhetők el. Ellenőrizd az internetkapcsolatot.</string>
+    <string name="party_problem_clock">A relay-szerverek elutasították ezt az eszközt. Ellenőrizd a dátumot és az időt.</string>
+    <string name="party_waiting_for_host">Várakozás a házigazdára…</string>
+    <string name="party_open_title">Válassz forrást a csatlakozáshoz</string>
+    <string name="party_self_paused">Megállítottad. A parti megy tovább.</string>
+    <string name="party_catching_up">Felzárkózás</string>
+    <string name="party_in_sync">Szinkronban</string>
+    <string name="party_behind">%1$s s lemaradás</string>
+    <string name="party_ahead">%1$s s előny</string>
+    <string name="party_hold_lining_up">Mindenki összehangolása…</string>
+    <string name="party_hold_waiting_self">A parti rád vár (%1$d s)</string>
+    <string name="party_hold_waiting">Várakozás egy tagra (%1$d s)</string>
+    <string name="party_hold_waiting_for">Várakozás rá: %1$s (%2$d s)</string>
+    <string name="party_member_unnamed">Vendég</string>
+    <string name="party_member_you_host">%1$s (te, házigazda)</string>
+    <string name="party_member_you">%1$s (te)</string>
+    <string name="party_member_host">%1$s (házigazda)</string>
+    <string name="party_member_in_sync">szinkronban</string>
+    <string name="party_member_syncing">csatlakozik</string>
+    <string name="party_member_buffering">pufferel</string>
+    <string name="party_member_catching_up">felzárkózik</string>
+    <string name="party_member_away">távol</string>
+    <string name="party_member_needs_update">frissítenie kell</string>
+    <string name="party_member_line">%1$s · %2$s</string>
+    <string name="party_copy_longer">A te példányod %1$s másodperccel hosszabb, mint a házigazdáé. A parti elcsúszhat.</string>
+    <string name="party_copy_shorter">A te példányod %1$s másodperccel rövidebb, mint a házigazdáé. A parti elcsúszhat.</string>
+    <string name="party_guests_control_on">A vendégek megállíthatják és tekerhetik: Be</string>
+    <string name="party_guests_control_off">A vendégek megállíthatják és tekerhetik: Ki</string>
+    <string name="party_share_link_on">Linkem megosztása: Be</string>
+    <string name="party_share_link_off">Linkem megosztása: Ki</string>
+    <string name="party_start_together">Indítás együtt</string>
+    <string name="party_continue_without">Folytatás várakozás nélkül</string>
+    <string name="party_chip">Parti · %1$d · %2$s</string>
+    <string name="party_speed_fixed">Nézőparti közben a sebesség 1x marad</string>
+    <string name="party_match_same">Ugyanaz a fájl, mint a házigazdáé</string>
+    <string name="party_match_likely">Valószínűleg a házigazda példánya</string>
+    <string name="party_match_different">Más példány, mint a házigazdáé</string>
+    <string name="party_invite_text">Csatlakozz a nézőpartimhoz a Nuvióban. Nyisd meg a Beállításokat, majd a Nézőpartit, és írd be ezt a kódot: %1$s</string>
+    <string name="party_invite_qr">Olvasd be a telefon kamerájával, és küldd el a meghívót üzenetben</string>
+    <string name="party_qr_iphone">iPhone</string>
+    <string name="party_qr_android">Android</string>
+    <string name="party_qr_description">Meghívókód ehhez: %1$s</string>
+    <string name="party_start_title">Parti indítása</string>
+    <string name="party_join_title">Csatlakozás kóddal</string>
+    <string name="party_stage_headline">Nézzétek együtt,\nkülön otthonokból.</string>
+    <string name="party_stage_lead">Indíts egy partit, és játssz le bármit: mindenki ugyanahhoz a címhez kerül, és együtt marad. Fiók nem kell hozzá.</string>
+    <string name="party_step_short_one">Indíts vagy csatlakozz</string>
+    <string name="party_step_short_two">Oszd meg a kódot</string>
+    <string name="party_step_short_three">Játssz le bármit</string>
+    <string name="party_page_hosting">Te vagy a házigazda · %1$d fő a partiban</string>
+    <string name="party_page_guest">%1$s partijában vagy · %2$d fő a partiban</string>
+    <string name="party_page_guest_unknown">Egy partiban vagy · %1$d fő a partiban</string>
+    <string name="party_in_the_party">A partiban</string>
+    <string name="party_now_watching">Most megy: %1$s</string>
+    <string name="party_member_role_you_host">te · házigazda</string>
+    <string name="party_member_role_you">te</string>
+    <string name="party_member_role_host">házigazda</string>
+    <string name="party_open_party_title">A parti címének megnyitása</string>
+    <string name="party_host_you">Mostantól te vagy a házigazda</string>
+    <string name="party_host_other">Mostantól %1$s a házigazda</string>
+    <string name="party_host_changed">Változott a házigazda</string>
+    <string name="party_friends">Barátok</string>
+    <string name="party_invite_friends">Barátok meghívása</string>
+    <string name="party_friends_hint">Barátot a taglistából vehetsz fel, amikor együtt vagytok egy partiban.</string>
+    <string name="party_friend_invite">Meghívás</string>
+    <string name="party_friend_cancel_invite">Meghívás visszavonása</string>
+    <string name="party_friend_add">Felvétel barátként</string>
+    <string name="party_friend_asked">Elküldve ✓</string>
+    <string name="party_friend_last">utoljára együtt: %1$s</string>
+    <string name="party_friends_all">Összes barát (%1$d)</string>
+    <string name="party_friends_page_subtitle">%1$d barát · legújabb elöl · a Meghívás gombbal partit indíthatsz velük</string>
+    <string name="party_friends_remove">Barátok eltávolítása</string>
+    <string name="party_friends_remove_done">Eltávolítás kész</string>
+    <string name="party_friend_remove">Eltávolítás</string>
+    <string name="party_friend_remove_title">Eltávolítod őt: %1$s?</string>
+    <string name="party_friend_remove_body">Újra felveheted, amikor legközelebb együtt vagytok egy partiban.</string>
+    <string name="party_friend_request_title">Felveszed barátként őt: %1$s?</string>
+    <string name="party_friend_request_body">%1$s szeretne felvenni téged. A barátok kód nélkül hívhatják meg egymást nézőpartira. Barátot bármikor eltávolíthatsz a Nézőparti alatt.</string>
+    <string name="party_friend_request_accept">Barát felvétele</string>
+    <string name="party_not_now">Most nem</string>
+    <string name="party_friend_added">%1$s mostantól a barátod</string>
+    <string name="party_invite_title">%1$s közös nézésre hív</string>
+    <string name="party_invite_detail">%1$s · %2$s partija, %3$d néző</string>
+    <string name="party_invite_detail_nothing">Nézőparti · %1$s partija, %2$d néző</string>
+    <string name="party_invite_join">Csatlakozás</string>
+    <string name="party_invite_title_for">%1$s közös nézésre hívja őt: %2$s</string>
+    <string name="party_invite_for_profile">A(z) %1$s profilnak szól. A Csatlakozás átvált erre a profilra.</string>
+    <string name="party_invite_join_as">Csatlakozás mint %1$s</string>
+    <string name="party_invite_for_locked_profile">A(z) %1$s profilnak szól, amelyet PIN véd. Előbb válts erre a profilra; a meghívó addig vár.</string>
+    <string name="party_invite_later">OK</string>
+    <string name="party_friends_of_profile">A profil barátai (%1$s)</string>
+    <string name="party_look_title">Neved és avatarod a partikban</string>
+    <string name="party_look_dialog_subtitle">A(z) %1$s profilhoz. A kiválasztott avatar azonnal mentésre kerül; hagyd üresen a nevet, ha a profil nevét használnád.</string>
+    <string name="party_look_chip_hint">Így látnak mások · Módosítás ›</string>
+    <string name="party_look_preview">Így látnak mások</string>
+    <string name="party_look_preview_room">Partiban</string>
+    <string name="party_look_preview_invite">Egy barát képernyőjén</string>
+    <string name="party_look_saved">Mentve ✓</string>
+    <string name="party_look_save_name">Név mentése</string>
+    <string name="party_look_profile_title">A Nuvio-profilképed</string>
+    <string name="party_look_profile_detail">%1$s · ez marad, amíg mást nem választasz</string>
+    <string name="party_look_in_use">Használatban ✓</string>
+    <string name="party_look_use_this">Ezt használom</string>
+    <string name="party_look_quick_picks">Gyors választás</string>
+    <string name="party_look_tab_profile">Profilavatar</string>
+    <string name="party_look_tab_nuvio">Nuvio</string>
+    <string name="party_look_tab_fun">Vidám készlet</string>
+    <string name="party_look_profile_none">Ennek a profilnak nincs képe; a többiek a kezdőbetűjét látják a profil színén.</string>
+    <string name="party_avatar_set_fun_emoji">Vidám arcok</string>
+    <string name="party_avatar_set_animals">Állatok</string>
+    <string name="party_avatar_set_adventurer">Kalandorok</string>
+    <string name="party_avatar_set_lorelei">Rajzolt arcok</string>
+    <string name="party_avatar_set_notionists">Vázlatfigurák</string>
+    <string name="party_avatar_set_bottts">Robotok</string>
+    <string name="party_avatar_set_pixel_art">Pixel art</string>
+    <string name="party_avatar_set_thumbs">Hüvelykujjak</string>
+    <string name="party_invite_leaves_current">A csatlakozással kilépsz a mostani partiból.</string>
+    <string name="layout_episode_synopsis_under_row">Epizódismertető a sor alatt</string>
+    <string name="layout_episode_synopsis_under_row_sub">A kijelölt epizód ismertetőjének megjelenítése az epizódsor alatt a Nuvio V2 nézetben.</string>
+    <string name="detail_episode_synopsis_none">Ehhez az epizódhoz még nincs ismertető.</string>
+    <string name="player_track_role_commentary">Kommentár</string>
+    <string name="player_track_role_audio_description">Audioleírás</string>
 
+    <!-- Nuvio-test additions -->
+    <string name="licenses_attributions_subtitle_fonts_title">Felirat-betűtípusok</string>
+    <string name="licenses_attributions_subtitle_fonts_body">Roboto, Montserrat, Asap Condensed és Noto Sans (Noto Sans Arabic, Hebrew, Devanagari, Bengali és Tamil változattal), készítők: The Roboto Project Authors, The Montserrat Project Authors, The Asap Project Authors és The Noto Project Authors. SIL Open Font License, Version 1.1 alatt érhető el.</string>
+    <string name="audio_dtshd_tv_passthrough">DTS-HD és DTS:X passthrough</string>
+    <string name="audio_dtshd_tv_passthrough_sub">Válassza a TV passthrough lehetőséget, ha a hangprojektor csak sima DTS-t mutat, vagy DTS-HD és DTS:X filmeknél nem szól semmi.</string>
+    <string name="audio_dtshd_tv_passthrough_standard">Normál</string>
+    <string name="audio_dtshd_tv_passthrough_tv">TV passthrough</string>
+    <string name="sub_libass_render_scale">Feliratok megjelenítési felbontása</string>
+    <string name="sub_libass_render_scale_sub">Az alacsonyabb felbontás gyorsítja a bonyolult, stílusos feliratokat, de csökken az élesség</string>
+    <string name="sub_libass_render_mode">ASS megjelenítési mód</string>
+    <string name="sub_libass_render_mode_sub">Hogyan kerülnek az ASS/SSA feliratok a videóra</string>
+    <string name="sub_libass_render_mode_tunneled_sub">Az alagutazott lejátszás megkerüli a videoeffekt-láncot. Ilyenkor automatikusan az Átfedés módot használja.</string>
+    <string name="sub_libass_render_mode_video_effect">Videoeffekt</string>
+    <string name="sub_libass_render_mode_video_effect_sub">A feliratokat közvetlenül minden videóképkockára rajzolja. Képkockapontos időzítés minden hardveren. A HDR-tartalom tónusleképezéssel SDR-re alakul.</string>
+    <string name="sub_libass_render_mode_overlay">Átfedés</string>
+    <string name="sub_libass_render_mode_overlay_sub">A feliratokat külön felületi rétegen jeleníti meg. Megőrzi a HDR-kimenetet. A feliratok időzítése egyes eszközökön nem mindig teljesen pontos.</string>
+    <string name="settings_stream_badges_in_player_description">Jelvények megjelenítése a lejátszott videóhoz és hanghoz a lejátszó címe alatt. Az Arc saját jelvényeit használja, vagy a jelvénycsomagodat, ha egyszerű szövegre illeszkedik, például 2160p vagy Atmos.</string>
+    <string name="cd_enable_scraper">%1$s engedélyezése</string>
+    <string name="cd_enable_addon">%1$s engedélyezése</string>
+    <string name="cd_color_swatch">Szín %1$s</string>
+    <string name="cd_emoji_option">Hangulatjel %1$s</string>
+    <string name="cd_trailer_controls">Előzetes vezérlői</string>
+    <string name="cd_seek_bar">Időcsúszka</string>
+    <string name="assessment_value_on_auto">Be · Automatikus, legfeljebb ≈%1$s</string>
+    <string name="assessment_value_connections_auto">Automatikus (az Automatikus gyorsítást követi)</string>
+    <string name="assessment_grounds_connections_auto">Az Automatikus gyorsítás be van kapcsolva, és magától ad hozzá kapcsolatokat, ha egy filmnek szüksége van rá; egy rögzített szám kikapcsolná. Mért: egy kapcsolat %1$s, %3$d × %4$d MB elérte a(z) %2$s értéket.</string>
+    <string name="assessment_grounds_connections_auto_one">Az Automatikus gyorsítás be van kapcsolva. Egy kapcsolat %1$s sebességet mért, ez már legalább a cím bitrátájának 2×-ese, így ritkán kell majd többet hozzáadnia.</string>
+    <string name="assessment_grounds_connections_auto_untested">Az Automatikus gyorsítás be van kapcsolva, és magától ad hozzá kapcsolatokat, ha egy filmnek szüksége van rá. Nem volt tesztelt stream, így nincs megjeleníthető sebesség.</string>
+    <string name="assessment_grounds_vod_auto">Az Automatikus a szabad helyből méretez (a szabad hely 20%%-a a korlátokon belül, 1 GB tartalékkal), így a gyorsítótár ezen az eszközön legfeljebb ≈%1$s méretűre nőhet. Amíg a gyorsítótár ki van kapcsolva, semmi sem kerül mentésre.</string>
+    <string name="assessment_suggested">Javasolt: %1$s</string>
+    <string name="playback_dim_hdr_overlays">Vezérlők halványítása HDR-ben</string>
+    <string name="playback_dim_hdr_overlays_sub">Lágyabb lejátszóvezérlők HDR, HLG és Dolby Vision lejátszás közben. A videó fényereje nem változik. A HDR-feliratok a feliratbeállítások HDR-stílusát követik.</string>
+    <string name="seek_thumbnails_hardware_title">Hardveres dekóder a miniatűrökhöz</string>
+    <string name="seek_thumbnails_hardware_subtitle">Gyorsabb miniatűrök az eszközöd hardveres dekóderével. Ha a miniatűrök hibásnak tűnnek, vagy az eszköz nehezen bírja, kapcsold ki, és a szokásos módon készülnek.</string>
+    <string name="tvdb_metadata_credit">A metaadatokat a(z) %1$s biztosítja</string>
 </resources>

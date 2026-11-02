@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.tvprovider.media.tv.TvContractCompat
 import androidx.tvprovider.media.tv.WatchNextProgram
 import com.nuvio.tv.MainActivity
+import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.WatchProgress
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -22,7 +23,7 @@ class ProgramBuilder @Inject constructor(
         else
             "wn_${progress.contentId}"
 
-    fun buildWatchNextProgram(progress: WatchProgress): WatchNextProgram {
+    fun buildWatchNextProgram(progress: WatchProgress, description: String? = null): WatchNextProgram {
         val isMovie = progress.contentType == "movie"
         val programType = if (isMovie) {
             TvContractCompat.WatchNextPrograms.TYPE_MOVIE
@@ -37,6 +38,8 @@ class ProgramBuilder @Inject constructor(
             .setLastEngagementTimeUtcMillis(progress.lastWatched)
             .setInternalProviderId(watchNextId(progress))
             .setIntentUri(buildPlayUri(progress))
+            .setDescription(description?.takeIf { it.isNotBlank() })
+            .setLogoUri(progress.logo?.takeIf { it.isNotBlank() }?.let(Uri::parse))
 
         builder.setPosterArtAspectRatio(TvContractCompat.PreviewPrograms.ASPECT_RATIO_16_9)
 
@@ -252,4 +255,15 @@ internal fun watchNextIdMatchesContentId(providerId: String?, contentId: String)
         episodeSeparator < providerId.lastIndex &&
         (baseId.length + 2 until episodeSeparator).all { providerId[it].isDigit() } &&
         (episodeSeparator + 1..providerId.lastIndex).all { providerId[it].isDigit() }
+}
+
+internal fun watchNextDescription(progress: WatchProgress, meta: Meta?, knownDescription: String? = null): String? {
+    knownDescription?.takeIf { it.isNotBlank() }?.let { return it.trim() }
+    if (progress.season != null && progress.episode != null) {
+        val videos = meta?.videos.orEmpty()
+        val video = videos.firstOrNull { it.id == progress.videoId }
+            ?: videos.firstOrNull { it.season == progress.season && it.episode == progress.episode }
+        video?.overview?.takeIf { it.isNotBlank() }?.let { return it.trim() }
+    }
+    return meta?.description?.takeIf { it.isNotBlank() }?.trim()
 }

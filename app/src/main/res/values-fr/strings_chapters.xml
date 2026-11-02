@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="player_chapters">Chapitres</string>
+    <string name="player_chapter_number">Chapitre %1$d</string>
+    <string name="player_chapter_named">Chapitre %1$d : %2$s</string>
+    <string name="player_chapter_now_playing">En cours de lecture</string>
+    <string name="playback_chapters">Chapitres dans le lecteur</string>
+    <string name="playback_chapters_sub">Pour les films avec chapitres : un bouton Chapitres, des repères sur la barre de lecture et le nom du chapitre</string>
+</resources>

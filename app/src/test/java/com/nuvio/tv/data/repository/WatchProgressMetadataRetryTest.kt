@@ -54,6 +54,8 @@ class WatchProgressMetadataRetryTest {
 
         val profileManager = mockk<ProfileManager> {
             every { activeProfileId } returns activeProfile
+            every { profileSelectionRevision } returns MutableStateFlow(0L)
+            every { profileHistoryGenerationChanges } returns MutableStateFlow(0L)
         }
         val progressPreferences = mockk<WatchProgressPreferences>(relaxed = true) {
             every { observeAllProgress(1) } returns profileProgress
@@ -135,6 +137,8 @@ class WatchProgressMetadataRetryTest {
 
         val profileManager = mockk<ProfileManager> {
             every { activeProfileId } returns activeProfile
+            every { profileSelectionRevision } returns MutableStateFlow(0L)
+            every { profileHistoryGenerationChanges } returns MutableStateFlow(0L)
         }
         val progressPreferences = mockk<WatchProgressPreferences>(relaxed = true) {
             every { observeAllProgress(1) } returns profileProgress

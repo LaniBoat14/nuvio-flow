@@ -42,7 +42,7 @@ fun AmbientModeHost(
             return@LaunchedEffect
         }
         controller.lastInteractionAt.collectLatest { interactedAt ->
-            delay(interactedAt + timeoutMs - SystemClock.uptimeMillis())
+            delay(interactedAt + timeoutMs - SystemClock.elapsedRealtime())
             controller.show()
         }
     }

@@ -3,6 +3,7 @@
 package com.nuvio.tv.ui.screens.player
 
 import android.net.Uri
+import androidx.media3.common.ByteBufferDataReader
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.ByteArrayDataSource
 import androidx.media3.datasource.DataSource
@@ -13,6 +14,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import java.io.IOException
+import java.nio.ByteBuffer
 
 /** An addon subtitle's original URL and own headers. */
 internal data class SubtitleRoute(val url: String, val headers: Map<String, String>?)
@@ -78,7 +80,7 @@ private class SubtitleRoutingDataSource(
     private val media: DataSource.Factory,
     private val routes: Map<String, SubtitleRoute>,
     private val fetchSubtitle: (SubtitleRoute, DataSpec) -> ByteArray
-) : DataSource {
+) : DataSource, ByteBufferDataReader {
     private val transferListeners = mutableListOf<TransferListener>()
     private var delegate: DataSource? = null
 
@@ -101,6 +103,12 @@ private class SubtitleRoutingDataSource(
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
         checkNotNull(delegate).read(buffer, offset, length)
+
+    override fun supportsByteBufferRead(): Boolean =
+        delegate.let { it is ByteBufferDataReader && it.supportsByteBufferRead() }
+
+    override fun read(buffer: ByteBuffer, length: Int): Int =
+        (checkNotNull(delegate) as ByteBufferDataReader).read(buffer, length)
 
     override fun getUri(): Uri? = delegate?.uri
 

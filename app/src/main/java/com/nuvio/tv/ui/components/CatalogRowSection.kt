@@ -1,10 +1,11 @@
 package com.nuvio.tv.ui.components
 
-import androidx.compose.ui.semantics.clearAndSetSemantics
-
+import com.nuvio.tv.data.mediaserver.ServerCatalog
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -80,6 +81,8 @@ import com.nuvio.tv.ui.util.localizedContentType
 import com.nuvio.tv.ui.util.contentTextDirection
 import androidx.compose.ui.platform.LocalContext
 
+private const val UPDATING_ROW_ALPHA = 0.4f
+
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun CatalogRowSection(
@@ -88,6 +91,8 @@ fun CatalogRowSection(
     onSeeAll: () -> Unit = {},
     showSeeAll: Boolean = catalogRow.hasMore || catalogRow.items.size >= 15,
     seeAllLabel: String? = null,
+    /** Shown under the title of a row whose content is out of date; the rest of the row is dimmed. */
+    updatingLabel: String? = null,
     posterCardStyle: PosterCardStyle = PosterCardDefaults.Style,
     showPosterLabels: Boolean = true,
     showImdbRatings: Boolean = true,
@@ -272,10 +277,14 @@ fun CatalogRowSection(
         val raw = catalogRow.rawType.takeIf { it.isNotBlank() } ?: catalogRow.apiType
         localizedContentType(catalogContext, raw)
     }
-    val catalogTitle = remember(catalogRow.catalogName, typeLabel, showCatalogTypeSuffix) {
+    val catalogTitle = remember(catalogRow.catalogName, catalogRow.addonId, typeLabel, showCatalogTypeSuffix) {
         val formattedName = catalogRow.catalogName.replaceFirstChar { it.uppercase() }
         if (formattedName.isBlank()) ""
-        else if (showCatalogTypeSuffix && typeLabel.isNotEmpty()) "$formattedName - $typeLabel" else formattedName
+        else if (showCatalogTypeSuffix && typeLabel.isNotEmpty() && !ServerCatalog.isServerAddonId(catalogRow.addonId)) {
+            "$formattedName - $typeLabel"
+        } else {
+            formattedName
+        }
     }
 
     Column(modifier = modifier.fillMaxWidth().then(
@@ -294,18 +303,38 @@ fun CatalogRowSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)) {
-                Text(
-                    text = catalogTitle.ifBlank { " " },
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        textDirection = catalogTitle.contentTextDirection()
-                    ),
-                    color = if (catalogTitle.isBlank()) Color.Transparent else NuvioTheme.colors.TextPrimary,
-                    maxLines = 3,
-                    overflow = TextOverflow.Clip
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
+                ) {
+                    Text(
+                        modifier = Modifier.weight(1f, fill = false)
+                            .then(if (updatingLabel != null) Modifier.alpha(UPDATING_ROW_ALPHA) else Modifier),
+                        text = catalogTitle.ifBlank { " " },
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            textDirection = catalogTitle.contentTextDirection()
+                        ),
+                        color = if (catalogTitle.isBlank()) Color.Transparent else NuvioTheme.colors.TextPrimary,
+                        maxLines = 3,
+                        overflow = TextOverflow.Clip
+                    )
+                    if (updatingLabel != null) {
+                        Text(
+                            text = updatingLabel,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = NuvioTheme.colors.TextPrimary,
+                            maxLines = 1,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(NuvioTheme.radii.sm))
+                                .background(NuvioTheme.colors.Secondary.copy(alpha = 0.3f))
+                                .padding(horizontal = NuvioTheme.spacing.sm, vertical = NuvioTheme.spacing.xxs)
+                        )
+                    }
+                }
                 if (showAddonName) {
                     val addonText = if (catalogTitle.isBlank()) " " else stringResource(R.string.catalog_from_addon, catalogRow.addonName)
                     Text(
+                        modifier = if (updatingLabel != null) Modifier.alpha(UPDATING_ROW_ALPHA) else Modifier,
                         text = addonText,
                         style = MaterialTheme.typography.labelMedium.copy(
                             textDirection = addonText.contentTextDirection()
@@ -361,6 +390,7 @@ fun CatalogRowSection(
             state = listState,
             modifier = Modifier
                 .fillMaxWidth()
+                .then(if (updatingLabel != null) Modifier.alpha(UPDATING_ROW_ALPHA) else Modifier)
                 .onFocusChanged { rowHasFocusRef.value = it.hasFocus }
                 .focusRequester(resolvedRowFocusRequester)
                 .focusRestorer {
@@ -468,8 +498,8 @@ fun CatalogRowSection(
                         modifier = Modifier
                             .width(loadingCardWidth)
                             .height(loadingCardHeight)
-                              .clearAndSetSemantics {}
-                              .focusProperties { canFocus = false },
+                            .clearAndSetSemantics {}
+                            .focusProperties { canFocus = false },
                         shape = CardDefaults.shape(shape = seeAllCardShape),
                         colors = CardDefaults.colors(
                             containerColor = NuvioTheme.colors.BackgroundCard,

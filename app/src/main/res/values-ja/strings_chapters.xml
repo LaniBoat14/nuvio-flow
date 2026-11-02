@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="player_chapters">チャプター</string>
+    <string name="player_chapter_number">チャプター %1$d</string>
+    <string name="player_chapter_named">チャプター %1$d: %2$s</string>
+    <string name="player_chapter_now_playing">再生中</string>
+    <string name="playback_chapters">プレーヤーのチャプター</string>
+    <string name="playback_chapters_sub">チャプターのある映画で、チャプターボタン、タイムライン上の目印、チャプター名を表示します</string>
+</resources>

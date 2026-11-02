@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="support_nuvio_button">Apoie a equipe do Nuvio</string>
+    <string name="support_nuvio_title">Apoie a equipe do Nuvio</string>
+    <string name="support_nuvio_subtitle">O Nuvio Arc é baseado no app oficial do Nuvio. A assinatura vai para a equipe do Nuvio, ajuda a pagar servidores e desenvolvimento, e mantém o app principal gratuito para todos.</string>
+    <string name="support_nuvio_perk_themes">Temas em degradê</string>
+    <string name="support_nuvio_perk_themes_desc">Mais temas em degradê, ou crie o seu.</string>
+    <string name="support_nuvio_perk_backgrounds">Fundos de perfil</string>
+    <string name="support_nuvio_perk_backgrounds_desc">Da coleção de Apoiador, ou uma imagem sua.</string>
+    <string name="support_nuvio_perk_avatars">Avatares de membro</string>
+    <string name="support_nuvio_perk_avatars_desc">Mais conjuntos de avatares para seus perfis.</string>
+    <string name="support_nuvio_perk_badge">Selo de Apoiador</string>
+    <string name="support_nuvio_perk_badge_desc">Um pequeno selo na sua conta e nos seus perfis.</string>
+    <string name="support_nuvio_perk_discord">Cargo no Discord</string>
+    <string name="support_nuvio_perk_discord_desc">Conecte o Discord no site para receber o cargo.</string>
+    <string name="support_nuvio_perk_votes">Votos nas decisões do app</string>
+    <string name="support_nuvio_perk_votes_desc">Só para Apoiador Plus.</string>
+    <string name="support_nuvio_perk_votes_chip">Votos (Apoiador Plus)</string>
+    <string name="support_nuvio_plus_tag">Plus</string>
+    <string name="support_nuvio_on_tag">Ativo</string>
+    <string name="support_nuvio_already_title">Já é Apoiador?</string>
+    <string name="support_nuvio_already_body">Entre nesta TV com a mesma conta Nuvio. Seus benefícios são ativados automaticamente.</string>
+    <string name="support_nuvio_scan_title">Escaneie para abrir nuvio.tv/support</string>
+    <string name="support_nuvio_scan_body">Abre no seu celular. Nenhum pagamento é feito nesta TV.</string>
+    <string name="support_nuvio_patreon_manage">Escaneie para alterar ou cancelar no Patreon</string>
+    <string name="support_nuvio_pass_until">Seu passe vale até %1$s.</string>
+    <string name="support_nuvio_sign_in">Entrar nesta TV</string>
+    <string name="support_nuvio_close">Fechar</string>
+    <string name="support_nuvio_checking">Verificando sua assinatura…</string>
+    <string name="support_nuvio_thanks_title">Obrigado por apoiar a equipe do Nuvio</string>
+    <string name="support_nuvio_thanks_subtitle">Seus benefícios acompanham sua conta Nuvio, então funcionam aqui no Nuvio Arc e no app oficial.</string>
+    <string name="support_nuvio_gentle_eyebrow">Apoiador Nuvio</string>
+    <string name="support_nuvio_gentle_title">Tudo no Nuvio Arc funciona sem assinatura</string>
+    <string name="support_nuvio_gentle_body">Esta conta não tem a Assinatura de Apoio do Nuvio, e tudo bem. Se um dia quiser ajudar a equipe do Nuvio, a assinatura traz alguns extras:</string>
+    <string name="support_nuvio_gentle_unavailable">Não foi possível verificar sua assinatura agora. Tudo no Nuvio Arc funciona sem ela. Se quiser ajudar a equipe do Nuvio, a assinatura traz alguns extras:</string>
+    <string name="support_nuvio_gentle_scan">Veja as opções no seu celular</string>
+    <string name="support_nuvio_paid_check_again">Acabou de pagar? Verificar de novo</string>
+    <string name="support_nuvio_no_thanks">Não, obrigado</string>
+    <string name="support_nuvio_no_thanks_hint">Não, obrigado oculta o botão de apoio e os temas bloqueados de Apoiador nesta TV. Para mostrá-los de novo, vá em Ajustes › Sobre.</string>
+    <string name="support_nuvio_thanks_note_title">Benefícios de %1$s ativados</string>
+    <string name="support_nuvio_thanks_note_body">Obrigado por apoiar a equipe do Nuvio.</string>
+    <string name="support_nuvio_theme_locked">Apoiador</string>
+    <string name="support_nuvio_suggestions_setting">Sugestões para apoiar a equipe do Nuvio</string>
+    <string name="support_nuvio_suggestions_setting_subtitle">Mostra o botão Apoie a equipe do Nuvio e os temas bloqueados de Apoiador.</string>
+    <string name="cd_support_nuvio_qr">QR Code para nuvio.tv/support</string>
+</resources>

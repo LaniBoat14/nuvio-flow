@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Nuvio-test additions -->
+    <string name="support_nuvio_button">Dukung tim Nuvio</string>
+    <string name="support_nuvio_title">Dukung tim Nuvio</string>
+    <string name="support_nuvio_subtitle">Nuvio Arc dibangun di atas aplikasi resmi Nuvio. Keanggotaan masuk ke tim Nuvio, membantu biaya server dan pengembangan, serta menjaga aplikasi inti tetap gratis untuk semua.</string>
+    <string name="support_nuvio_perk_themes">Tema gradien</string>
+    <string name="support_nuvio_perk_themes_desc">Tema gradien tambahan, atau buat sendiri.</string>
+    <string name="support_nuvio_perk_backgrounds">Latar profil</string>
+    <string name="support_nuvio_perk_backgrounds_desc">Dari koleksi pendukung, atau gambar Anda sendiri.</string>
+    <string name="support_nuvio_perk_avatars">Avatar anggota</string>
+    <string name="support_nuvio_perk_avatars_desc">Set avatar tambahan untuk profil Anda.</string>
+    <string name="support_nuvio_perk_badge">Lencana Pendukung</string>
+    <string name="support_nuvio_perk_badge_desc">Lencana kecil di akun dan profil Anda.</string>
+    <string name="support_nuvio_perk_discord">Peran Discord</string>
+    <string name="support_nuvio_perk_discord_desc">Hubungkan Discord di situs web untuk mendapat peran.</string>
+    <string name="support_nuvio_perk_votes">Hak suara atas keputusan aplikasi</string>
+    <string name="support_nuvio_perk_votes_desc">Khusus Supporter Plus.</string>
+    <string name="support_nuvio_perk_votes_chip">Hak suara (Supporter Plus)</string>
+    <string name="support_nuvio_plus_tag">Plus</string>
+    <string name="support_nuvio_on_tag">Aktif</string>
+    <string name="support_nuvio_already_title">Sudah menjadi pendukung?</string>
+    <string name="support_nuvio_already_body">Masuk di TV ini dengan akun Nuvio yang sama. Keuntungan Anda aktif secara otomatis.</string>
+    <string name="support_nuvio_scan_title">Pindai untuk membuka nuvio.tv/support</string>
+    <string name="support_nuvio_scan_body">Terbuka di ponsel Anda. Tidak ada pembayaran di TV ini.</string>
+    <string name="support_nuvio_patreon_manage">Pindai untuk mengubah atau membatalkan di Patreon</string>
+    <string name="support_nuvio_pass_until">Akses Anda berlaku hingga %1$s.</string>
+    <string name="support_nuvio_sign_in">Masuk di TV ini</string>
+    <string name="support_nuvio_close">Tutup</string>
+    <string name="support_nuvio_checking">Memeriksa keanggotaan Anda…</string>
+    <string name="support_nuvio_thanks_title">Terima kasih telah mendukung tim Nuvio</string>
+    <string name="support_nuvio_thanks_subtitle">Keuntungan Anda mengikuti akun Nuvio Anda, jadi berfungsi di sini di Nuvio Arc dan di aplikasi resmi.</string>
+    <string name="support_nuvio_gentle_eyebrow">Pendukung Nuvio</string>
+    <string name="support_nuvio_gentle_title">Semua di Nuvio Arc berfungsi tanpa keanggotaan</string>
+    <string name="support_nuvio_gentle_body">Akun ini tidak memiliki keanggotaan Pendukung Nuvio, dan itu sama sekali tidak masalah. Jika suatu saat Anda ingin membantu tim Nuvio, keanggotaan memberi beberapa tambahan:</string>
+    <string name="support_nuvio_gentle_unavailable">Keanggotaan Anda tidak dapat diperiksa saat ini. Semua di Nuvio Arc berfungsi tanpa keanggotaan. Jika Anda ingin membantu tim Nuvio, keanggotaan memberi beberapa tambahan:</string>
+    <string name="support_nuvio_gentle_scan">Lihat pilihannya di ponsel Anda</string>
+    <string name="support_nuvio_paid_check_again">Baru saja membayar? Periksa lagi</string>
+    <string name="support_nuvio_no_thanks">Tidak, terima kasih</string>
+    <string name="support_nuvio_no_thanks_hint">Pilihan “Tidak, terima kasih” menyembunyikan tombol Dukung dan tema pendukung yang terkunci di TV ini. Tampilkan lagi di Pengaturan › Tentang.</string>
+    <string name="support_nuvio_thanks_note_title">Keuntungan %1$s aktif</string>
+    <string name="support_nuvio_thanks_note_body">Terima kasih telah mendukung tim Nuvio.</string>
+    <string name="support_nuvio_theme_locked">Pendukung</string>
+    <string name="support_nuvio_suggestions_setting">Saran untuk mendukung tim Nuvio</string>
+    <string name="support_nuvio_suggestions_setting_subtitle">Tampilkan tombol Dukung tim Nuvio dan tema pendukung yang terkunci.</string>
+    <string name="cd_support_nuvio_qr">Kode QR untuk nuvio.tv/support</string>
+</resources>

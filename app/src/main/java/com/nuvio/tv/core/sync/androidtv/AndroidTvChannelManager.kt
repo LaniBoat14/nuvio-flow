@@ -5,15 +5,19 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.BitmapFactory
+import android.graphics.Bitmap
 import android.net.Uri
 import android.util.Log
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
 import androidx.tvprovider.media.tv.Channel
 import androidx.tvprovider.media.tv.PreviewProgram
 import androidx.tvprovider.media.tv.TvContractCompat
 import com.nuvio.tv.MainActivity
 import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.WatchProgress
+import com.nuvio.tv.launcher.AppIconManager
+import dagger.Lazy
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -24,11 +28,13 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
 
 private const val TAG = "TvChannelSync"
+private const val CHANNEL_LOGO_PX = 256
 
 @Singleton
 class AndroidTvChannelManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val prefs: TvChannelPreferences,
+    private val appIconManager: Lazy<AppIconManager>,
 ) {
     private val syncedProgramFingerprints = ConcurrentHashMap<String, ChannelProgramFingerprint>()
 
@@ -38,17 +44,14 @@ class AndroidTvChannelManager @Inject constructor(
         val duration: Int?,
         val imageUri: String?,
         val logoUri: String?,
+        val description: String?,
         val sortOrder: Int,
         val season: Int?,
         val episode: Int?,
         val lastEngagementTime: Long
     )
 
-    fun isSupported(): Boolean = try {
-        context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
-    } catch (_: Exception) {
-        false
-    }
+    fun isSupported(): Boolean = isSupported(context)
 
     /**
      * Returns the channel id, creating or reusing the channel as needed.
@@ -64,7 +67,12 @@ class AndroidTvChannelManager @Inject constructor(
                     arrayOf(TvContractCompat.Channels._ID),
                     null, null, null
                 )
-                cursor?.use { if (it.moveToFirst()) return@runCatching stored }
+                cursor?.use {
+                    if (it.moveToFirst()) {
+                        refreshLogoIfIconChanged(stored)
+                        return@runCatching stored
+                    }
+                }
                 Log.d(TAG, "Stored channel $stored gone; recreating")
                 prefs.clearChannelId()
             }
@@ -102,7 +110,12 @@ class AndroidTvChannelManager @Inject constructor(
             )
             val channel = Channel.Builder()
                 .setType(TvContractCompat.Channels.TYPE_PREVIEW)
-                .setDisplayName(context.getString(R.string.tv_channel_continue_watching))
+                .setDisplayName(
+                    launcherChannelName(
+                        context.getString(R.string.app_name),
+                        context.getString(R.string.tv_channel_continue_watching)
+                    )
+                )
                 .setAppLinkIntentUri(appLinkUri)
                 .setInternalProviderId(context.packageName)
                 .build()
@@ -115,7 +128,8 @@ class AndroidTvChannelManager @Inject constructor(
             val id = ContentUris.parseId(inserted)
             prefs.setChannelId(id)
             writeChannelLogo(id)
-            TvContractCompat.requestChannelBrowsable(context, id)
+            runCatching { TvContractCompat.requestChannelBrowsable(context, id) }
+                .onFailure { Log.w(TAG, "requestChannelBrowsable failed", it) }
             Log.d(TAG, "Created channel id=$id")
             id
         }.onFailure { Log.w(TAG, "ensureChannel failed", it) }.getOrNull()
@@ -125,9 +139,14 @@ class AndroidTvChannelManager @Inject constructor(
      * Syncs [items] to the Continue Watching channel: upserts present items and
      * removes rows that are no longer in the list (completed or dismissed).
      */
-    suspend fun reconcile(items: List<WatchProgress>) = withContext(Dispatchers.IO) {
+    suspend fun reconcile(
+        items: List<WatchProgress>,
+        descriptions: Map<String, String> = emptyMap()
+    ) = withContext(Dispatchers.IO) {
         if (!isSupported()) return@withContext
         runCatching {
+            // Nothing to show yet: no channel is created and no browsable prompt raised.
+            if (items.isEmpty() && prefs.getChannelId() == null) return@runCatching
             val channelId = ensureChannel() ?: return@runCatching
             val existing = queryExistingPrograms(channelId)
             val desiredKeys = items.map { progressKey(it) }.toSet()
@@ -165,6 +184,7 @@ class AndroidTvChannelManager @Inject constructor(
                     duration = progress.duration.toInt(),
                     imageUri = imageUri,
                     logoUri = progress.logo,
+                    description = descriptions[progress.videoId],
                     sortOrder = index,
                     season = progress.season,
                     episode = progress.episode,
@@ -176,6 +196,7 @@ class AndroidTvChannelManager @Inject constructor(
                     oldFingerprint.title == newFingerprint.title &&
                     oldFingerprint.imageUri == newFingerprint.imageUri &&
                     oldFingerprint.logoUri == newFingerprint.logoUri &&
+                    oldFingerprint.description == newFingerprint.description &&
                     oldFingerprint.sortOrder == newFingerprint.sortOrder &&
                     oldFingerprint.season == newFingerprint.season &&
                     oldFingerprint.episode == newFingerprint.episode &&
@@ -186,10 +207,10 @@ class AndroidTvChannelManager @Inject constructor(
                     return@forEachIndexed
                 }
 
-                val values = buildProgramValues(progress, channelId, index, key)
+                val values = buildProgramValues(progress, channelId, index, key, newFingerprint.description)
                 if (!rowIds.isNullOrEmpty()) {
                     val primaryRowId = rowIds.first()
-                    // UPDATE the existing program row in place — keeping its row ID stable.
+                    // UPDATE the existing program row in place, keeping its row ID stable.
                     context.contentResolver.update(
                         TvContractCompat.buildPreviewProgramUri(primaryRowId), values, null, null
                     )
@@ -263,7 +284,8 @@ class AndroidTvChannelManager @Inject constructor(
         progress: WatchProgress,
         channelId: Long,
         sortOrder: Int,
-        key: String
+        key: String,
+        description: String?
     ): ContentValues {
         val intentUri = Uri.parse(
             Intent(context, MainActivity::class.java).apply {
@@ -295,6 +317,7 @@ class AndroidTvChannelManager @Inject constructor(
             .setIntentUri(intentUri)
             .setInternalProviderId(key)
             .setWeight(Int.MAX_VALUE - sortOrder)
+            .setDescription(description)
 
         // Backdrop/poster fills the tile via posterArt; logo goes to the dedicated logo column
         // so the launcher renders it as a small badge overlay on focus.
@@ -352,14 +375,24 @@ class AndroidTvChannelManager @Inject constructor(
         }
     }
 
-    private fun writeChannelLogo(channelId: Long) {
+    /** The channel logo is the launcher icon the user picked; adaptive icons are drawn, not decoded. */
+    private suspend fun writeChannelLogo(channelId: Long) {
         runCatching {
-            val bitmap = BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher)
+            val icons = appIconManager.get()
+            val icon = icons.selectedIcon()
+                ?: ContextCompat.getDrawable(context, R.mipmap.ic_launcher)
                 ?: return
+            val bitmap = icon.toBitmap(CHANNEL_LOGO_PX, CHANNEL_LOGO_PX)
             context.contentResolver.openOutputStream(
                 TvContractCompat.buildChannelLogoUri(channelId)
-            )?.use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            )?.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            prefs.setLogoKey(icons.selectedEntry())
         }.onFailure { Log.w(TAG, "writeChannelLogo failed", it) }
+    }
+
+    private suspend fun refreshLogoIfIconChanged(channelId: Long) {
+        val current = runCatching { appIconManager.get().selectedEntry() }.getOrNull() ?: return
+        if (prefs.getLogoKey() != current) writeChannelLogo(channelId)
     }
 
     /**
@@ -370,4 +403,16 @@ class AndroidTvChannelManager @Inject constructor(
             "${progress.contentId}_s${progress.season}e${progress.episode}"
         else
             progress.contentId
+
+    companion object {
+        fun isSupported(context: Context): Boolean = try {
+            val packageManager = context.packageManager
+            launcherChannelsSupported(
+                hasLeanback = packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK),
+                isFireTv = packageManager.hasSystemFeature("amazon.hardware.fire_tv")
+            )
+        } catch (_: Exception) {
+            false
+        }
+    }
 }

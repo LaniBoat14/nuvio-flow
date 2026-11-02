@@ -25,27 +25,30 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.tv.material3.Border
+import androidx.tv.material3.Card
+import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Surface
-import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import com.nuvio.tv.R
 import com.nuvio.tv.core.player.DolbyVisionCodecFallback
 import com.nuvio.tv.core.player.LastPlaybackDiagnostics
+import com.nuvio.tv.ui.screens.player.PlaybackStatsDv
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
- * Emits the diagnostics content as 3 dense read-only sections.
+ * Emits the diagnostics card content as 3 dense focusable Cards.
  *
- * Goal: minimize scrolling by packing related fields tightly per section.
- * Each section groups 6-10 rows of related info and is not a D-pad stop.
+ * Goal: minimize scrolling by packing related fields tightly per Card.
+ * Each Card is one D-pad stop containing 6-10 rows of related info.
  */
 internal fun LazyListScope.diagnosticsCardItems(
     diagnostics: LastPlaybackDiagnostics,
-    dvCurrentlyEnabled: Boolean = true
+    dvCurrentlyEnabled: Boolean = true,
+    tunnelStallClasses: Set<String> = emptySet()
 ) {
     if (diagnostics.timestampMs == 0L || diagnostics.host.isBlank()) {
         item(key = "diagnostics_empty_intro") {
@@ -53,7 +56,7 @@ internal fun LazyListScope.diagnosticsCardItems(
                 Text(
                     text = stringResource(R.string.diag_last_playback_title),
                     style = MaterialTheme.typography.labelMedium,
-                    color = NuvioTheme.colors.Primary
+                    color = Color.White
                 )
                 Spacer(modifier = Modifier.height(NuvioTheme.spacing.xs))
                 Text(
@@ -90,6 +93,14 @@ internal fun LazyListScope.diagnosticsCardItems(
                 stringResource(R.string.diag_section_source_hardware_sub)
             )
             DiagnosticRow(stringResource(R.string.diag_label_host), diagnostics.host)
+            // The host that actually served the bytes after the
+            // redirect. Omitted when nothing was captured (direct/Emby/NAS
+            // sources never redirect) or when a cosmetic redirect resolved back
+            // to the same host -- matching the HUD's suppression convention.
+            diagnostics.resolvedServingHost
+                ?.takeIf { !it.equals(diagnostics.host, ignoreCase = true) }
+                ?.let { DiagnosticRow(stringResource(R.string.diag_label_serving_host), it) }
+            diagnostics.filename?.let { DiagnosticRow(stringResource(R.string.diag_label_file), it) }
             DiagnosticRow(stringResource(R.string.diag_label_when), formatTimestamp(diagnostics.timestampMs))
             DiagnosticRow(stringResource(R.string.diag_label_device), deviceName(unknownLabel))
             DiagnosticRow(
@@ -107,13 +118,50 @@ internal fun LazyListScope.diagnosticsCardItems(
                     }
                 )
             )
+            val nativeFelDecoded = diagnostics.dv7ModeEffective == "NATIVE_FEL" &&
+                PlaybackStatsDv.isNativeFelDecoder(diagnostics.dv81DecoderName)
             DiagnosticRow(
                 stringResource(R.string.diag_label_dv7_decoder),
                 dv(
-                    if (diagnostics.codecDv7Supported) stringResource(R.string.diag_value_available)
-                    else stringResource(R.string.diag_value_not_available)
+                    when {
+                        nativeFelDecoded -> stringResource(R.string.diag_value_dv7_native_route)
+                        diagnostics.codecDv7Supported -> stringResource(R.string.diag_value_available)
+                        // Not "not available": devices like the S905X4 decode P7
+                        // natively without advertising the profile.
+                        else -> stringResource(R.string.diag_value_not_advertised)
+                    }
                 )
             )
+            // Enhancement-layer type of the last DV7 stream, and the
+            // per-playback RPU drop counter (shown only when non-zero).
+            diagnostics.dvElType?.let { elType ->
+                val layers = PlaybackStatsDv.dv7LayersUsed(
+                    modeEffective = diagnostics.dv7ModeEffective,
+                    decoderName = diagnostics.dv81DecoderName,
+                    converted = diagnostics.dv7DoviSuccess > 0 || diagnostics.dv7DoviSignalRewrites > 0
+                )
+                val value = when (layers) {
+                    PlaybackStatsDv.Dv7Layers.RPU_BL_EL -> stringResource(R.string.diag_value_el_all_layers_fmt, elType)
+                    PlaybackStatsDv.Dv7Layers.BL_RPU -> stringResource(R.string.diag_value_el_converted_fmt, elType)
+                    PlaybackStatsDv.Dv7Layers.BL_ONLY -> stringResource(R.string.diag_value_el_base_only_fmt, elType)
+                    null -> elType
+                }
+                DiagnosticRow(stringResource(R.string.diag_label_dv_el_type), dv(value))
+            }
+            diagnostics.dvHdrMastering?.let { mastering ->
+                // Render the raw value, exempt from the dvEngaged dash. This
+                // row only ever has a value when an RPU was actually read this
+                // playback (stats reset per-playback, so never stale), and the
+                // strip-to-HDR10 case where dvEngaged is false is exactly where
+                // the source's mastering data is most useful to see.
+                DiagnosticRow(stringResource(R.string.diag_label_dv_hdr_mastering), mastering)
+            }
+            if (diagnostics.dv7RpuDrops > 0) {
+                DiagnosticRow(
+                    stringResource(R.string.diag_label_dv_rpu_drops),
+                    dv(diagnostics.dv7RpuDrops.toString())
+                )
+            }
             DiagnosticRow(
                 stringResource(R.string.diag_label_dv_decoder),
                 dv(
@@ -145,6 +193,31 @@ internal fun LazyListScope.diagnosticsCardItems(
                 DiagnosticRow(stringResource(R.string.diag_label_dv_mode_effective), dv(diagnostics.dv7ModeEffective))
             }
             DiagnosticRow(stringResource(R.string.diag_label_auto_decision), dv(diagnostics.dv7AutoDecision))
+            // Everything above is POLICY: the mode requested, and the decision the AUTO
+            // probe reached from the display's capabilities. None of it says what happened to
+            // this stream. CONVERT_TO_DV81 / DV81_LIBDOVI on a native Profile 8 source that the
+            // extractor never touches (shouldConvert() returns false for any profile but 7)
+            // would read as "conversion applied". This
+            // row is the outcome, derived the way the stats panel derives it: source profile
+            // first, then the live conversion counters.
+            run {
+                val sourceProfileNum = diagnostics.dvSourceProfile?.trim()?.toIntOrNull()
+                val applied: String? = when {
+                    sourceProfileNum != null && sourceProfileNum != 7 -> stringResource(
+                        R.string.diag_value_dv_no_conversion_fmt,
+                        sourceProfileNum.toString()
+                    )
+                    diagnostics.dv7ModeEffective == "DV81_LIBDOVI" &&
+                        (diagnostics.dv7DoviSuccess > 0 || diagnostics.dv7DoviSignalRewrites > 0) ->
+                        stringResource(R.string.diag_value_dv_converted)
+                    diagnostics.dv7ModeEffective == "DV81_LIBDOVI" ->
+                        stringResource(R.string.diag_value_dv_configured_not_observed)
+                    diagnostics.dv7ModeEffective == "HDR10_BASE_LAYER" ->
+                        stringResource(R.string.diag_value_dv_base_layer)
+                    else -> null
+                }
+                applied?.let { DiagnosticRow(stringResource(R.string.diag_label_dv_applied), it) }
+            }
             if (dvEngaged) {
                 diagnostics.dvSourceProfile?.let { DiagnosticRow(stringResource(R.string.diag_label_source_profile), it) }
                 if (diagnostics.dv7DoviCalls > 0) {
@@ -194,6 +267,24 @@ internal fun LazyListScope.diagnosticsCardItems(
         DiagnosticsSectionCard {
             SectionHeader(stringResource(R.string.diag_section_outcome))
             DiagnosticRow(stringResource(R.string.diag_label_hdr_format_intended), diagnostics.videoHdrType?.takeIf { it.isNotBlank() } ?: "-")
+            // Negotiated audio path (passthrough / decode).
+            DiagnosticRow(stringResource(R.string.diag_label_audio_path), diagnostics.audioPath?.takeIf { it.isNotBlank() } ?: "-")
+            // Append encodings the platform refused at AudioTrack open() this
+            // session (AudioTrackRejectionLog, populated by the 5001 recovery path).
+            // Ground truth alongside the policy "direct" claims and the "negotiated"
+            // list - on a TV that advertises DTS but will not open it, this is the
+            // line that names what actually failed.
+            DiagnosticRow(
+                stringResource(R.string.diag_label_audio_caps),
+                (diagnostics.audioCapabilities?.takeIf { it.isNotBlank() } ?: "-").let { base ->
+                    val rejected = com.nuvio.tv.ui.screens.player.AudioTrackRejectionLog
+                        .snapshot().map { it.encoding }.distinct()
+                    val withRejected = if (rejected.isEmpty()) base
+                    else "$base\nRejected: ${rejected.joinToString(" ")}"
+                    com.nuvio.tv.ui.screens.player.AudioCapabilityReport.tunnelStallLine(tunnelStallClasses)
+                        ?.let { "$withRejected\n$it" } ?: withRejected
+                }
+            )
             DiagnosticRow(
                 stringResource(R.string.diag_label_first_frame),
                 if (diagnostics.firstFrameMs >= 0) "${diagnostics.firstFrameMs} ms"
@@ -222,16 +313,21 @@ internal fun LazyListScope.diagnosticsCardItems(
 private fun DiagnosticsSectionCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
-    // Read-only: it carries no action, so it is a plain Surface rather than a clickable Card,
-    // which would be a dead focus stop announced as a button. The text stays in the tree, and
-    // the (unreachable) focus border drops away with the click.
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        colors = SurfaceDefaults.colors(
-            containerColor = NuvioTheme.colors.BackgroundCard,
-            contentColor = NuvioTheme.colors.TextPrimary
-        )
+    Card(
+        onClick = { /* read-only */ },
+        modifier = Modifier.fillMaxWidth().settingsSubmenuSurface(),
+        colors = CardDefaults.colors(
+            containerColor = settingsItemColor(Color.Black.copy(alpha = 0.85f)),
+            focusedContainerColor = Color.White.copy(alpha = 0.14f)
+        ),
+        border = CardDefaults.border(
+            focusedBorder = Border(
+                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs, alpha = 0.5f),
+                shape = RoundedCornerShape(10.dp)
+            )
+        ),
+        shape = CardDefaults.shape(shape = RoundedCornerShape(10.dp)),
+        scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
     ) {
         Column(
             modifier = Modifier
@@ -247,9 +343,9 @@ private fun DiagnosticsSectionCard(
 @Composable
 private fun SectionHeader(label: String, subtitle: String? = null) {
     Text(
-        text = label.uppercase(),
+        text = label,
         style = MaterialTheme.typography.labelSmall,
-        color = NuvioTheme.colors.Primary
+        color = Color.White
     )
     if (subtitle != null) {
         Text(

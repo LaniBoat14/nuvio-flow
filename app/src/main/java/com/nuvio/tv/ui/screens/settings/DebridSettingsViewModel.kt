@@ -16,6 +16,7 @@ import com.nuvio.tv.core.server.DebridFormatterConfigServer
 import com.nuvio.tv.core.server.DebridFormatterSettings
 import com.nuvio.tv.core.server.DeviceIpAddress
 import com.nuvio.tv.data.local.DebridSettingsDataStore
+import com.nuvio.tv.data.remote.dto.PremiumizeAccountInfoDto
 import com.nuvio.tv.data.remote.dto.PremiumizeDeviceTokenDto
 import com.nuvio.tv.data.remote.dto.TorboxDeviceTokenDto
 import com.nuvio.tv.data.remote.dto.TorboxDeviceTokenRequestDto
@@ -239,7 +240,7 @@ class DebridSettingsViewModel @Inject constructor(
                 DebridProviders.PREMIUMIZE_ID -> {
                     val response = premiumizeApi.accountInfo("Bearer $apiKey")
                     response.errorBody()?.close()
-                    response.isSuccessful && !response.body()?.status.equals("error", ignoreCase = true)
+                    premiumizeAccountAccepted(response)
                 }
                 else -> false
             }
@@ -379,6 +380,11 @@ class DebridSettingsViewModel @Inject constructor(
         stopFormatterServer()
         super.onCleared()
     }
+}
+
+internal fun premiumizeAccountAccepted(response: retrofit2.Response<PremiumizeAccountInfoDto>): Boolean {
+    val body = response.body() ?: return false
+    return response.isSuccessful && !body.status.equals("error", ignoreCase = true)
 }
 
 data class DebridSettingsUiState(

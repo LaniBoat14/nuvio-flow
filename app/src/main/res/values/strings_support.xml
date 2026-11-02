@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="support_nuvio_button">Support the Nuvio team</string>
+    <string name="support_nuvio_title">Support the Nuvio team</string>
+    <string name="support_nuvio_subtitle">Nuvio Arc is built on the official Nuvio app. A membership goes to the Nuvio team, helps pay for servers and development, and keeps the core app free for everyone.</string>
+    <string name="support_nuvio_perk_themes">Gradient themes</string>
+    <string name="support_nuvio_perk_themes_desc">Extra gradient themes, or build your own.</string>
+    <string name="support_nuvio_perk_backgrounds">Profile backgrounds</string>
+    <string name="support_nuvio_perk_backgrounds_desc">From the Supporter collection, or your own picture.</string>
+    <string name="support_nuvio_perk_avatars">Member avatars</string>
+    <string name="support_nuvio_perk_avatars_desc">Extra avatar sets for your profiles.</string>
+    <string name="support_nuvio_perk_badge">Supporter badge</string>
+    <string name="support_nuvio_perk_badge_desc">A small badge on your account and profiles.</string>
+    <string name="support_nuvio_perk_discord">Discord role</string>
+    <string name="support_nuvio_perk_discord_desc">Connect Discord on the website for the role.</string>
+    <string name="support_nuvio_perk_votes">Votes on app decisions</string>
+    <string name="support_nuvio_perk_votes_desc">Supporter Plus only.</string>
+    <string name="support_nuvio_perk_votes_chip">Votes (Supporter Plus)</string>
+    <string name="support_nuvio_plus_tag">Plus</string>
+    <string name="support_nuvio_on_tag">On</string>
+    <string name="support_nuvio_already_title">Already a supporter?</string>
+    <string name="support_nuvio_already_body">Sign in on this TV with the same Nuvio account. Your perks switch on by themselves.</string>
+    <string name="support_nuvio_scan_title">Scan to open nuvio.tv/support</string>
+    <string name="support_nuvio_scan_body">Opens on your phone. Nothing is paid on this TV.</string>
+    <string name="support_nuvio_patreon_manage">Scan to change or cancel on Patreon</string>
+    <string name="support_nuvio_pass_until">Your pass runs until %1$s.</string>
+    <string name="support_nuvio_sign_in">Sign in on this TV</string>
+    <string name="support_nuvio_close">Close</string>
+    <string name="support_nuvio_checking">Checking your membership…</string>
+    <string name="support_nuvio_thanks_title">Thanks for backing the Nuvio team</string>
+    <string name="support_nuvio_thanks_subtitle">Your perks follow your Nuvio account, so they work here in Nuvio Arc and in the official app.</string>
+    <string name="support_nuvio_gentle_eyebrow">Nuvio Supporter</string>
+    <string name="support_nuvio_gentle_title">Everything in Nuvio Arc works without a membership</string>
+    <string name="support_nuvio_gentle_body">This account has no Nuvio Supporter membership, and that’s completely fine. If you ever want to help the Nuvio team, a membership adds a few extras:</string>
+    <string name="support_nuvio_gentle_unavailable">Your membership couldn’t be checked right now. Everything in Nuvio Arc works without one. If you want to help the Nuvio team, a membership adds a few extras:</string>
+    <string name="support_nuvio_gentle_scan">See the options on your phone</string>
+    <string name="support_nuvio_paid_check_again">Paid just now? Check again</string>
+    <string name="support_nuvio_no_thanks">No thanks</string>
+    <string name="support_nuvio_no_thanks_hint">No thanks hides the Support button and the locked supporter themes on this TV. Bring them back in Settings › About.</string>
+    <string name="support_nuvio_thanks_note_title">%1$s perks are on</string>
+    <string name="support_nuvio_thanks_note_body">Thank you for backing the Nuvio team.</string>
+    <string name="support_nuvio_theme_locked">Supporter</string>
+    <string name="support_nuvio_suggestions_setting">Support the Nuvio team suggestions</string>
+    <string name="support_nuvio_suggestions_setting_subtitle">Show the Support the Nuvio team button and the locked supporter themes.</string>
+    <string name="cd_support_nuvio_qr">QR code for nuvio.tv/support</string>
+</resources>

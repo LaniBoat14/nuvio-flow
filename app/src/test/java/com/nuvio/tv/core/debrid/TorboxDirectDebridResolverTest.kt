@@ -5,6 +5,7 @@ import com.nuvio.tv.data.remote.api.TorboxApi
 import com.nuvio.tv.data.remote.dto.TorboxCloudItemDto
 import com.nuvio.tv.data.remote.dto.TorboxCachedItemDto
 import com.nuvio.tv.data.remote.dto.TorboxCheckCachedRequestDto
+import com.nuvio.tv.data.remote.dto.TorboxControlTorrentRequestDto
 import com.nuvio.tv.data.remote.dto.TorboxCreateTorrentDataDto
 import com.nuvio.tv.data.remote.dto.TorboxDeviceAuthorizationDto
 import com.nuvio.tv.data.remote.dto.TorboxDeviceTokenDto
@@ -260,6 +261,13 @@ class TorboxDirectDebridResolverTest {
             return createResponse
         }
 
+        override suspend fun controlTorrent(
+            authorization: String,
+            body: TorboxControlTorrentRequestDto
+        ): Response<TorboxEnvelopeDto<Any>> {
+            throw AssertionError("the resolver never removes anything")
+        }
+
         override suspend fun getTorrent(
             authorization: String,
             id: Int,
@@ -287,6 +295,15 @@ class TorboxDirectDebridResolverTest {
             authorization: String
         ): Response<TorboxEnvelopeDto<List<TorboxCloudItemDto>>> {
             return Response.success(TorboxEnvelopeDto(success = true, data = emptyList()))
+        }
+
+        override suspend fun listTorrents(
+            authorization: String,
+            bypassCache: Boolean,
+            offset: Int,
+            limit: Int
+        ): Response<TorboxEnvelopeDto<List<TorboxCloudItemDto>>> {
+            throw AssertionError("the resolver never reads the whole list")
         }
 
         override suspend fun listCloudUsenet(

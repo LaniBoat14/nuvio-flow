@@ -5,9 +5,6 @@ package com.nuvio.tv.ui.screens.player
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.theme.accentBrush
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,7 +29,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
-import kotlinx.coroutines.delay
 
 private val ROW_HEIGHT = 18.dp
 private val ROW_GAP = NuvioTheme.spacing.xxs
@@ -57,64 +53,27 @@ fun ParentalGuideOverlay(
     val totalLineHeight = (ROW_HEIGHT.value * count) + (ROW_GAP.value * (count - 1))
     val accentBrush = NuvioTheme.palette.accentBrush()
 
-    val containerAlpha = remember { Animatable(0f) }
-    val lineHeightFraction = remember { Animatable(0f) }
-    val itemAlphas = remember(count) { List(count) { Animatable(0f) } }
+    var frame by remember { mutableStateOf(StaggeredOverlayFrame.hidden(count)) }
     var animating by remember { mutableStateOf(false) }
 
     LaunchedEffect(isVisible) {
-        if (isVisible && !animating) {
+        if (isVisible) {
             animating = true
-
-            // FADE IN sequence
-            // Container fade in
-            containerAlpha.animateTo(1f, tween(300))
-
-            // Line grows top to bottom
-            lineHeightFraction.animateTo(1f, tween(400, easing = FastOutSlowInEasing))
-
-            // Items fade in one by one (staggered after line)
-            for (i in 0 until count) {
-                delay(80)
-                itemAlphas[i].animateTo(1f, tween(200))
-            }
-
-            // Hold visible for 5 seconds
-            delay(5000)
-
-            // FADE OUT sequence: items reverse order (bottom to top)
-            for (i in (count - 1) downTo 0) {
-                delay(60)
-                itemAlphas[i].animateTo(0f, tween(150))
-            }
-
-            // Line shrinks
-            delay(100)
-            lineHeightFraction.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
-
-            // Container fades out
-            delay(200)
-            containerAlpha.animateTo(0f, tween(200))
-
+            runStaggeredOverlay(count) { frame = it }
             animating = false
             onAnimationComplete()
-        } else if (!isVisible && animating) {
-            // Quick hide if something forces it off (e.g. controls shown during animation)
-            for (i in (count - 1) downTo 0) {
-                itemAlphas[i].snapTo(0f)
-            }
-            lineHeightFraction.snapTo(0f)
-            containerAlpha.snapTo(0f)
+        } else if (animating) {
+            frame = StaggeredOverlayFrame.hidden(count)
             animating = false
             onAnimationComplete()
         }
     }
 
-    if (containerAlpha.value <= 0f) return
+    if (frame.containerAlpha <= 0f) return
 
     Row(
         modifier = modifier
-            .alpha(containerAlpha.value)
+            .alpha(frame.containerAlpha)
             .padding(start = NuvioTheme.spacing.xxl, top = NuvioTheme.spacing.xl),
         verticalAlignment = Alignment.Top
     ) {
@@ -122,7 +81,7 @@ fun ParentalGuideOverlay(
         Box(
             modifier = Modifier
                 .width(3.dp)
-                .height((totalLineHeight * lineHeightFraction.value).dp)
+                .height((totalLineHeight * frame.lineFraction).dp)
                 .clip(RoundedCornerShape(NuvioTheme.spacing.hairline))
                 .background(accentBrush)
         )
@@ -136,7 +95,7 @@ fun ParentalGuideOverlay(
                 Row(
                     modifier = Modifier
                         .height(ROW_HEIGHT)
-                        .alpha(itemAlphas.getOrNull(index)?.value ?: 0f),
+                        .alpha(frame.itemAlphas.getOrNull(index) ?: 0f),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(

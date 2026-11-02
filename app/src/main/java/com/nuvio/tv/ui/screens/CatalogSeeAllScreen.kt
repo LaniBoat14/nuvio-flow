@@ -56,8 +56,7 @@ import com.nuvio.tv.ui.components.GridContentCard
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.LocalCardDepthStyle
 import com.nuvio.tv.ui.components.nuvioCardDepth
-import com.nuvio.tv.ui.components.PosterCardDefaults
-import com.nuvio.tv.ui.components.PosterCardStyle
+import com.nuvio.tv.ui.components.rememberPosterCardStyle
 import com.nuvio.tv.ui.screens.home.HomeEvent
 import com.nuvio.tv.ui.screens.home.HomeViewModel
 import com.nuvio.tv.ui.screens.search.SearchEvent
@@ -67,7 +66,6 @@ import com.nuvio.tv.domain.model.legacyKey
 import com.nuvio.tv.domain.model.stableItemKeys
 import com.nuvio.tv.domain.model.stableKey
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlin.math.roundToInt
 
 /** Stable focus key for a catalog poster (survives list reloads; not a grid index). */
 private fun catalogItemFocusKey(item: MetaPreview): String = "${item.apiType}:${item.id}"
@@ -87,14 +85,7 @@ fun CatalogSeeAllScreen(
     val posterOptionsController = searchViewModel?.posterOptions ?: posterOptionsViewModel.controller
     val uiState by viewModel.uiState.collectAsState()
     val fullCatalogRows by viewModel.fullCatalogRows.collectAsState()
-    val computedHeightDp = (uiState.posterCardWidthDp * 1.5f).roundToInt()
-    val posterCardStyle = PosterCardStyle(
-        width = uiState.posterCardWidthDp.dp,
-        height = computedHeightDp.dp,
-        cornerRadius = uiState.posterCardCornerRadiusDp.dp,
-        focusedBorderWidth = PosterCardDefaults.Style.focusedBorderWidth,
-        focusedScale = PosterCardDefaults.Style.focusedScale
-    )
+    val posterCardStyle = rememberPosterCardStyle(uiState.posterCardWidthDp, uiState.posterCardCornerRadiusDp)
 
     BackHandler { onBackPress() }
 
