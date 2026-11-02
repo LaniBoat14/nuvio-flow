@@ -16,6 +16,9 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicInteger
 
 class FlowAdaptiveSourceTest {
+    private fun context(): Context = mockk<Context>(relaxed=true) {
+        every { getSystemService(Context.ACTIVITY_SERVICE) } returns null
+    }
     private val uri = mockk<Uri>(relaxed=true) { every { host } returns "test.invalid" }
     @Before fun clock() {
         mockkStatic(SystemClock::class);every { SystemClock.elapsedRealtime() } answers { System.nanoTime()/1_000_000 }
@@ -53,23 +56,23 @@ class FlowAdaptiveSourceTest {
     }
     @Test fun rangesProduceExactBytesAndRespectGlobalCap(){
         val file=ByteArray(20*1024*1024){(it%251).toByte()};val server=Server(file,true,uri)
-        val source=FlowAdaptiveSource(mockk<Context>(relaxed=true),server,false,3,8)
+        val source=FlowAdaptiveSource(context(),server,false,3,8)
         assertArrayEquals(file,read(source,0));assertTrue(server.peak.get()<=6)
     }
     @Test fun ignoredRangeFallsBackWithoutDuplicatingPrefix(){
         val file=ByteArray(200_000){(it%251).toByte()};val server=Server(file,false,uri)
-        val source=FlowAdaptiveSource(mockk<Context>(relaxed=true),server,false)
+        val source=FlowAdaptiveSource(context(),server,false)
         assertArrayEquals(file.copyOfRange(7000,file.size),read(source,7000))
     }
     @Test fun reopeningAtSeekPositionProducesExactSuffix(){
         val file=ByteArray(1_000_000){(it%251).toByte()};val server=Server(file,true,uri)
-        val source=FlowAdaptiveSource(mockk<Context>(relaxed=true),server,false)
+        val source=FlowAdaptiveSource(context(),server,false)
         source.open(DataSpec.Builder().setUri(uri).build());source.read(ByteArray(100),0,100);source.close()
         assertArrayEquals(file.copyOfRange(45678,file.size),read(source,45678))
     }
     @Test fun supersededReaderCannotCloseTheNewSeekLease(){
         val file=ByteArray(1_000_000){(it%251).toByte()};val server=Server(file,true,uri)
-        val factory=FlowAdaptiveFactory(FlowAdaptiveSource(mockk<Context>(relaxed=true),server,false))
+        val factory=FlowAdaptiveFactory(FlowAdaptiveSource(context(),server,false))
         val first=factory.createDataSource();first.open(DataSpec.Builder().setUri(uri).build())
         first.read(ByteArray(100),0,100);first.close()
         val second=factory.createDataSource();second.open(DataSpec.Builder().setUri(uri).setPosition(1000).build())
@@ -94,7 +97,7 @@ class FlowAdaptiveSourceTest {
             }
         }
         val recovery=DataSource.Factory {recoveryCount.incrementAndGet();server.createDataSource()}
-        val source=FlowAdaptiveSource(mockk<Context>(relaxed=true),primary,false,3,16,recovery)
+        val source=FlowAdaptiveSource(context(),primary,false,3,16,recovery)
         assertArrayEquals(file,read(source,0))
         assertTrue(recoveryCount.get()>0)
     }
