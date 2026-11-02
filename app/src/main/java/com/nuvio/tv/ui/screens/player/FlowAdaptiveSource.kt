@@ -38,6 +38,7 @@ internal class FlowAdaptiveSource(
         private val workers = Executors.newFixedThreadPool(6) { r -> Thread(r,"FlowRange").apply { isDaemon=true } }
         private val permits = Semaphore(6, true)
         private val hedgePermit = Semaphore(1)
+        private val cleanup = Executors.newSingleThreadScheduledExecutor {r->Thread(r,"FlowRangeCleanup").apply{isDaemon=true}}
         private const val MB = 1024 * 1024
     }
     private class Chunk(val start: Long, val size: Int) {
@@ -54,6 +55,8 @@ internal class FlowAdaptiveSource(
         fun cancel() { cancelled.set(true); sources.forEach { runCatching { it.close() } }; result.cancel(false) }
     }
     private val closed = AtomicBoolean()
+    private val readerClosed = AtomicBoolean()
+    private val epoch = AtomicLong()
     private val chunks = java.util.concurrent.ConcurrentSkipListMap<Long,Chunk>()
     private val listeners = mutableListOf<TransferListener>()
     private var spec: DataSpec? = null
@@ -61,6 +64,8 @@ internal class FlowAdaptiveSource(
     private var uri: Uri? = null
     private var position = 0L
     private var end = 0L
+    private var fileLength = 0L
+    private var validator: String? = null
     private var next = 0L
     private var policy = AdaptivePolicy()
     private var lastTick = 0L
@@ -70,8 +75,17 @@ internal class FlowAdaptiveSource(
     private val modeScores = mutableMapOf<Int,ArrayDeque<Long>>()
     private val preferences by lazy { context.getSharedPreferences("flow-adaptive-hosts",Context.MODE_PRIVATE) }
 
-    override fun open(dataSpec: DataSpec): Long {
-        close(); closed.set(false); spec=dataSpec; position=dataSpec.position; next=position
+    @Synchronized override fun open(dataSpec: DataSpec): Long {
+        epoch.incrementAndGet();readerClosed.set(false)
+        if(!closed.get() && fallback==null && fileLength>0 && dataSpec.uri==spec?.uri && dataSpec.httpRequestHeaders==spec?.httpRequestHeaders && dataSpec.position<fileLength) {
+            position=dataSpec.position;next=position;spec=dataSpec
+            end=if(dataSpec.length<0)fileLength else minOf(fileLength,position+dataSpec.length)
+            val windowEnd=minOf(end,position+mode().workers*mode().chunkMb.toLong()*MB)
+            chunks.values.filter{it.start+it.size<=position || it.start>=windowEnd || it.start+it.size>windowEnd}.forEach{chunks.remove(it.start);it.cancel()}
+            chunks.floorEntry(position)?.value?.takeIf{position<it.start+it.size}?.let{it.offset=(position-it.start).toInt()}
+            schedule();return end-position
+        }
+        hardClose(); closed.set(false); spec=dataSpec; position=dataSpec.position; next=position
         delivered.set(0);previousBytes=0;lastTick=SystemClock.elapsedRealtime();modeScores.clear();synchronized(speeds){speeds.clear()}
         val probe=upstream.createDataSource()
         try {
@@ -85,6 +99,9 @@ internal class FlowAdaptiveSource(
                 fallback=single;FlowAdaptiveRuntime.mode="Single (range fallback)"
                 return single.open(dataSpec)
             }
+            fileLength=total
+            validator=probe.responseHeaders.entries.firstOrNull { it.key.equals("ETag",true) }?.value?.firstOrNull()?.takeUnless{it.startsWith("W/")}
+                ?: probe.responseHeaders.entries.firstOrNull { it.key.equals("Last-Modified",true) }?.value?.firstOrNull()
             end=if(dataSpec.length==C.LENGTH_UNSET.toLong()) total else minOf(total, position+dataSpec.length)
             val key=uri?.host ?: ""
             val recent=System.currentTimeMillis()-preferences.getLong("$key.updated",0)<24*60*60*1000L
@@ -123,8 +140,13 @@ internal class FlowAdaptiveSource(
         val capacity=(budgetMb()/m.chunkMb).coerceIn(1,m.workers)
         FlowAdaptiveRuntime.reservedMb=(capacity+1)*m.chunkMb
         FlowAdaptiveRuntime.mode="${capacity}×${m.chunkMb} MB${if(adaptive) " · Auto" else " · Fixed"}"
+        val covering=chunks.floorEntry(position)?.value?.takeIf{position<it.start+it.size}
+        if(covering==null && chunks.size>=capacity) chunks.pollLastEntry()?.value?.cancel()
         while(!closed.get() && chunks.size<capacity && next<end) {
-            val size=minOf(m.chunkMb.toLong()*MB,end-next).toInt()
+            val retained=chunks.floorEntry(next)?.value?.takeIf{next<it.start+it.size}
+            if(retained!=null){next=retained.start+retained.size;continue}
+            val boundary=minOf(end,chunks.ceilingKey(next) ?: end)
+            val size=minOf(m.chunkMb.toLong()*MB,boundary-next).toInt()
             val c=Chunk(next,size);chunks[next]=c;next+=size;launch(c,false)
         }
     }
@@ -143,9 +165,12 @@ internal class FlowAdaptiveSource(
                     listeners.forEach(source::addTransferListener)
                     val start=SystemClock.elapsedRealtime()
                     try {
-                        source.open(spec!!.buildUpon().setPosition(chunk.start).setLength(chunk.size.toLong()).build())
+                        val headers=spec!!.httpRequestHeaders.toMutableMap()
+                        validator?.let { headers["If-Range"]=it }
+                        source.open(spec!!.buildUpon().setPosition(chunk.start).setLength(chunk.size.toLong()).setHttpRequestHeaders(headers).build())
                         val contentRange=source.responseHeaders.entries.firstOrNull { it.key.equals("Content-Range",true) }?.value?.firstOrNull()
-                        if(contentRange?.startsWith("bytes ${chunk.start}-") != true) throw IOException("Range response changed")
+                        val expected="bytes ${chunk.start}-${chunk.start+chunk.size-1}/$fileLength"
+                        if(contentRange!=expected) throw IOException("Range response changed")
                         val rt=Runtime.getRuntime()
                         if(rt.maxMemory()-(rt.totalMemory()-rt.freeMemory()) < chunk.size*2L+16L*MB) throw IOException("Insufficient range memory")
                         val bytes=ByteArray(chunk.size)
@@ -184,15 +209,15 @@ internal class FlowAdaptiveSource(
             }
         }
     }
-    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+    @Synchronized override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         fallback?.let{return it.read(buffer,offset,length)}
         if(length==0)return 0
-        if(closed.get())throw IOException("Source closed")
+        if(closed.get() || readerClosed.get())throw IOException("Source closed")
         if(position>=end)return C.RESULT_END_OF_INPUT
         schedule()
         val c=chunks.firstEntry()?.value ?: throw IOException("No scheduled range")
         while(!c.result.isDone) {
-            if(closed.get())throw IOException("Source closed")
+            if(closed.get() || readerClosed.get())throw IOException("Source closed")
             tick()
             val elapsed=SystemClock.elapsedRealtime()-c.started
             val median=synchronized(speeds){speeds.sorted().let{if(it.size>=3)it[it.size/2] else null}}
@@ -213,7 +238,7 @@ internal class FlowAdaptiveSource(
         val now=SystemClock.elapsedRealtime();if(now-lastTick<2000)return
         val bytes=delivered.get();val rate=(bytes-previousBytes)*8000/(now-lastTick)
         if(adaptive) {
-            val bitrate=FlowAdaptiveRuntime.durationMs.takeIf{it>0}?.let{end*8000/it}
+            val bitrate=FlowAdaptiveRuntime.durationMs.takeIf{it>0}?.let{fileLength*8000/it}
             val scores=modeScores.getOrPut(policy.index){ArrayDeque()}
             if(rate>0) {scores.addLast(rate);while(scores.size>8)scores.removeFirst()}
             val d=policy.evaluate(now,bitrate,FlowAdaptiveRuntime.bufferSeconds,rate.takeIf{it>0},budgetMb(),memoryPressure)
@@ -231,10 +256,34 @@ internal class FlowAdaptiveSource(
         lastTick=now;previousBytes=bytes
     }
     override fun close() {
+        readerClosed.set(true)
+        val token=epoch.get()
+        cleanup.schedule({synchronized(this){if(epoch.get()==token && readerClosed.get())hardClose()}},750,TimeUnit.MILLISECONDS)
+    }
+    private fun hardClose() {
         closed.set(true);FlowAdaptiveRuntime.reservedMb=0;chunks.values.forEach{it.cancel()};chunks.clear()
         fallback?.let{runCatching{it.close()}};fallback=null
     }
     override fun getUri(): Uri? = fallback?.uri ?: uri
     override fun getResponseHeaders(): Map<String,List<String>> = fallback?.responseHeaders ?: emptyMap()
-    override fun addTransferListener(transferListener: TransferListener) {listeners.add(transferListener)}
+    override fun addTransferListener(transferListener: TransferListener) {if(!listeners.contains(transferListener))listeners.add(transferListener)}
+}
+
+
+/** Fresh reader leases share only this film's bounded range session across seeks. */
+@UnstableApi
+internal class FlowAdaptiveFactory(private val session: FlowAdaptiveSource):DataSource.Factory {
+    private val generation=AtomicLong()
+    override fun createDataSource():DataSource = object:DataSource {
+        private var token=-1L
+        override fun open(spec:DataSpec):Long {token=generation.incrementAndGet();return session.open(spec)}
+        override fun read(buffer:ByteArray,offset:Int,length:Int):Int {
+            if(token!=generation.get())throw IOException("Reader superseded by seek")
+            return session.read(buffer,offset,length)
+        }
+        override fun close(){if(token==generation.get())session.close()}
+        override fun getUri()=session.uri
+        override fun getResponseHeaders()=session.responseHeaders
+        override fun addTransferListener(listener:TransferListener)=session.addTransferListener(listener)
+    }
 }

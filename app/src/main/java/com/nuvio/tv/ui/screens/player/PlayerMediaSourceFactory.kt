@@ -230,11 +230,9 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
         val networkProgressiveFactory: DataSource.Factory = if (adaptiveEligible && (autoNetwork || useChunkSessionSource)) {
             val factory = FlowNativeTransport.factory(context, sanitizedHeaders)
                 ?: PlayerPlaybackNetworking.createHttpDataSourceFactory(sanitizedHeaders)
-            DataSource.Factory {
-                FlowAdaptiveSource(context, factory, adaptive = !useChunkSessionSource,
-                    fixedWorkers = parallelConnectionCount.coerceIn(1,4),
-                    fixedChunkMb = (parallelChunkSizeKb/1024).coerceIn(8,16))
-            }
+            FlowAdaptiveFactory(FlowAdaptiveSource(context, factory, adaptive = !useChunkSessionSource,
+                fixedWorkers = parallelConnectionCount.coerceIn(1,4),
+                fixedChunkMb = (parallelChunkSizeKb/1024).coerceIn(8,16)))
         } else if (useChunkSessionSource) {
             val sessionConnections = parallelConnectionCount
             val okHttpFactory = OkHttpDataSource.Factory(playbackHttpClient).apply {

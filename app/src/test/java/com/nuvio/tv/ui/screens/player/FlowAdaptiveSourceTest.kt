@@ -67,4 +67,15 @@ class FlowAdaptiveSourceTest {
         source.open(DataSpec.Builder().setUri(uri).build());source.read(ByteArray(100),0,100);source.close()
         assertArrayEquals(file.copyOfRange(45678,file.size),read(source,45678))
     }
+    @Test fun supersededReaderCannotCloseTheNewSeekLease(){
+        val file=ByteArray(1_000_000){(it%251).toByte()};val server=Server(file,true,uri)
+        val factory=FlowAdaptiveFactory(FlowAdaptiveSource(mockk<Context>(relaxed=true),server,false))
+        val first=factory.createDataSource();first.open(DataSpec.Builder().setUri(uri).build())
+        first.read(ByteArray(100),0,100);first.close()
+        val second=factory.createDataSource();second.open(DataSpec.Builder().setUri(uri).setPosition(1000).build())
+        first.close()
+        val bytes=ByteArray(100);assertEquals(100,second.read(bytes,0,100))
+        assertArrayEquals(file.copyOfRange(1000,1100),bytes);second.close()
+    }
+
 }
