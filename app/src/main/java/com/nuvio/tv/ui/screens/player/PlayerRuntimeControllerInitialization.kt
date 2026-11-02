@@ -507,6 +507,9 @@ internal fun PlayerRuntimeController.initializePlayer(
             }
             currentParallelChunkOverheadMb = parallelOverheadMb
 
+            val adaptiveDefaults = !isHlsStream && !isDashStream && !PlayerMediaSourceFactory.isLoopbackUrl(url) &&
+                !playerSettings.bufferEngineEnabled &&
+                ((!playerSettings.parallelNetworkEnabled && context.getSharedPreferences("flow-adaptive-hosts",android.content.Context.MODE_PRIVATE).getBoolean("enabled",true)) || parallelActive)
             val loadControl = if (playerSettings.nuvioPerformanceModeEnabled) {
                 effectiveBackBufferDurationMs = NuvioExoPlayerPerformanceHelper.backBufferMs
                 currentBitrateAwareLoadControl = null
@@ -514,7 +517,14 @@ internal fun PlayerRuntimeController.initializePlayer(
                     PlayerRuntimeController.TAG,
                     "BUFFER_GATE: engine=exo-native-perf master=on parallelOverheadMb=$parallelOverheadMb; NuvioExoPlayerPerformanceHelper.buildLoadControl host=${url.safeHost()}"
                 )
-                NuvioExoPlayerPerformanceHelper.buildLoadControl(context, parallelOverheadMb)
+                NuvioExoPlayerPerformanceHelper.buildLoadControl(context, parallelOverheadMb, adaptiveDefaults).also {
+                    currentBitrateAwareLoadControl = it as? BitrateAwareLoadControl
+                }
+            } else if (adaptiveDefaults) {
+                val allocator=androidx.media3.exoplayer.upstream.DefaultAllocator(true,C.DEFAULT_BUFFER_SEGMENT_SIZE)
+                BitrateAwareLoadControl(60_000,120_000,2500,5000,false,12_000,true,
+                    minOf(MemoryBudget.budgetMb,300).toLong()*1024*1024,allocator
+                ).also {currentBitrateAwareLoadControl=it;effectiveBackBufferDurationMs=12_000}
             } else if (playerSettings.bufferEngineEnabled) {
                 val bufferSettings = playerSettings.bufferSettings
                 // Managed (default) caps the buffer at the device budget; off uses Target Buffer Size.

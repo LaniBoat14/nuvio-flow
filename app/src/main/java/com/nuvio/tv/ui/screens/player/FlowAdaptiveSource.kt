@@ -20,6 +20,8 @@ import java.util.concurrent.atomic.AtomicLong
 internal object FlowAdaptiveRuntime {
     @Volatile var bufferSeconds = 0.0
     @Volatile var durationMs = 0L
+    @Volatile var protocol: String? = null
+    @Volatile var peer: String? = null
     @Volatile var reservedMb = 0
     @Volatile var mode = "Single"
     @Volatile var reason = "Starting"
@@ -32,7 +34,9 @@ internal class FlowAdaptiveSource(
     private val upstream: DataSource.Factory,
     private val adaptive: Boolean = true,
     private val fixedWorkers: Int = 3,
-    private val fixedChunkMb: Int = 16
+    private val fixedChunkMb: Int = 16,
+    private val recoveryFactory: DataSource.Factory = upstream,
+    private val alternateFactory: DataSource.Factory = upstream
 ) : DataSource {
     companion object {
         private val workers = Executors.newFixedThreadPool(6) { r -> Thread(r,"FlowRange").apply { isDaemon=true } }
@@ -71,6 +75,8 @@ internal class FlowAdaptiveSource(
     private var lastTick = 0L
     private var previousBytes = 0L
     private val delivered = AtomicLong()
+    private val alternateWins=java.util.concurrent.atomic.AtomicInteger()
+    @Volatile private var useAlternate=false
     private val speeds = ArrayDeque<Long>()
     private val modeScores = mutableMapOf<Int,ArrayDeque<Long>>()
     private val preferences by lazy { context.getSharedPreferences("flow-adaptive-hosts",Context.MODE_PRIVATE) }
@@ -88,7 +94,9 @@ internal class FlowAdaptiveSource(
         hardClose(); closed.set(false); spec=dataSpec; position=dataSpec.position; next=position
         delivered.set(0);previousBytes=0;lastTick=SystemClock.elapsedRealtime();modeScores.clear();synchronized(speeds){speeds.clear()}
         val probe=upstream.createDataSource()
+        var probePermit=false
         try {
+            permits.acquire();probePermit=true
             probe.open(dataSpec.buildUpon().setLength(1).build())
             uri=probe.uri ?: dataSpec.uri
             val range=probe.responseHeaders.entries.firstOrNull { it.key.equals("Content-Range",true) }?.value?.firstOrNull()
@@ -106,7 +114,10 @@ internal class FlowAdaptiveSource(
             val key=uri?.host ?: ""
             val recent=System.currentTimeMillis()-preferences.getLong("$key.updated",0)<24*60*60*1000L
             policy=AdaptivePolicy(if(adaptive && recent) preferences.getInt(key,3) else 3, lastTick)
-        } finally { runCatching { probe.close() } }
+            useAlternate=recent && preferences.getBoolean("$key.independent",false)
+            alternateWins.set(0)
+            FlowAdaptiveRuntime.protocol=null;FlowAdaptiveRuntime.peer=null
+        } finally { runCatching { probe.close() };if(probePermit)permits.release() }
         if(budgetMb()<16) {
             val single=upstream.createDataSource();listeners.forEach(single::addTransferListener)
             fallback=single;FlowAdaptiveRuntime.mode="Single (memory fallback)"
@@ -162,9 +173,11 @@ internal class FlowAdaptiveSource(
                 var last: Exception?=null
                 for(attempt in 0..2) {
                     if(closed.get() || chunk.cancelled.get() || chunk.result.isDone) break
-                    val source=upstream.createDataSource();chunk.sources.add(source)
+                    val source=(if(hedge || attempt>0)recoveryFactory else if(useAlternate)alternateFactory else upstream).createDataSource();chunk.sources.add(source)
                     listeners.forEach(source::addTransferListener)
                     val start=SystemClock.elapsedRealtime()
+                    var attemptBytes=0
+                    var outcome="cancelled"
                     try {
                         val headers=spec!!.httpRequestHeaders.toMutableMap()
                         validator?.let { headers["If-Range"]=it }
@@ -180,7 +193,7 @@ internal class FlowAdaptiveSource(
                             val n=source.read(bytes,offset,minOf(256*1024,bytes.size-offset))
                             if(n<0) throw IOException("Short range")
                             if(n>0) {
-                                offset+=n
+                                offset+=n;attemptBytes=offset
                                 var old=chunk.credited.get()
                                 while(offset>old) {
                                     if(chunk.credited.compareAndSet(old,offset.toLong())) {delivered.addAndGet(offset-old);break}
@@ -192,11 +205,24 @@ internal class FlowAdaptiveSource(
                         if(offset==bytes.size && !closed.get() && !chunk.cancelled.get()) {
                             val elapsed=(SystemClock.elapsedRealtime()-start).coerceAtLeast(1)
                             synchronized(speeds) { speeds.addLast(bytes.size*8000L/elapsed);while(speeds.size>12)speeds.removeFirst() }
-                            if(chunk.result.complete(bytes)) chunk.sources.filter { it!==source }.forEach { runCatching { it.close() } }
-                            android.util.Log.i("FlowRange","range=${chunk.start}-${chunk.start+chunk.size-1} bytes=$offset ms=$elapsed hedge=$hedge attempt=$attempt outcome=complete host=${source.uri?.host}")
+                            if(chunk.result.complete(bytes)) {
+                                chunk.sources.filter { it!==source }.forEach { runCatching { it.close() } }
+                                if(adaptive && hedge && alternateWins.incrementAndGet()>=2) {
+                                    useAlternate=true
+                                    FlowAdaptiveRuntime.reason="Independent connection recovery won slow ranges"
+                                }
+                            }
+                            outcome="complete"
                             return@execute
                         }
-                    } catch(e:Exception) {last=e} finally { chunk.sources.remove(source);runCatching { source.close() } }
+                    } catch(e:Exception) {last=e;outcome="failed"} finally {
+                        android.util.Log.i("FlowRange","range=${chunk.start}-${chunk.start+chunk.size-1} bytes=$attemptBytes ms=${SystemClock.elapsedRealtime()-start} mode=${mode().workers}x${mode().chunkMb} hedge=$hedge attempt=$attempt outcome=$outcome protocol=${(source as? FlowObservedConnection)?.details?.protocol ?: "not_exposed"} peer=${(source as? FlowObservedConnection)?.details?.peer ?: "not_exposed"} host=${uri?.host}")
+                        if(source is FlowObservedConnection) {
+                            FlowAdaptiveRuntime.protocol=source.details.protocol
+                            FlowAdaptiveRuntime.peer=source.details.peer
+                        }
+                        chunk.sources.remove(source);runCatching { source.close() }
+                    }
                     if(!chunk.result.isDone && !closed.get()) Thread.sleep(250L*(1L shl attempt))
                 }
                 chunk.failure=last ?: IOException("Range cancelled")
@@ -222,7 +248,7 @@ internal class FlowAdaptiveSource(
             tick()
             val elapsed=SystemClock.elapsedRealtime()-c.started
             val median=synchronized(speeds){speeds.sorted().let{if(it.size>=3)it[it.size/2] else null}}
-            if(!c.hedged && chunks.size>=3 && budgetMb()>=(chunks.size+1)*mode().chunkMb && median!=null && elapsed>2000 &&
+            if(!c.hedged && chunks.values.sumOf{it.sources.size}>=3 && budgetMb()>=(chunks.size+1)*mode().chunkMb && median!=null && elapsed>2000 &&
                 (c.count.get()*8000/elapsed<median/2 || elapsed>c.size*16000L/median)) {
                 c.hedged=true;launch(c,true)
             }
@@ -249,9 +275,9 @@ internal class FlowAdaptiveSource(
             }
             FlowAdaptiveRuntime.reason=d.reason
             // Save observed profiles only after sufficient active transfer history.
-            if(synchronized(speeds){speeds.size>=6} && d.reason=="Stable" && FlowAdaptiveRuntime.bufferSeconds>=30) {
+            if(synchronized(speeds){speeds.size>=6} && d.reason=="Stable" && FlowAdaptiveRuntime.bufferSeconds>=15 && bitrate!=null && rate>=bitrate*1.5) {
                 val key=uri?.host ?: ""
-                preferences.edit().putInt(key,policy.index).putLong("$key.updated",System.currentTimeMillis()).apply()
+                preferences.edit().putInt(key,policy.index).putBoolean("$key.independent",useAlternate).putLong("$key.updated",System.currentTimeMillis()).apply()
             }
         }
         lastTick=now;previousBytes=bytes
@@ -288,3 +314,10 @@ internal class FlowAdaptiveFactory(private val session: FlowAdaptiveSource):Data
         override fun addTransferListener(listener:TransferListener)=session.addTransferListener(listener)
     }
 }
+
+internal class FlowConnectionInfo {
+    @Volatile var protocol: String? = null
+    @Volatile var peer: String? = null
+}
+@UnstableApi
+internal class FlowObservedConnection(private val source:DataSource,val details:FlowConnectionInfo):DataSource by source

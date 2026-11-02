@@ -279,7 +279,7 @@ object NuvioExoPlayerPerformanceHelper {
      * Builds a [DefaultLoadControl] tuned for Nuvio performance when enabled,
      * or a standard ExoPlayer [DefaultLoadControl] when disabled.
      */
-    fun buildLoadControl(context: Context? = null, chunkOverheadMb: Int = 0): DefaultLoadControl {
+    fun buildLoadControl(context: Context? = null, chunkOverheadMb: Int = 0, adaptiveDefaults: Boolean = false): DefaultLoadControl {
         return if (enabled) {
             val effectiveTargetBufferMb = (targetBufferSizeMb - chunkOverheadMb)
                 .coerceAtLeast(MemoryBudget.MIN_BUFFER_MB)
@@ -301,22 +301,17 @@ object NuvioExoPlayerPerformanceHelper {
                 "ExoPerformance",
                 "buildLoadControl: targetBufferSizeMb=$targetBufferSizeMb, chunkOverheadMb=$chunkOverheadMb, effectiveTargetBufferMb=$effectiveTargetBufferMb, targetBytes=$targetBufferBytes, backBufferMs=${effectiveBackBufferMs()} (set=$backBufferMs)"
             )
-            DefaultLoadControl.Builder()
-                .setAllocator(allocator)
-                .setTargetBufferBytes(targetBufferBytes)
-                .setBufferDurationsMs(
-                    minBufferMs,
-                    maxBufferMs,
-                    bufferForPlaybackMs,
-                    bufferForPlaybackAfterRebufferMs
-                )
-                // The byte target has to gate everything the allocator holds, or the back buffer
-                // is charged on top of it and the configured size is not a limit at all.
-                .setPrioritizeTimeOverSizeThresholds(false)
-                // Forward buffer protects playback and the back buffer only protects a seek back,
-                // so the back buffer is the side that gives way when both cannot fit the target.
-                .setBackBuffer(effectiveBackBufferMs(), true)
-                .build()
+            com.nuvio.tv.core.player.BitrateAwareLoadControl(
+                minBufferMs = if(adaptiveDefaults) 60_000 else minBufferMs,
+                maxBufferMs = if(adaptiveDefaults) 120_000 else maxBufferMs,
+                bufferForPlaybackMs = if(adaptiveDefaults) 2500 else bufferForPlaybackMs,
+                bufferForPlaybackAfterRebufferMs = if(adaptiveDefaults) 5000 else bufferForPlaybackAfterRebufferMs,
+                prioritizeTimeOverSizeThresholds = false,
+                backBufferDurationMs = if(adaptiveDefaults) 12_000 else effectiveBackBufferMs(),
+                retainBackBufferFromKeyframe = true,
+                budgetBytes = if(adaptiveDefaults) minOf(targetBufferBytes.toLong(),300L*1024*1024) else targetBufferBytes.toLong(),
+                allocator = allocator
+            )
         } else {
             DefaultLoadControl.Builder()
                 .setTargetBufferBytes(100 * 1024 * 1024)

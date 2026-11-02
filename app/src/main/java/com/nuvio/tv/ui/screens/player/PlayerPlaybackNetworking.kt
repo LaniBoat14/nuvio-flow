@@ -98,6 +98,23 @@ internal object PlayerPlaybackNetworking {
             .build()
     }
 
+    @UnstableApi
+    fun createRangeRecoveryFactory(headers: Map<String,String>, fresh: Boolean): DataSource.Factory = DataSource.Factory {
+        val details=FlowConnectionInfo()
+        val builder=parallelHttpClient.newBuilder().eventListener(object: okhttp3.EventListener() {
+            override fun connectionAcquired(call:okhttp3.Call, connection:okhttp3.Connection) {
+                details.protocol=connection.protocol().toString()
+                details.peer=connection.route().socketAddress.address?.hostAddress
+            }
+        })
+        if(fresh)builder.connectionPool(okhttp3.ConnectionPool(0,1,TimeUnit.SECONDS))
+        val source=OkHttpDataSource.Factory(builder.build())
+            .setDefaultRequestProperties(headers.filterKeys{!it.equals("Range",true)})
+            .setUserAgent(PlayerMediaSourceFactory.DEFAULT_USER_AGENT).createDataSource()
+            .apply{addTransferListener(FlowTransferMeter)}
+        FlowObservedConnection(source,details)
+    }
+
     fun createHttpClient(
         defaultHeaders: Map<String, String> = emptyMap(),
         useLongReadTimeout: Boolean = false
