@@ -40,7 +40,7 @@ class FlowAdaptiveSourceTest {
                 file.copyInto(target,offset,position,position+n);position+=n;return n
             }
             override fun getResponseHeaders()=headers
-            override fun getUri()=uri
+            override fun getUri(): Uri = this@Server.uri
             override fun close(){if(opened){opened=false;active.decrementAndGet()}}
             override fun addTransferListener(listener:TransferListener)=Unit
         }
