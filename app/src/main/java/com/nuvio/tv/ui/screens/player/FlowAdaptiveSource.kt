@@ -44,6 +44,7 @@ internal class FlowAdaptiveSource(
         val result = CompletableFuture<ByteArray>()
         val sources = java.util.concurrent.CopyOnWriteArrayList<DataSource>()
         val count = AtomicLong()
+        val credited = AtomicLong()
         val cancelled = AtomicBoolean()
         val started = SystemClock.elapsedRealtime()
         var hedged = false
@@ -66,11 +67,12 @@ internal class FlowAdaptiveSource(
     private var previousBytes = 0L
     private val delivered = AtomicLong()
     private val speeds = ArrayDeque<Long>()
+    private val modeScores = mutableMapOf<Int,ArrayDeque<Long>>()
     private val preferences by lazy { context.getSharedPreferences("flow-adaptive-hosts",Context.MODE_PRIVATE) }
 
     override fun open(dataSpec: DataSpec): Long {
         close(); closed.set(false); spec=dataSpec; position=dataSpec.position; next=position
-        delivered.set(0);previousBytes=0;lastTick=SystemClock.elapsedRealtime()
+        delivered.set(0);previousBytes=0;lastTick=SystemClock.elapsedRealtime();modeScores.clear();synchronized(speeds){speeds.clear()}
         val probe=upstream.createDataSource()
         try {
             probe.open(dataSpec.buildUpon().setLength(1).build())
@@ -84,7 +86,9 @@ internal class FlowAdaptiveSource(
                 return single.open(dataSpec)
             }
             end=if(dataSpec.length==C.LENGTH_UNSET.toLong()) total else minOf(total, position+dataSpec.length)
-            policy=AdaptivePolicy(if(adaptive) preferences.getInt(uri?.host ?: "",3) else 3, lastTick)
+            val key=uri?.host ?: ""
+            val recent=System.currentTimeMillis()-preferences.getLong("$key.updated",0)<24*60*60*1000L
+            policy=AdaptivePolicy(if(adaptive && recent) preferences.getInt(key,3) else 3, lastTick)
         } finally { runCatching { probe.close() } }
         if(budgetMb()<16) {
             val single=upstream.createDataSource();listeners.forEach(single::addTransferListener)
@@ -94,10 +98,24 @@ internal class FlowAdaptiveSource(
         schedule()
         return end-position
     }
+    private var memoryAt = Long.MIN_VALUE
+    private var cachedBudget = 16
+    private var memoryPressure = false
     private fun budgetMb(): Int {
+        val now=SystemClock.elapsedRealtime()
+        if(memoryAt!=Long.MIN_VALUE && now-memoryAt<2000)return cachedBudget
+        memoryAt=now
         val rt=Runtime.getRuntime()
         val heapRoom=(rt.maxMemory()-(rt.totalMemory()-rt.freeMemory())-32L*MB).coerceAtLeast(0)
-        return minOf(96L,heapRoom/MB/2).toInt()
+        var systemRoom=Long.MAX_VALUE
+        val manager=context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+        if(manager!=null) {
+            val info=android.app.ActivityManager.MemoryInfo();manager.getMemoryInfo(info)
+            systemRoom=(info.availMem-info.threshold-64L*MB).coerceAtLeast(0)
+            memoryPressure=info.lowMemory || systemRoom<64L*MB
+        }
+        cachedBudget=minOf(96L,heapRoom/MB/2,systemRoom/MB/2).toInt()
+        return cachedBudget
     }
     private fun mode(): AdaptivePolicy.Mode = if(adaptive) policy.mode else AdaptivePolicy.Mode(fixedWorkers.coerceIn(1,4),fixedChunkMb.coerceIn(8,16))
     private fun schedule() {
@@ -135,7 +153,15 @@ internal class FlowAdaptiveSource(
                         while(offset<bytes.size && !closed.get() && !chunk.cancelled.get() && !chunk.result.isDone) {
                             val n=source.read(bytes,offset,minOf(256*1024,bytes.size-offset))
                             if(n<0) throw IOException("Short range")
-                            if(n>0) { offset+=n;delivered.addAndGet(n.toLong());if(!hedge) chunk.count.addAndGet(n.toLong()) }
+                            if(n>0) {
+                                offset+=n
+                                var old=chunk.credited.get()
+                                while(offset>old) {
+                                    if(chunk.credited.compareAndSet(old,offset.toLong())) {delivered.addAndGet(offset-old);break}
+                                    old=chunk.credited.get()
+                                }
+                                if(!hedge)chunk.count.set(offset.toLong())
+                            }
                         }
                         if(offset==bytes.size && !closed.get() && !chunk.cancelled.get()) {
                             val elapsed=(SystemClock.elapsedRealtime()-start).coerceAtLeast(1)
@@ -148,6 +174,9 @@ internal class FlowAdaptiveSource(
                     if(!chunk.result.isDone && !closed.get()) Thread.sleep(250L*(1L shl attempt))
                 }
                 chunk.failure=last ?: IOException("Range cancelled")
+            } catch(e:OutOfMemoryError) {
+                memoryPressure=true;cachedBudget=8;memoryAt=SystemClock.elapsedRealtime()
+                chunk.failure=IOException("Range allocation failed; reduce memory",e)
             } catch(e:Exception) {chunk.failure=e} finally {
                 if(acquired)permits.release()
                 if(hedge)hedgePermit.release()
@@ -185,10 +214,19 @@ internal class FlowAdaptiveSource(
         val bytes=delivered.get();val rate=(bytes-previousBytes)*8000/(now-lastTick)
         if(adaptive) {
             val bitrate=FlowAdaptiveRuntime.durationMs.takeIf{it>0}?.let{end*8000/it}
-            val d=policy.evaluate(now,bitrate,FlowAdaptiveRuntime.bufferSeconds,rate.takeIf{it>0},budgetMb())
+            val scores=modeScores.getOrPut(policy.index){ArrayDeque()}
+            if(rate>0) {scores.addLast(rate);while(scores.size>8)scores.removeFirst()}
+            val d=policy.evaluate(now,bitrate,FlowAdaptiveRuntime.bufferSeconds,rate.takeIf{it>0},budgetMb(),memoryPressure)
+            if(d.reprobe) {
+                val best=modeScores.filterValues{it.size>=3}.maxByOrNull{(_,v)->v.sorted()[v.size/2]}?.key
+                if(best!=null && best!=policy.index) policy.selectObservedMode(best,now)
+            }
             FlowAdaptiveRuntime.reason=d.reason
             // Save observed profiles only after sufficient active transfer history.
-            if(synchronized(speeds){speeds.size>=6} && d.reason=="Stable") preferences.edit().putInt(uri?.host ?: "",policy.index).apply()
+            if(synchronized(speeds){speeds.size>=6} && d.reason=="Stable" && FlowAdaptiveRuntime.bufferSeconds>=30) {
+                val key=uri?.host ?: ""
+                preferences.edit().putInt(key,policy.index).putLong("$key.updated",System.currentTimeMillis()).apply()
+            }
         }
         lastTick=now;previousBytes=bytes
     }

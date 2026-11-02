@@ -20,6 +20,13 @@ internal class AdaptivePolicy(initial: Int = 3, private val nowAtStart: Long = 0
     private var latest = nowAtStart
     val mode get() = modes[index]
 
+    fun selectObservedMode(selected: Int, now: Long): Decision {
+        require(now >= latest)
+        index=selected.coerceIn(modes.indices);lastChange=now;latest=now
+        samples.clear();healthySince=null
+        return Decision(mode,"Host profile re-evaluation")
+    }
+
     fun evaluate(now: Long, bitrate: Long?, bufferSeconds: Double, activeBps: Long?,
                  memoryBudgetMb: Int, memoryPressure: Boolean = false): Decision {
         require(now >= latest) { "Monotonic time required" }

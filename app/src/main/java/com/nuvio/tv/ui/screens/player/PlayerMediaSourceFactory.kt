@@ -225,6 +225,8 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
         parallelStartupPrefetchUnlocked.set(!useChunkSessionSource)
         val autoNetwork = context.getSharedPreferences("flow-adaptive-hosts", Context.MODE_PRIVATE).getBoolean("enabled", true) && !networkManual
         val adaptiveEligible = !isHls && !isDash && !isLoopbackUrl(url) && url.startsWith("http")
+        FlowAdaptiveRuntime.reason="Starting playback"
+        FlowAdaptiveRuntime.mode=if(autoNetwork) "Adaptive" else "Single"
         val networkProgressiveFactory: DataSource.Factory = if (adaptiveEligible && (autoNetwork || useChunkSessionSource)) {
             val factory = FlowNativeTransport.factory(context, sanitizedHeaders)
                 ?: PlayerPlaybackNetworking.createHttpDataSourceFactory(sanitizedHeaders)
