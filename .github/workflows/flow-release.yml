@@ -40,11 +40,25 @@ jobs:
         if: github.event_name == 'schedule'
         id: upstream
         run: python3 scripts/flow_upstream.py
+      - name: Check for an unpublished Flow update
+        id: pending
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG=$(sed -n 's/.*versionName = "\\([^"]*\\)".*/\\1/p' app/build.gradle.kts | head -1)
+          READY=$(gh release view "$TAG" --json isDraft,assets --jq '(.isDraft == false) and (.assets | any(.name == "app-full-armeabi-v7a-release.apk"))' 2>/dev/null || echo false)
+          if [ "$READY" = true ]; then
+            echo "required=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "required=true" >> "$GITHUB_OUTPUT"
+            echo "Flow $TAG has no published APK; build and publication are required."
+          fi
       - name: Skip unchanged scheduled build
-        if: github.event_name == 'schedule' && steps.upstream.outputs.changed == 'false'
+        if: github.event_name == 'schedule' && steps.upstream.outputs.changed == 'false' && steps.pending.outputs.required == 'false'
         run: echo "No newer official release; no publication required."
       - name: Check required source inputs
-        if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true'
+        if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true' || steps.pending.outputs.required == 'true'
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -62,12 +76,12 @@ jobs:
           print("Required source packages, public certificates and wrapper are present.")
           PY
       - name: Generate localhost TLS test fixture
-        if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true'
+        if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true' || steps.pending.outputs.required == 'true'
         run: |
           mkdir -p app/src/test/resources
           keytool -genkeypair -alias subtitle-test -keyalg RSA -keysize 2048 -validity 3650 -storetype PKCS12 -keystore app/src/test/resources/subtitle-redirect-test.p12 -storepass changeit -keypass changeit -dname "CN=127.0.0.1" -ext "SAN=ip:127.0.0.1"
       - name: Restore private build configuration
-        if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true'
+        if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true' || steps.pending.outputs.required == 'true'
         env:
           FLOW_KEYSTORE_BASE64: ${{ secrets.FLOW_KEYSTORE_BASE64 }}
           FLOW_LOCAL_PROPERTIES_BASE64: ${{ secrets.FLOW_LOCAL_PROPERTIES_BASE64 }}
@@ -99,27 +113,27 @@ jobs:
               path.write_text(text)
           PY
       - name: Test and assemble optimized Flow
-        if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true'
+        if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true' || steps.pending.outputs.required == 'true'
         run: |
           python3 scripts/test_flow_upstream.py
           chmod +x gradlew
           ./gradlew :app:testFullReleaseUnitTest --tests com.nuvio.tv.core.network.adaptive.AdaptiveEngineTest --tests com.nuvio.tv.ui.screens.player.FlowFreshConnectionTest --tests com.nuvio.tv.ui.screens.player.FlowAdaptiveSourceTest --tests com.nuvio.tv.ui.screens.player.FlowNetworkPolicyTest --tests com.nuvio.tv.ui.screens.player.FlowBufferedReadTest --tests com.nuvio.tv.ui.screens.player.FlowMuxBitrateTest --tests com.nuvio.tv.ui.screens.player.LibassOverlayGeometryTest --tests com.nuvio.tv.ui.screens.player.PlaybackMatchTextTest --tests com.nuvio.tv.updater.FlowUpdateVersionTest --tests com.nuvio.tv.data.local.ContinueWatchingSnapshotDecoderTest :app:assembleFullRelease --max-workers=2 --no-daemon --console=plain --stacktrace "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process
       - name: Verify expected Flow APK
-        if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true'
+        if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true' || steps.pending.outputs.required == 'true'
         run: |
           APK=app/build/outputs/apk/full/release/app-full-armeabi-v7a-release.apk
           test -f "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep "package: name='com.jeffrey.nuvioflow.debug'"
       - uses: actions/upload-artifact@v4
-        if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true'
+        if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true' || steps.pending.outputs.required == 'true'
         with:
           name: flow-signed-apk
           path: app/build/outputs/apk/full/release/*.apk
           if-no-files-found: error
           retention-days: 14
       - name: Publish verified signed Flow release
-        if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true'
+        if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true' || steps.pending.outputs.required == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
