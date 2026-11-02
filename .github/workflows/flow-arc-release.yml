@@ -114,6 +114,13 @@ jobs:
             app/build/test-results/
             app/build/reports/tests/
           if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flow-signed-apk
+          path: app/build/outputs/apk/full/release/*.apk
+          if-no-files-found: warn
+          retention-days: 14
       - name: Verify expected Flow APK
         run: |
           APK=app/build/outputs/apk/full/release/app-full-armeabi-v7a-release.apk
@@ -121,12 +128,6 @@ jobs:
           python3 scripts/verify_native_apk.py --abi armeabi-v7a "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep "package: name='com.jeffrey.nuvioflow.debug'"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: flow-signed-apk
-          path: app/build/outputs/apk/full/release/*.apk
-          if-no-files-found: error
-          retention-days: 14
       - name: Publish verified source and signed update
         env:
           GH_TOKEN: ${{ github.token }}

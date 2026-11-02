@@ -70,6 +70,15 @@ def main():
   assert text.count(old)==1, 'Arc workload test changed; inspect before adapting'
   workload.write_text(text.replace(old,new))
   shutil.copyfile(arc/'scripts/verify_native_apk.py',ROOT/'scripts/verify_native_apk.py')
+  # The supplied libass AAR statically includes libass inside libasskt.so.
+  verifier=ROOT/'scripts/verify_native_apk.py'
+  check=verifier.read_text()
+  check=check.replace('"libass.so", ', '')
+  check=check.replace('"libasskt.so"}', '"libasskt.so", "libaml_fel.so", "libnuviothumb.so"}')
+  anchor='        bridge = archive.read(f"lib/{abi}/libdovi_bridge.so")'
+  subtitle_check='        subtitles = archive.read(f"lib/{abi}/libasskt.so")\n        for symbol in (b"ass_library_init\\0", b"ass_renderer_init\\0", b"ass_read_memory\\0"):\n            if symbol not in subtitles:\n                raise ValueError("Static libass implementation missing from libasskt.so")\n'
+  assert anchor in check
+  verifier.write_text(check.replace(anchor, subtitle_check+anchor))
   subprocess.run(['python3','scripts/verify_arc_runtime.py'],cwd=ROOT,check=True)
   print('Imported original Arc runtime:',ARC_COMMIT)
 
