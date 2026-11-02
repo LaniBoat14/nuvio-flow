@@ -78,4 +78,25 @@ class FlowAdaptiveSourceTest {
         assertArrayEquals(file.copyOfRange(1000,1100),bytes);second.close()
     }
 
+    @Test fun partialRangeFailureRetriesWithoutDuplicatingBytes(){
+        val file=ByteArray(1_000_000){(it%251).toByte()};val server=Server(file,true,uri)
+        val failed=java.util.concurrent.atomic.AtomicBoolean()
+        val recoveryCount=AtomicInteger()
+        val primary=DataSource.Factory {
+            val original=server.createDataSource()
+            object:DataSource by original {
+                var readOnce=false
+                override fun read(buffer:ByteArray,offset:Int,length:Int):Int {
+                    if(readOnce && failed.compareAndSet(false,true))throw java.io.IOException("Injected range failure")
+                    readOnce=true
+                    return original.read(buffer,offset,minOf(length,100_000))
+                }
+            }
+        }
+        val recovery=DataSource.Factory {recoveryCount.incrementAndGet();server.createDataSource()}
+        val source=FlowAdaptiveSource(mockk<Context>(relaxed=true),primary,false,3,16,recovery)
+        assertArrayEquals(file,read(source,0))
+        assertTrue(recoveryCount.get()>0)
+    }
+
 }

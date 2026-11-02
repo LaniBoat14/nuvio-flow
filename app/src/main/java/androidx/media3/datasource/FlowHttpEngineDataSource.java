@@ -255,7 +255,7 @@ public final class FlowHttpEngineDataSource extends BaseDataSource implements Ht
 
     @UnstableApi
     @Override
-    public HttpDataSource createDataSource() {
+    public FlowHttpEngineDataSource createDataSource() {
       FlowHttpEngineDataSource dataSource =
           new FlowHttpEngineDataSource(
               httpEngine,

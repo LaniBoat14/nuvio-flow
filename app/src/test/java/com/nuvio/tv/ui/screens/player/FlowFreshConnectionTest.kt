@@ -14,10 +14,10 @@ class FlowFreshConnectionTest {
         mockkStatic(Uri::class)
         every { Uri.parse(any()) } answers {
             val value=firstArg<String>()
-            mockk<Uri>(relaxed=true) {
-                every { toString() } returns value
-                every { host } returns "127.0.0.1"
-            }
+            val parsed=mockk<Uri>(relaxed=true)
+            every { parsed.toString() } returns value
+            every { parsed.host } returns "127.0.0.1"
+            parsed
         }
         try {
             repeat(2){server.enqueue(MockResponse().setBody("payload"))}
