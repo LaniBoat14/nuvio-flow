@@ -494,7 +494,8 @@ internal fun PlayerRuntimeController.initializePlayer(
             )
             val isHlsStream = isHls || resolvedStreamMime == MimeTypes.APPLICATION_M3U8
             val isDashStream = resolvedStreamMime == MimeTypes.APPLICATION_MPD
-            val parallelActive = playerSettings.parallelNetworkEnabled && playerSettings.useParallelConnections
+            val customNetwork = context.getSharedPreferences("flow-adaptive-hosts",android.content.Context.MODE_PRIVATE).getBoolean("custom_network_enabled",true)
+            val parallelActive = customNetwork && playerSettings.parallelNetworkEnabled && playerSettings.useParallelConnections
             val useChunkSessionSource = parallelActive && !isHlsStream && !isDashStream
 
             val parallelOverheadMb = if (useChunkSessionSource) {
@@ -507,7 +508,7 @@ internal fun PlayerRuntimeController.initializePlayer(
             }
             currentParallelChunkOverheadMb = parallelOverheadMb
 
-            val adaptiveDefaults = !isHlsStream && !isDashStream && !PlayerMediaSourceFactory.isLoopbackUrl(url) &&
+            val adaptiveDefaults = customNetwork && !isHlsStream && !isDashStream && !PlayerMediaSourceFactory.isLoopbackUrl(url) &&
                 !playerSettings.bufferEngineEnabled &&
                 ((!playerSettings.parallelNetworkEnabled && context.getSharedPreferences("flow-adaptive-hosts",android.content.Context.MODE_PRIVATE).getBoolean("enabled",true)) || parallelActive)
             val loadControl = if (playerSettings.nuvioPerformanceModeEnabled) {
@@ -607,6 +608,9 @@ internal fun PlayerRuntimeController.initializePlayer(
             mediaSourceFactory.nativeEngineEnabled = playerSettings.nuvioPerformanceModeEnabled
 
             mediaSourceFactory.nuvioPerformanceModeEnabled = playerSettings.nuvioPerformanceModeEnabled
+            // Reserve room before prepare() starts filling player buffers.
+            FlowAdaptiveRuntime.reservedMb=if(customNetwork && !isHlsStream && !isDashStream) 112 else 0
+            currentBitrateAwareLoadControl?.setNetworkReserveBytes(FlowAdaptiveRuntime.reservedMb.toLong()*1024*1024)
             mediaSourceFactory.networkManual = playerSettings.parallelNetworkEnabled
             if (playerSettings.parallelNetworkEnabled && !isTorrentStream) {
                 mediaSourceFactory.useParallelConnections = playerSettings.useParallelConnections

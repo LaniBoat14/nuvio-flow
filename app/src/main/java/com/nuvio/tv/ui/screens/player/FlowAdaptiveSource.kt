@@ -98,6 +98,7 @@ internal class FlowAdaptiveSource(
             schedule();return end-position
         }
         hardClose(); closed.set(false);FlowAdaptiveRuntime.protocol=null;FlowAdaptiveRuntime.peer=null; spec=dataSpec; position=dataSpec.position; next=position
+        rangeBudget.reset();memoryAt=Long.MIN_VALUE;memoryPressure=false
         hedgeBudget.reset();delivered.set(0);previousBytes=0;lastTick=SystemClock.elapsedRealtime();lastTrial=lastTick;profileComplete=false;modeScores.clear();synchronized(speeds){speeds.clear()}
         var probe=upstream.createDataSource()
         openingSource=probe
@@ -142,6 +143,7 @@ internal class FlowAdaptiveSource(
     }
     private var memoryAt = Long.MIN_VALUE
     private var cachedBudget = 16
+    private val rangeBudget=com.nuvio.tv.core.network.adaptive.SessionRangeBudget()
     private var memoryPressure = false
     private fun budgetMb(): Int {
         val now=SystemClock.elapsedRealtime()
@@ -156,7 +158,8 @@ internal class FlowAdaptiveSource(
             systemRoom=(info.availMem-info.threshold-64L*MB).coerceAtLeast(0)
             memoryPressure=info.lowMemory || systemRoom<64L*MB
         }
-        cachedBudget=minOf(96L,heapRoom/MB/2,systemRoom/MB/2).toInt()
+        // Capture once; ordinary chunk allocations must not lower their own ceiling.
+        cachedBudget=rangeBudget.update(minOf(96L,heapRoom/MB/2,systemRoom/MB/2).toInt(),memoryPressure)
         return cachedBudget
     }
     private fun mode(): AdaptivePolicy.Mode = if(adaptive) policy.mode else AdaptivePolicy.Mode(fixedWorkers.coerceIn(1,4),fixedChunkMb.coerceIn(8,16))
@@ -164,8 +167,12 @@ internal class FlowAdaptiveSource(
         next=maxOf(next,position)
         val m=mode()
         val capacity=(budgetMb()/m.chunkMb).coerceIn(1,m.workers)
-        FlowAdaptiveRuntime.reservedMb=(capacity+1)*m.chunkMb
+        FlowAdaptiveRuntime.reservedMb=(budgetMb()+m.chunkMb).coerceAtMost(112)
         FlowAdaptiveRuntime.mode="${capacity}×${m.chunkMb} MB${if(adaptive) " · Auto" else " · Fixed"}"
+        if(capacity<m.workers) {
+            FlowAdaptiveRuntime.mode+=" (requested ${m.workers}×${m.chunkMb}; memory limited)"
+            FlowAdaptiveRuntime.reason="Range memory budget ${budgetMb()} MB"
+        }
         val covering=chunks.floorEntry(position)?.value?.takeIf{position<it.start+it.size}
         if(covering==null && chunks.size>=capacity) chunks.pollLastEntry()?.value?.cancel()
         while(!closed.get() && chunks.size<capacity && next<end) {

@@ -221,9 +221,10 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
                 "safeNativeMb=${NuvioExoPlayerPerformanceHelper.getSafeNativeMemoryLimitMb(context)} " +
                 "parallel=${if (useParallelConnections) parallelConnectionCount else 0} chunkKb=$parallelChunkSizeKb"
         )
-        val useChunkSessionSource = useParallelConnections && !isHls && !isDash
+        val customNetwork = context.getSharedPreferences("flow-adaptive-hosts", Context.MODE_PRIVATE).getBoolean("custom_network_enabled",true)
+        val useChunkSessionSource = customNetwork && useParallelConnections && !isHls && !isDash
         parallelStartupPrefetchUnlocked.set(!useChunkSessionSource)
-        val autoNetwork = context.getSharedPreferences("flow-adaptive-hosts", Context.MODE_PRIVATE).getBoolean("enabled", true) && !networkManual
+        val autoNetwork = context.getSharedPreferences("flow-adaptive-hosts", Context.MODE_PRIVATE).getBoolean("enabled", true) && customNetwork && !networkManual
         val adaptiveEligible = !isHls && !isDash && !isLoopbackUrl(url) && url.startsWith("http")
         FlowAdaptiveRuntime.reason="Starting playback"
         FlowAdaptiveRuntime.mode=if(autoNetwork) "Adaptive" else "Single"
@@ -260,6 +261,8 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
                 shouldAllowBackgroundPrefetch = { parallelStartupPrefetchUnlocked.get() },
                 onResolvedUri = { resolved -> currentVodCacheResolvedUrl = resolved?.toString() }
             )
+        } else if (adaptiveEligible) {
+            FlowNativeTransport.factory(context, sanitizedHeaders) ?: httpDataSourceFactory
         } else if (isLoopbackUrl(url)) {
             PlayerPlaybackNetworking.createHttpDataSourceFactory(sanitizedHeaders, useLongReadTimeout = true)
         } else {

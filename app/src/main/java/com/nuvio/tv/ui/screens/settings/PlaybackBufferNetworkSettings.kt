@@ -93,6 +93,14 @@ internal fun PlaybackBufferNetworkSection(
 
     SettingsSectionLabel(text = stringResource(R.string.playback_network_label))
     val networkPrefs=context.getSharedPreferences("flow-adaptive-hosts", android.content.Context.MODE_PRIVATE)
+    var customNetwork by remember { mutableStateOf(networkPrefs.getBoolean("custom_network_enabled",true)) }
+    SettingsToggleRow(
+        title = "Custom Network",
+        subtitle = "Off: one standard connection. On: use Automatic speed-up or your fixed connection settings.",
+        checked = customNetwork,
+        onToggle = { customNetwork=!customNetwork;networkPrefs.edit().putBoolean("custom_network_enabled",customNetwork).apply() }
+    )
+    if(customNetwork) {
     var autoSpeedup by remember { mutableStateOf(networkPrefs.getBoolean("enabled",true)) }
     SettingsToggleRow(
         title = "Automatic speed-up",
@@ -118,6 +126,7 @@ internal fun PlaybackBufferNetworkSection(
             valueText=if(settings.parallelChunkSizeKb>=16*1024) "16 MB" else "8 MB",
             minValue=0,maxValue=1,step=1,
             onValueChange={value->updateMemory{setParallelChunkSizeKb(if(value==1)16*1024 else 8*1024)}})
+    }
     }
 
 }
