@@ -342,6 +342,7 @@ internal fun PlayerRuntimeController.startProgressUpdates() {
             _exoPlayer?.let {
                 FlowAdaptiveRuntime.bufferSeconds=(it.bufferedPosition-it.currentPosition).coerceAtLeast(0)/1000.0
                 FlowAdaptiveRuntime.durationMs=it.duration.takeIf{d->d>0} ?: 0
+                FlowAdaptiveRuntime.playbackSpeed=it.playbackParameters.speed.toDouble()
             }
             if (isUsingMpvEngine()) {
                 val view = mpvView
