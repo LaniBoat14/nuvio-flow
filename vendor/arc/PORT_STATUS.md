@@ -1,21 +1,11 @@
-# Arc runtime port — release candidate awaiting build validation
+# Exact Arc runtime integration
 
-Reference archive commit: ccfd1d7b5ad681bde4615e5bae82a4e7d710a34d.
-SOURCE.json hashes the preserved original sources and tests. GPL-3.0 license retained.
+Reference: supplied NuvioTV-Fork-main(1).zip, upstream commit ccfd1d7b5ad681bde4615e5bae82a4e7d710a34d.
 
-The app now uses Arc's media-source factory, HTTP/socket clients, range engine,
-automatic speed-up policy, host history, request ledger and memory governance.
-The existing analytics button opens Arc's sampled, sectioned live HUD. Arc's
-buffer/network settings and Automatic speed-up preference are persisted.
-The former Flow transport and custom HUD have been removed from production.
+The complete matching Arc source replaces the earlier partial adapters. This includes its player screens, classic/V2 HUD, startup/prewarm hooks, networking, buffer/memory governance, matching player AARs, Dolby Vision/FEL native components, IEC audio and thumbnail subsystem.
 
-Integration boundaries:
-- Flow uses the classic Nuvio HUD surface from Arc, without Arc's separate V2 UI.
-- Flow has no thumbnail allocator; that absent owner contributes zero memory.
-- Native-FEL-only RPU detail rows are not queried because Flow has no native FEL renderer.
-- Audio diagnostics use Arc's platform monitor; Flow has no separate IEC audio owner.
-- Flow's existing low-RAM DV7 back-buffer adjustment retains a compatibility method.
+Flow retains its application ID com.jeffrey.nuvioflow.debug, existing release signing credentials, launcher icons, name and GitHub release feed. The runtime manifest records 638 exact reference hashes and CI rejects mismatches.
 
-Original Arc contract tests are included in application CI. Policy-only validation
-is insufficient: signed application compilation, selected runtime/network tests,
-and APK identity/signature checks must pass before publishing an update.
+Release publication requires original Arc transport/player/memory/audio and updater tests, optimized APK assembly, native architecture/linkage validation, signature verification and package identity verification. TV playback validation remains user-run.
+
+The supplied Arc revision is pinned. Previous automated official-Nuvio merges are paused because they would invalidate the requested exact Arc implementation. A later source update must revalidate the manifest and matching dependencies together.
