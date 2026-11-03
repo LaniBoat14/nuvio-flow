@@ -156,6 +156,14 @@ android {
         buildConfigField("String", "DEVICE_LOGIN_WEB_BASE_URL", "\"${localProperties.getProperty("DEVICE_LOGIN_WEB_BASE_URL", "https://nuvio.tv/link")}\"")
         buildConfigField("boolean", "DOVI_NATIVE_ENABLED", enableDoviNative.toString())
         buildConfigField("boolean", "DOVI_EXTRACTOR_HOOK_READY", doviExtractorHookReady.toString())
+        // libnuviothumb (seek thumbnails) is always built; dovi_bridge only when enabled.
+        externalNativeBuild {
+            cmake {
+                arguments(
+                    "-DNUVIO_BUILD_DOVI=${if (enableDoviNative) "ON" else "OFF"}"
+                )
+            }
+        }
         if (enableDoviNative) {
             externalNativeBuild {
                 cmake {
@@ -206,11 +214,9 @@ android {
         }
     }
 
-    if (enableDoviNative) {
-        externalNativeBuild {
-            cmake {
-                path = file("src/main/cpp/CMakeLists.txt")
-            }
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
         }
     }
 
