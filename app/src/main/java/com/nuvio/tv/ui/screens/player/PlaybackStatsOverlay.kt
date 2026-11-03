@@ -202,7 +202,8 @@ fun PlaybackStatsOverlay(
     modifier: Modifier = Modifier,
     compact: Boolean = false
 ) {
-    val isV2 = false
+    // Flow draws Arc's glass HUD look itself (see PlaybackStatsGlass) instead of Arc's V2 theme system.
+    val isV2 = true
     AnimatedVisibility(
         visible = visible && sample != null,
         enter = fadeIn(),
@@ -211,10 +212,7 @@ fun PlaybackStatsOverlay(
     ) {
         Column(
             modifier = Modifier
-                .then(Modifier.background(
-                    color = Color.Black.copy(alpha = 0.7f),
-                    shape = RoundedCornerShape(NuvioTheme.radii.sm)
-                ))
+                .then(Modifier.playbackStatsGlass(RoundedCornerShape(20.dp)))
                 .width(StatsPanelWidth)
                 .padding(horizontal = NuvioTheme.spacing.md, vertical = NuvioTheme.spacing.sm),
             verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xxs)
