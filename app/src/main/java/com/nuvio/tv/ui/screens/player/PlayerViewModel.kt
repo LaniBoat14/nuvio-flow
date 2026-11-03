@@ -552,7 +552,7 @@ class PlayerViewModel @Inject constructor(
         // RPU display-management rows for a Profile 7 source. Only for DV7 so the panel stays
         // compact on every other film. The summary is sampled by the conversion extractor hooks
         // and looked up at the playback position; CM version and levels fall back to the first RPU.
-        val dvDetail = dvDiag.dvSourceProfile?.trim() == "7"
+        val dvDetail = dvDiag.dvSourceProfile?.trim() == "7" && dvDiag.dv7ModeEffective == "NATIVE_FEL"
         (DolbyVisionConversionStats.getLastRpuMetadata()?.toDiagnosticLine() ?: dvDiag.dvHdrMastering)
             ?.takeIf { dvDetail && it.isNotBlank() }?.let { mastering ->
                 rows += StatsRow("DV HDR", mastering, StatsDot.NONE, marquee = mastering.length > 40)
