@@ -8,6 +8,8 @@ import com.nuvio.tv.data.remote.api.TraktApi
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import io.mockk.spyk
+import io.mockk.every
 import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertFalse
@@ -27,12 +29,14 @@ class TraktAuthServiceTest {
         coEvery { authSessionNoticeDataStore.markTraktReconnectRequired() } returns Unit
         coEvery { traktApi.refreshToken(any()) } returns Response.error(400, "invalid_grant".toResponseBody())
 
-        val service = TraktAuthService(
+        val service = spyk(TraktAuthService(
             context = mockk<Context>(relaxed = true),
             traktApi = traktApi,
             traktAuthDataStore = traktAuthDataStore,
             authSessionNoticeDataStore = authSessionNoticeDataStore
-        )
+        ))
+        // Exercise refresh handling independently of CI client credentials.
+        every { service.hasRequiredCredentials() } returns true
 
         assertFalse(service.refreshTokenIfNeeded(force = true))
         assertFalse(service.refreshTokenIfNeeded(force = true))

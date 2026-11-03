@@ -1348,7 +1348,7 @@
     "app/src/test/java/com/nuvio/tv/data/repository/SupportersRepositoryTest.kt": "c90449f47399fd0dd7349b9aedb065de9fb6a9991f13234c8ab66eb3c73bb170",
     "app/src/test/java/com/nuvio/tv/data/repository/TrackingPlaybackScenariosTest.kt": "cb9e1c90d428b7acde92576a486c3903a0ae55cfeac0d3c1f209e9ac2d98bf75",
     "app/src/test/java/com/nuvio/tv/data/repository/TrackingProgressOverheadTest.kt": "1db4df7d0807f18037c03b50bfe5d5f3b70f49eca5aa7d665a515dd49f70307d",
-    "app/src/test/java/com/nuvio/tv/data/repository/TraktAuthServiceTest.kt": "8744921af6071f4276685837cc2bb91df735d349295b393bdc3a97018141f3c3",
+    "app/src/test/java/com/nuvio/tv/data/repository/TraktAuthServiceTest.kt": "917ea80b30bbf1f6f700b71c9969aa370fec956ce9a914cfb48878786f8e06d6",
     "app/src/test/java/com/nuvio/tv/data/repository/TraktCommentsServiceTest.kt": "c30a84f9624839fbaede84e0b1e91663b18aeb2e679579aee6d2ebd6cdd72b68",
     "app/src/test/java/com/nuvio/tv/data/repository/TraktProgressPolicyTest.kt": "245b2db3c7c4655535c2828f4ad1afa7f6ac8f9c1469ef195fff2d135dd6b1c2",
     "app/src/test/java/com/nuvio/tv/data/repository/TraktProgressServiceFailureTest.kt": "b4f6eace9c85c08a88c45e29de301379dc7a207e60c07dda8eefe73dc9b31263",
