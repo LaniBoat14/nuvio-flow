@@ -3,8 +3,6 @@ package com.nuvio.tv.data.repository
 import android.net.Uri
 import android.os.Build
 import com.nuvio.tv.BuildConfig
-import com.nuvio.tv.core.build.IssueReports
-import com.nuvio.tv.core.logging.redactLinksForLog
 import com.nuvio.tv.core.player.LastPlaybackDiagnostics
 import com.nuvio.tv.data.remote.api.PlaybackIssueReportApi
 import com.nuvio.tv.data.remote.dto.PlaybackIssueAppDto
@@ -133,7 +131,6 @@ data class PlaybackIssuePlaybackSettingsInput(
     val secondaryPreferredAudioLanguage: String?,
     val preferredSubtitleLanguage: String,
     val secondaryPreferredSubtitleLanguage: String?,
-    val tertiaryPreferredSubtitleLanguage: String? = null,
     val useForcedSubtitles: Boolean,
     val showOnlyPreferredSubtitleLanguages: Boolean,
     val useLibass: Boolean,
@@ -146,6 +143,7 @@ data class PlaybackIssuePlaybackSettingsInput(
     val showPlayerLoadingStatus: Boolean,
     val playbackIssueReportsEnabled: Boolean,
     val dv5ToDv81Enabled: Boolean,
+    val dv7ToDv81PreserveMappingEnabled: Boolean,
     val dv7HandlingMode: String,
     val dv7LibdoviModeOverride: Int,
     val stripHdr10PlusSei: Boolean,
@@ -194,7 +192,7 @@ class PlaybackIssueReportRepository @Inject constructor(
     private val playbackIssueReportApi: PlaybackIssueReportApi
 ) {
     suspend fun submit(input: PlaybackIssueReportInput): Result<String> = runCatching {
-        if (!IssueReports.available) {
+        if (BuildConfig.PLAYBACK_REPORTS_BASE_URL.isBlank()) {
             error("Playback report endpoint is not configured")
         }
         val response = playbackIssueReportApi.createPlaybackIssueReport(input.toDto())
@@ -376,7 +374,6 @@ class PlaybackIssueReportRepository @Inject constructor(
             secondaryPreferredAudioLanguage = secondaryPreferredAudioLanguage.cleanText(40),
             preferredSubtitleLanguage = preferredSubtitleLanguage.limit(40),
             secondaryPreferredSubtitleLanguage = secondaryPreferredSubtitleLanguage.cleanText(40),
-            tertiaryPreferredSubtitleLanguage = tertiaryPreferredSubtitleLanguage.cleanText(40),
             useForcedSubtitles = useForcedSubtitles,
             showOnlyPreferredSubtitleLanguages = showOnlyPreferredSubtitleLanguages,
             useLibass = useLibass,
@@ -389,6 +386,7 @@ class PlaybackIssueReportRepository @Inject constructor(
             showPlayerLoadingStatus = showPlayerLoadingStatus,
             playbackIssueReportsEnabled = playbackIssueReportsEnabled,
             dv5ToDv81Enabled = dv5ToDv81Enabled,
+            dv7ToDv81PreserveMappingEnabled = dv7ToDv81PreserveMappingEnabled,
             dv7HandlingMode = dv7HandlingMode.limit(80),
             dv7LibdoviModeOverride = dv7LibdoviModeOverride.coerceIn(-1, 4),
             stripHdr10PlusSei = stripHdr10PlusSei,
@@ -650,7 +648,6 @@ class PlaybackIssueReportRepository @Inject constructor(
     private fun String.rawLogLine(maxLength: Int): String? =
         replace('\n', ' ')
             .replace('\r', ' ')
-            .redactLinksForLog()
             .trim()
             .takeIf { it.isNotBlank() }
             ?.limit(maxLength)

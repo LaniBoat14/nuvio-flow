@@ -2,7 +2,6 @@ package com.nuvio.tv.ui.screens.player
 
 import android.util.Log
 import androidx.media3.exoplayer.SeekParameters
-import com.nuvio.tv.core.util.TtffTrace
 import com.nuvio.tv.data.local.InternalPlayerEngine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -29,13 +28,11 @@ internal fun PlayerRuntimeController.attachMpvView(view: NuvioMpvSurfaceView?) {
         registerMpvEventRelay(view)
         view.setMedia(currentStreamUrl, currentHeaders)
         view.setPlaybackSpeed(_uiState.value.playbackSpeed)
-        view.applyAudioAmplificationDb(_uiState.value.audioAmplificationDb, _uiState.value.nightMode)
-        view.applyDialogueBoostDb(_uiState.value.centerMixLevelDb)
+        view.applyAudioAmplificationDb(_uiState.value.audioAmplificationDb)
         view.applyAudioLanguagePreferences(mpvPreferredAudioLanguages)
         view.applySubtitleLanguagePreferences(
             preferred = _uiState.value.subtitleStyle.preferredLanguage,
-            secondary = _uiState.value.subtitleStyle.secondaryPreferredLanguage,
-            tertiary = _uiState.value.subtitleStyle.tertiaryPreferredLanguage
+            secondary = _uiState.value.subtitleStyle.secondaryPreferredLanguage
         )
         view.applySubtitleStyle(_uiState.value.effectiveSubtitleStyle)
         view.setSubtitleDelayMs(mpvSubtitleDelayMs(_uiState.value.subtitleDelayMs))
@@ -97,17 +94,11 @@ internal fun PlayerRuntimeController.initializeMpvPlayer(
 ) {
     mpvMediaLoadPrepared = true
     prefetchAutoSyncIndex(url, headers) // AutoSync hook
-    // Reads the Exo player's session, so it goes before the player is released.
-    notifyAudioSessionUpdate(false)
-    _exoPlayer?.let { player ->
-        runCatching { player.releaseAssHandlerCompat() }
-        player.release()
-    }
+    _exoPlayer?.release()
     _exoPlayer = null
-    lastMpvOutputChannels = -1
-    nativeVideoSelection.clear()
     trackSelector = null
     releaseMediaSession()
+    notifyAudioSessionUpdate(false)
 
     val view = mpvView
     if (view == null) {
@@ -142,24 +133,21 @@ internal fun PlayerRuntimeController.initializeMpvPlayer(
             ?: (_uiState.value.pendingSeekPosition?.coerceAtLeast(0L) ?: 0L)
         playbackAnalyticsDiagnostics.setStartupStartPosition(initialResumePosition)
         view.setMedia(url, headers, initialResumePosition)
-        val playerInitLine =
+        playbackAnalyticsDiagnostics.recordRawEventLine(
             "PLAYER_INIT: engine=MPV host=${url.safeMpvTraceHost()} " +
                 "playbackSpeed=${_uiState.value.playbackSpeed} resumePositionMs=$initialResumePosition"
-        playbackAnalyticsDiagnostics.recordRawEventLine(playerInitLine)
-        TtffTrace.mirror(playerInitLine)
+        )
         if (initialResumePosition > 0L) {
             clearPendingInitialResumePosition()
             _uiState.update { it.copy(pendingSeekPosition = null) }
             updatePlaybackTimeline(currentPosition = initialResumePosition)
         }
         view.setPlaybackSpeed(_uiState.value.playbackSpeed)
-        view.applyAudioAmplificationDb(_uiState.value.audioAmplificationDb, _uiState.value.nightMode)
-        view.applyDialogueBoostDb(_uiState.value.centerMixLevelDb)
+        view.applyAudioAmplificationDb(_uiState.value.audioAmplificationDb)
         view.applyAudioLanguagePreferences(mpvPreferredAudioLanguages)
         view.applySubtitleLanguagePreferences(
             preferred = _uiState.value.subtitleStyle.preferredLanguage,
-            secondary = _uiState.value.subtitleStyle.secondaryPreferredLanguage,
-            tertiary = _uiState.value.subtitleStyle.tertiaryPreferredLanguage
+            secondary = _uiState.value.subtitleStyle.secondaryPreferredLanguage
         )
         view.applySubtitleStyle(_uiState.value.effectiveSubtitleStyle)
         view.setSubtitleDelayMs(mpvSubtitleDelayMs(_uiState.value.subtitleDelayMs))
@@ -246,7 +234,6 @@ internal fun PlayerRuntimeController.pauseForLifecycle() {
     // Mark as user-paused so autoplay logic doesn't resume playback.
     userPausedManually = true
     shouldEnforceAutoplayOnFirstReady = false
-    finishSeekSettle(seek = false, reason = "background")
     logScrobbleDiagnostic("lifecycle_pause", "userPaused=$userPausedManually")
 
     if (isUsingMpvEngine()) {
@@ -255,7 +242,6 @@ internal fun PlayerRuntimeController.pauseForLifecycle() {
         stopWatchProgressSaving()
         stopProgressUpdates()
         _uiState.update { it.copy(isPlaying = false) }
-        reportServerPlayback()
         return
     }
     _exoPlayer?.let { player ->
@@ -327,7 +313,6 @@ internal fun PlayerRuntimeController.resumeForLifecycle() {
         // Re-create the MediaSession so media controls work in the foreground.
         if (currentMediaSession == null) runCatching { installExoMediaSession(player) }
             .onFailure { it.printStackTrace() }
-        schedulePassthroughReturnCheck("resume")
     }
 }
 
@@ -350,7 +335,6 @@ internal fun PlayerRuntimeController.updateMpvTracksOnTick() {
         return
     }
     if (!isUsingMpvEngine() || mpvTrackRefreshInProgress || mpvView == null) return
-    followMpvAudioOutput()
     val state = _uiState.value
     markMpvTextTracksScannedIfReady(hasInternalSubtitleTracks = state.subtitleTracks.isNotEmpty())
     maybeRestorePendingAudioSelectionAfterSubtitleRefresh(state.audioTracks)
@@ -359,22 +343,6 @@ internal fun PlayerRuntimeController.updateMpvTracksOnTick() {
         subtitleTracks = state.subtitleTracks
     )
     tryAutoSelectPreferredSubtitleFromAvailableTracks()
-}
-
-/**
- * mpv settles its output channels only once audio runs. Dialogue boost's state follows them, and surround played out
- * as stereo gets the limiter after the downmix.
- */
-private fun PlayerRuntimeController.followMpvAudioOutput() {
-    val view = mpvView ?: return
-    val outputChannels = view.audioOutputChannelCount()
-    val state = _uiState.value
-    val trackChannels = state.audioTracks.getOrNull(state.selectedAudioTrackIndex)?.channelCount ?: 0
-    if (mpvStereoDownmixNeedsLimiter(outputChannels, trackChannels)) view.limitStereoDownmix(true)
-    if (outputChannels != lastMpvOutputChannels) {
-        lastMpvOutputChannels = outputChannels
-        updateAudioControlAvailability()
-    }
 }
 
 /** mpv only reports the video transfer once it has decoded video params, so this is re-read each tick. */
@@ -446,10 +414,7 @@ private fun PlayerRuntimeController.applyMpvTrackSnapshot(snapshot: MpvTrackSnap
                 trackId = track.id.toString(),
                 codec = track.codec,
                 channelCount = track.channelCount,
-                isSelected = track.isSelected,
-                sampleRate = track.sampleRate,
-                title = track.title,
-                role = track.role
+                isSelected = track.isSelected
             )
         }
 
@@ -522,8 +487,6 @@ private fun PlayerRuntimeController.applyMpvTrackSnapshot(snapshot: MpvTrackSnap
         audioTracks = audioTracks,
         subtitleTracks = internalSubtitleTracks
     )
-    applyLosslessAudioDefaultIfUnset(audioTracks)
-    updateAudioControlAvailability()
     logSwitchTrace(
         stage = "mpv-snapshot-after-restore",
         message = "uiAudioIndex=${_uiState.value.selectedAudioTrackIndex} " +
@@ -680,18 +643,13 @@ internal fun PlayerRuntimeController.seekPlaybackTo(
                     seekBufferingUiJob?.cancel()
                     _uiState.update { it.copy(isBuffering = true) }
                 }
+                NuvioExoPlayerPerformanceHelper.buildScrubbingParams()?.let { params ->
+                    isScrubbingModeActive = true
+                    player.setScrubbingModeParameters(params)
+                }
             }
             player.setSeekParameters(seekParameters)
             player.seekTo(positionMs)
-            // SeekParameters is persistent player state. Restore the default so
-            // the raw player.seekTo() sites (audio-track-change nudge, long-pause
-            // resume, error recovery, resume progress, stall watchdog) do not
-            // inherit the direction of the user's last seek: a stale NEXT_SYNC
-            // turns the "seek back 1ms to unstick buffering" nudge into a forward
-            // jump of up to a full GOP on every audio-track change. Set/seek/reset
-            // messages are processed in order on the playback thread, so the
-            // requested seek still uses [seekParameters].
-            player.setSeekParameters(SeekParameters.DEFAULT)
         }
     }
 }

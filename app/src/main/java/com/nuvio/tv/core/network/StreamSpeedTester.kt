@@ -1,103 +1,211 @@
 package com.nuvio.tv.core.network
 
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import com.nuvio.tv.ui.screens.player.ParallelRangeDataSource
-import com.nuvio.tv.ui.screens.player.ParallelDiagnosticCalls
 import com.nuvio.tv.ui.screens.player.PlayerPlaybackNetworking
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
+import okhttp3.Request
 
 @UnstableApi
 object StreamSpeedTester {
 
-    /**
-     * Headline Mbps plus the per-sub-window Mbps series behind it.
-     * [failureReason] is non-null when the pass died: the cell failed, was
-     * cleaned up, and the sweep
-     * should record it and continue rather than abort or crash.
-     */
+    private const val WARMUP_BYTES = 8L * 1024 * 1024
+    private const val WARMUP_MAX_MS = 750L
+    private const val MEASURE_BYTES = 64L * 1024 * 1024
+    private const val MEASURE_MAX_MS = 8_000L
+    private const val SUB_WINDOW_MS = 500L
+    private const val MEASURE_MIN_MS = 2_500L
+
     data class ParallelPassResult(
         val mbps: Double,
-        val subWindowMbps: List<Double>,
+        val subWindowMbps: List<Double> = emptyList(),
         val failureReason: String? = null,
-        /**
-         * How many times this cell's chunk session tripped the 429
-         * rate-limit clamp. Non-zero means the cell did NOT run at its
-         * labelled connection count - the clamp drops it to a single
-         * connection - so its throughput describes a different
-         * configuration than the one under test and must not be measured
-         * against the others.
-         */
-        val clampTrips: Int = 0,
-        val measuredBytes: Long = 0,
-        val measuredNanos: Long = 0,
-        val totalBytes: Long = 0,
-        val payloadLimited: Boolean = false
-    ) {
-        internal fun retryReason(zeroFloor: Double): String? = when {
-            failureReason != null -> null
-            clampTrips > 0 -> "rate-limited"
-            !mbps.isFinite() || mbps < zeroFloor -> "no usable transfer"
-            else -> null
-        }
+        val clampTrips: Int = 0
+    )
+
+    suspend fun runBaselineTest(
+        url: String,
+        headers: Map<String, String>,
+        context: android.content.Context
+    ): Double = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val source = PlayerPlaybackNetworking.createDataSourceFactory(context, headers).createDataSource()
+        try {
+            source.open(DataSpec.Builder().setUri(url).build())
+            val buffer = ByteArray(64 * 1024)
+            val warmStart = android.os.SystemClock.elapsedRealtime()
+            while (android.os.SystemClock.elapsedRealtime() - warmStart < 1500) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                if (source.read(buffer, 0, buffer.size) == -1) return@withContext 0.0
+            }
+            var bytes = 0L
+            val start = android.os.SystemClock.elapsedRealtime()
+            while (android.os.SystemClock.elapsedRealtime() - start < 10000) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                val count = source.read(buffer, 0, buffer.size)
+                if (count == -1) break
+                bytes += count
+            }
+            bytes * 8.0 / ((android.os.SystemClock.elapsedRealtime() - start).coerceAtLeast(1) * 1000.0)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            android.util.Log.w("StreamSpeedTester", "Single-connection test failed", error)
+            0.0
+        } finally { runCatching { source.close() } }
     }
 
-    private val baselineTest by lazy {
-        BoundedStreamSpeedTest(PlayerPlaybackNetworking.createStreamSpeedTestCallFactory(), DiagnosticPlaybackGuard.shared, coordinator = DiagnosticRunCoordinator.shared)
-    }
-
-    // One owned, bounded HTTP response; cancellation propagates to the calling sweep.
-    internal suspend fun runBaselineTest(url: String, headers: Map<String, String>): BoundedStreamSpeedTest.Result =
-        baselineTest.run(url, headers)
-
-    // 2. Measures parallel connection speed at a specific connection count and
-    // chunk size (both swept by the orchestrator).
     suspend fun runParallelChunkTest(
         url: String,
         headers: Map<String, String>,
         chunkSizeBytes: Long,
         parallelConnections: Int,
-        // The window is the CALLER's figure (MemoryBudget.sweepCellPrefetchDepth):
-        // the prefetch depth playback would use, checked against the sweep's
-        // memory budget, so the session schedules its downloads as playback does.
-        prefetchDepthChunks: Int
-    ): ParallelPassResult {
-        // Workers and requests for every download the window can keep running.
-        val downloads = ParallelRangeDataSource.prefetchDepth(prefetchDepthChunks, parallelConnections)
-            .coerceAtMost(ParallelRangeDataSource.MAX_DIAGNOSTIC_DOWNLOADS)
-        val result = parallelTest.run { budget ->
-            val calls = ParallelDiagnosticCalls(downloads, payload = budget)
-            try {
-                val dataSource = ParallelRangeDataSource(
-                    upstreamFactory = OkHttpDataSource.Factory(calls).apply { setDefaultRequestProperties(headers) },
-                    parallelConnections = parallelConnections,
-                    chunkSize = chunkSizeBytes,
-                    useNativeMemory = true,
-                    prefetchDepthChunks = prefetchDepthChunks,
-                    isolateSession = true
-                )
-                object : BoundedParallelSpeedTest.Session {
-                    override fun open() { dataSource.open(DataSpec(android.net.Uri.parse(url))) }
-                    override fun read(buffer: ByteArray) = dataSource.read(buffer, 0, buffer.size)
-                    override val clampTrips get() = dataSource.diagnosticClampTrips
-                    override fun cancel() = calls.close()
-                    override fun close() = dataSource.close()
-                    override val isQuiescent get() = calls.isQuiescent && dataSource.diagnosticWorkersStopped
+        prefetchDepthChunks: Int = parallelConnections + 1
+    ): ParallelPassResult = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val totalBytesDownloaded = java.util.concurrent.atomic.AtomicLong(0L)
+
+        val transferListener = object : TransferListener {
+            override fun onTransferInitializing(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {}
+            override fun onTransferStart(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {}
+            override fun onBytesTransferred(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean, bytesTransferred: Int) {
+                if (isNetwork) {
+                    totalBytesDownloaded.addAndGet(bytesTransferred.toLong())
                 }
-            } catch (t: Throwable) { calls.close(); throw t }
+            }
+            override fun onTransferEnd(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {}
         }
-        return ParallelPassResult(
-            result.mbps ?: 0.0, result.samples, result.failure, result.clampTrips,
-            result.measuredBytes, result.measuredNanos, result.totalBytes, result.payloadLimited
-        )
+
+        var openSource: ParallelRangeDataSource? = null
+        var sampler: kotlinx.coroutines.Job? = null
+        try {
+            ParallelRangeDataSource.releaseRetainedSession()
+            val okHttpFactory = OkHttpDataSource.Factory(PlayerPlaybackNetworking.parallelHttpClient).apply {
+                setDefaultRequestProperties(headers)
+            }
+            val dataSource = ParallelRangeDataSource(
+                upstreamFactory = okHttpFactory,
+                parallelConnections = parallelConnections,
+                chunkSize = chunkSizeBytes,
+                useNativeMemory = true,
+                prefetchDepthChunks = prefetchDepthChunks
+            ).apply {
+                addTransferListener(transferListener)
+            }
+            openSource = dataSource
+            dataSource.open(DataSpec(android.net.Uri.parse(url)))
+            val buffer = ByteArray(64 * 1024)
+
+            var eof = false
+
+            val warmStart = System.currentTimeMillis()
+            while (totalBytesDownloaded.get() < WARMUP_BYTES &&
+                System.currentTimeMillis() - warmStart < WARMUP_MAX_MS
+            ) {
+                val read = dataSource.read(buffer, 0, buffer.size)
+                if (read == -1) {
+                    eof = true
+                    break
+                }
+            }
+
+            val networkAtMeasureStart = totalBytesDownloaded.get()
+            val tStart = System.currentTimeMillis()
+            val tDeadline = tStart + MEASURE_MAX_MS
+            val subWindowMbps = mutableListOf<Double>()
+            val samplerJob = launch {
+                var wStartMs = System.currentTimeMillis()
+                var wStartBytes = totalBytesDownloaded.get()
+                while (true) {
+                    kotlinx.coroutines.delay(SUB_WINDOW_MS)
+                    val now = System.currentTimeMillis()
+                    val bytes = totalBytesDownloaded.get()
+                    subWindowMbps += ((bytes - wStartBytes) * 8.0) /
+                        ((now - wStartMs) * 1000.0)
+                    wStartMs = now
+                    wStartBytes = bytes
+                }
+            }
+            sampler = samplerJob
+            while (!eof &&
+                (totalBytesDownloaded.get() - networkAtMeasureStart < MEASURE_BYTES ||
+                    System.currentTimeMillis() - tStart < MEASURE_MIN_MS) &&
+                System.currentTimeMillis() < tDeadline
+            ) {
+                val read = dataSource.read(buffer, 0, buffer.size)
+                if (read == -1) {
+                    eof = true
+                }
+            }
+            val endMs = System.currentTimeMillis()
+            samplerJob.cancel()
+            samplerJob.join()
+            val elapsed = (endMs - tStart).coerceAtLeast(1)
+            val networkDelta = totalBytesDownloaded.get() - networkAtMeasureStart
+            val clampTrips = ParallelRangeDataSource.hudClampTrips
+            dataSource.close()
+
+            return@withContext ParallelPassResult(
+                mbps = (networkDelta * 8.0) / (elapsed * 1000.0),
+                subWindowMbps = subWindowMbps.toList(),
+                clampTrips = clampTrips
+            )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            android.util.Log.e(
+                "StreamSpeedTester",
+                "Parallel measure failed (${parallelConnections}c/${chunkSizeBytes / (1024L * 1024L)}MB)",
+                t
+            )
+            ParallelRangeDataSource.releaseRetainedSession()
+            ParallelRangeDataSource.drainIdleBuffers(chunkSizeBytes)
+            val reason = t.javaClass.simpleName +
+                (t.message?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "")
+            return@withContext ParallelPassResult(0.0, emptyList(), failureReason = reason)
+        } finally {
+            sampler?.cancel()
+            try {
+                openSource?.close()
+            } catch (_: Exception) {
+            }
+        }
+        @Suppress("UNREACHABLE_CODE")
+        ParallelPassResult(0.0, emptyList())
     }
 
-    private val parallelTest by lazy { BoundedParallelSpeedTest(DiagnosticPlaybackGuard.shared, coordinator = DiagnosticRunCoordinator.shared) }
+    suspend fun getStreamContentLength(
+        url: String,
+        headers: Map<String, String>
+    ): Long = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        try {
+            val request = Request.Builder().url(url).head().apply {
+                headers.forEach { (k, v) -> header(k, v) }
+            }.build()
+            PlayerPlaybackNetworking.playbackHttpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val len = response.headers["Content-Length"]?.toLongOrNull()
+                    if (len != null && len > 0) return@withContext len
+                }
+            }
 
-    private val contentLengthProbe by lazy {
-        StreamContentLengthProbe(PlayerPlaybackNetworking.createContentLengthProbeCallFactory(), coordinator = DiagnosticRunCoordinator.shared)
+            val getRequest = Request.Builder().url(url).apply {
+                headers.forEach { (k, v) -> header(k, v) }
+            }.build()
+            PlayerPlaybackNetworking.playbackHttpClient.newCall(getRequest).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body
+                    if (body != null) {
+                        return@withContext body.contentLength().coerceAtLeast(0L)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        0L
     }
-
-    suspend fun getStreamContentLength(url: String, headers: Map<String, String>): Long =
-        contentLengthProbe.probe(url, headers)
 }

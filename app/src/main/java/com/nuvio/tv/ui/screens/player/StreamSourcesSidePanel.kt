@@ -5,7 +5,6 @@
 
 package com.nuvio.tv.ui.screens.player
 
-import com.nuvio.tv.ui.components.PanelEyebrow
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -18,7 +17,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -57,8 +55,6 @@ import com.nuvio.tv.domain.model.Stream
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.SourceChipStatus
 import com.nuvio.tv.ui.theme.NuvioTheme
-import com.nuvio.tv.ui.v2.appearance.LocalV2Appearance
-import com.nuvio.tv.ui.v2.player.v2PlayerPanel
 import androidx.compose.ui.res.stringResource
 import com.nuvio.tv.R
 import com.nuvio.tv.ui.util.localizeEpisodeTitle
@@ -232,22 +228,23 @@ internal fun StreamSourcesSidePanel(
 
     Box(
         modifier = modifier
-            .heightIn(max = 900.dp)
-            .width(if (LocalV2Appearance.current != null) 520.dp else 440.dp)
+            .fillMaxHeight()
+            .width(520.dp)
             .clip(RoundedCornerShape(topStart = NuvioTheme.spacing.lg, bottomStart = NuvioTheme.spacing.lg))
-            .then(if (LocalV2Appearance.current != null) Modifier.v2PlayerPanel()
-                else Modifier.background(Color.Black.copy(alpha = 0.85f)))
+            .background(NuvioTheme.colors.BackgroundElevated)
     ) {
-        Column(modifier = Modifier.padding(NuvioTheme.spacing.lg)) {
-            PanelEyebrow(text = stringResource(R.string.sources_title))
-
+        Column(modifier = Modifier.padding(NuvioTheme.spacing.xl)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm, Alignment.End),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Reload lives on the RefreshFilterChip in the chip row
-                // (unified with StreamScreen); the header keeps only Close.
+                Text(
+                    text = stringResource(R.string.sources_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = NuvioTheme.colors.TextPrimary
+                )
+
                 DialogButton(
                     text = stringResource(R.string.sources_close),
                     onClick = onClose,
@@ -268,7 +265,7 @@ internal fun StreamSourcesSidePanel(
                 )
             }
 
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
+            Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
 
             // Current content info
             val context = LocalContext.current
@@ -291,13 +288,13 @@ internal fun StreamSourcesSidePanel(
             }
             Text(
                 text = contentInfoText,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyLarge,
                 color = NuvioTheme.extendedColors.textSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
 
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
+            Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
 
             AnimatedVisibility(
                 visible = uiState.sourceChips.isNotEmpty() || uiState.sourceAvailableAddons.isNotEmpty(),
@@ -334,7 +331,7 @@ internal fun StreamSourcesSidePanel(
                 }
             }
 
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
+            Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
 
             when {
                 uiState.sourceStreamsError != null -> {
@@ -392,11 +389,12 @@ internal fun StreamSourcesSidePanel(
                         verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
                         contentPadding = PaddingValues(
                             start = NuvioTheme.spacing.sm,
-                            top = 6.dp,
+                            top = 14.dp,
                             end = NuvioTheme.spacing.sm,
                             bottom = NuvioTheme.spacing.sm
                         ),
                         modifier = Modifier
+                            .fillMaxHeight()
                             .onFocusChanged { listHasFocus = it.hasFocus }
                             .onKeyEvent { event ->
                                 if (event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onKeyEvent false
@@ -467,7 +465,6 @@ internal fun StreamSourcesSidePanel(
                                     streamFocusRequesters.getValue(streamKeys[index])
                                 },
                                 isCurrentStream = index == currentStreamIndex,
-                                isDeadSource = stream.deadSourceKey()?.let { key -> uiState.deadSourceStreamUrls.contains(key) } == true,
                                 showFileSizeBadges = uiState.showFileSizeBadges,
                                 showAddonLogo = uiState.showAddonLogo,
                                 badgePlacement = uiState.streamBadgePlacement,
@@ -506,7 +503,7 @@ internal fun StreamSourcesSidePanel(
     }
 }
 
-internal fun findCurrentStreamIndex(
+private fun findCurrentStreamIndex(
     streams: List<Stream>,
     currentStreamInfoHash: String?,
     currentStreamFileIdx: Int?,

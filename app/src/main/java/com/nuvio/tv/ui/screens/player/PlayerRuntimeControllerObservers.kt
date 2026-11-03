@@ -1,14 +1,10 @@
 package com.nuvio.tv.ui.screens.player
 
 import android.util.Log
-import com.nuvio.tv.core.build.IssueReports
 import com.nuvio.tv.core.player.OpenSubtitlesHasher
-import com.nuvio.tv.core.player.thumbnail.SeekThumbnails
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import com.nuvio.tv.data.local.playbackSettingsChanges
-import com.nuvio.tv.data.mediaserver.mergeServerSkipIntervals
 import com.nuvio.tv.data.local.FrameRateMatchingMode
 import com.nuvio.tv.data.local.InternalPlayerEngine
 import com.nuvio.tv.data.repository.SkipInterval
@@ -21,7 +17,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -48,19 +43,6 @@ internal suspend fun PlayerRuntimeController.fetchAddonSubtitlesNow(
     onProgress: ((completed: Int, total: Int, addonName: String?) -> Unit)? = null,
     onSubtitlesEmitted: ((List<Subtitle>) -> Unit)? = null
 ): List<Subtitle> {
-    // Addon subtitles are opt-in on this fork; embedded-only otherwise.
-    // This var's only writer is the settings collector, so a
-    // fetch that runs before its first emission reads a stale false and the whole
-    // session silently loses external subtitles with no retry (the startup phase
-    // then reports fetchCompleted with an empty list, skipping the fallback).
-    // Confirm against the store before denying; zero cost when already enabled.
-    if (!addonSubtitlesEnabled) {
-        addonSubtitlesEnabled =
-            playerSettingsDataStore.playerSettings.firstOrNull()?.addonSubtitlesEnabled == true
-        // Stream sidecar subtitles ride on the stream itself,
-        // not on an addon fetch, so they are surfaced even when addon subtitles are off.
-        if (!addonSubtitlesEnabled) return withStreamSidecarSubtitles(emptyList())
-    }
     val request = buildSubtitleFetchRequest() ?: return withStreamSidecarSubtitles(emptyList())
     val installedAddonOrder = addonRepository.getInstalledAddons().firstOrNull()
         ?.enabledAddons()
@@ -135,14 +117,6 @@ internal fun PlayerRuntimeController.fetchAddonSubtitles() {
     }
 
     scope.launch {
-        // The gate check runs inside the coroutine so it can
-        // suspend to confirm against the store (see fetchAddonSubtitlesNow).
-        if (!addonSubtitlesEnabled &&
-            playerSettingsDataStore.playerSettings.firstOrNull()?.addonSubtitlesEnabled != true
-        ) {
-            publishStreamSidecarSubtitlesWithoutAddonFetch()
-            return@launch
-        }
         _uiState.update {
             it.copy(
                 isLoadingAddonSubtitles = true,
@@ -174,7 +148,9 @@ internal fun PlayerRuntimeController.fetchAddonSubtitles() {
                 val match = visibleSubtitles.firstOrNull { it.id == pendingAddon.id }
                     ?: visibleSubtitles.firstOrNull { PlayerSubtitleUtils.matchesLanguageCode(it.lang, pendingAddon.lang) }
                 if (match != null) {
-                    autoSelectAddonSubtitleDeferringReload(match)
+                    autoSubtitleSelected = true
+                    selectAddonSubtitle(match)
+                    _uiState.update { it.copy(selectedAddonSubtitle = match, selectedSubtitleTrackIndex = -1) }
                     return@launch
                 }
             }
@@ -197,50 +173,6 @@ internal fun PlayerRuntimeController.fetchAddonSubtitles() {
             }
         }
     }
-}
-
-// An addon subtitle that can neither be drawn on top of the video nor switched to
-// in place needs a full setMediaSource+prepare at the current position (see
-// selectAddonSubtitle), which latches bad frame pacing on some vendor HALs (the
-// Prism+ class). Auto-restore never triggers that while the user is watching:
-// such a pick waits for the next pause. Explicit user picks are untouched.
-internal fun addonSubtitleAttachIsSeamless(
-    usingMpv: Boolean,
-    preAttached: Boolean,
-    drawnOnTop: Boolean,
-    playing: Boolean
-): Boolean = usingMpv || preAttached || drawnOnTop || !playing
-
-internal fun PlayerRuntimeController.autoSelectAddonSubtitleDeferringReload(subtitle: Subtitle) {
-    val seamless = addonSubtitleAttachIsSeamless(
-        usingMpv = isUsingMpvEngine(),
-        preAttached = attachedAddonSubtitleKeys.contains(addonSubtitleKey(subtitle)),
-        drawnOnTop = canAttachAddonSubtitleViaSidecar(subtitle),
-        playing = isPlaybackCurrentlyPlaying()
-    )
-    if (seamless) {
-        autoSubtitleSelected = true
-        selectAddonSubtitle(subtitle)
-        _uiState.update { it.copy(selectedAddonSubtitle = subtitle, selectedSubtitleTrackIndex = -1) }
-        return
-    }
-    Log.i(
-        PlayerRuntimeController.TAG,
-        "deferred addon subtitle attach (would reload mid-play): id=${subtitle.id} lang=${subtitle.lang}"
-    )
-    deferredAutoAddonSubtitle = subtitle
-}
-
-internal fun PlayerRuntimeController.maybeAttachDeferredAddonSubtitle() {
-    val subtitle = deferredAutoAddonSubtitle ?: return
-    deferredAutoAddonSubtitle = null
-    Log.i(
-        PlayerRuntimeController.TAG,
-        "attaching deferred addon subtitle at pause: id=${subtitle.id} lang=${subtitle.lang}"
-    )
-    autoSubtitleSelected = true
-    selectAddonSubtitle(subtitle)
-    _uiState.update { it.copy(selectedAddonSubtitle = subtitle, selectedSubtitleTrackIndex = -1) }
 }
 
 private fun PlayerRuntimeController.publishStreamSidecarSubtitlesWithoutAddonFetch() {
@@ -266,7 +198,6 @@ internal fun PlayerRuntimeController.refreshSubtitlesForCurrentEpisode() {
     subtitleDisabledByPersistedPreference = keepDisabled
     subtitleAddonRestoredByPersistedPreference = false
     pendingRestoredAddonSubtitle = null
-    deferredAutoAddonSubtitle = null
     hasScannedTextTracksOnce = false
     pendingAddonSubtitleLanguage = null
     pendingAddonSubtitleTrackId = null
@@ -301,9 +232,7 @@ internal fun PlayerRuntimeController.filterToVisibleAddonSubtitles(
 
     val preferredTargets = when (PlayerSubtitleUtils.normalizeLanguageCode(style.preferredLanguage)) {
         "none" -> listOfNotNull(
-            style.preferredLanguageBeforeOff?.takeIf { it.isNotBlank() },
             style.secondaryPreferredLanguage?.takeIf { it.isNotBlank() },
-            style.tertiaryPreferredLanguage?.takeIf { it.isNotBlank() },
             if (style.useForcedSubtitles) {
                 selectedAudioTrackForSubtitleMatching(_uiState.value)
                     ?.takeIf { selectedAudioMatchesResolvedPreferredAudio(it) }
@@ -314,8 +243,7 @@ internal fun PlayerRuntimeController.filterToVisibleAddonSubtitles(
         )
         else -> listOfNotNull(
             style.preferredLanguage,
-            style.secondaryPreferredLanguage?.takeIf { it.isNotBlank() },
-            style.tertiaryPreferredLanguage?.takeIf { it.isNotBlank() }
+            style.secondaryPreferredLanguage?.takeIf { it.isNotBlank() }
         )
     }.map { PlayerSubtitleUtils.normalizeLanguageCode(it) }
         .distinct()
@@ -370,14 +298,8 @@ internal fun PlayerRuntimeController.observeEpisodeWatchProgress() {
 
 internal fun PlayerRuntimeController.observeSubtitleSettings() {
     scope.launch {
-        playerSettingsDataStore.runtimePlayerSettings
-            .onEach { snapshot ->
-                currentPlayerSettingsForReport = snapshot.settings
-                _uiState.update { it.copy(controlLayout = snapshot.settings.controlLayout) }
-            }
-            .playbackSettingsChanges()
-            .collect { snapshot ->
-            val settings = snapshot.settings
+        playerSettingsDataStore.playerSettings.collect { settings ->
+            currentPlayerSettingsForReport = settings
             val currentState = _uiState.value
             val showOnlyPreferredLanguagesChanged =
                 currentState.subtitleStyle.showOnlyPreferredLanguages != settings.subtitleStyle.showOnlyPreferredLanguages
@@ -419,20 +341,17 @@ internal fun PlayerRuntimeController.observeSubtitleSettings() {
 
                 state.copy(
                     subtitleStyle = settings.subtitleStyle,
-                    dimHdrOverlays = settings.dimHdrOverlays,
                     loadingOverlayEnabled = settings.loadingOverlayEnabled,
                     showPlayerLoadingStatus = settings.showPlayerLoadingStatus,
-                    showPlayerLoadingSource = settings.showPlayerLoadingSource,
-                    playbackIssueReportsEnabled = IssueReports.available && settings.playbackIssueReportsEnabled,
+                    playbackIssueReportsEnabled = settings.playbackIssueReportsEnabled,
                     showLoadingOverlay = shouldShowOverlay,
-                    loadingIssueReportVisible = if (IssueReports.available && settings.playbackIssueReportsEnabled) {
+                    loadingIssueReportVisible = if (settings.playbackIssueReportsEnabled) {
                         state.loadingIssueReportVisible
                     } else {
                         false
                     },
                     pauseOverlayEnabled = settings.pauseOverlayEnabled,
                     osdClockEnabled = settings.osdClockEnabled,
-                    nightModeLastOn = settings.nightModeLastOn,
                     internalPlayerEngine = resolvedInternalPlayerEngine,
                     frameRateMatchingMode = settings.frameRateMatchingMode,
                     tunnelingEnabled = settings.effectiveTunnelingEnabled &&
@@ -446,9 +365,6 @@ internal fun PlayerRuntimeController.observeSubtitleSettings() {
 
             if (resolvedAudioAmplificationDb != currentState.audioAmplificationDb) {
                 applyAudioAmplification(resolvedAudioAmplificationDb)
-            }
-            if (settings.nightMode != currentState.nightMode) {
-                applyNightMode(settings.nightMode)
             }
             if (resolvedCenterMixLevelDb != currentState.centerMixLevelDb) {
                 applyCenterMixLevel(resolvedCenterMixLevelDb)
@@ -467,7 +383,7 @@ internal fun PlayerRuntimeController.observeSubtitleSettings() {
             }
 
             if (!settings.pauseOverlayEnabled) {
-                if (!pauseDetails.holdsOverlay(_uiState.value.showPauseOverlay)) cancelPauseOverlay()
+                cancelPauseOverlay()
             } else if (!_uiState.value.isPlaying &&
                 !_uiState.value.showPauseOverlay && pauseOverlayJob == null &&
                 userPausedManually && hasRenderedFirstFrame
@@ -476,12 +392,11 @@ internal fun PlayerRuntimeController.observeSubtitleSettings() {
             }
             streamReuseLastLinkEnabled = settings.streamReuseLastLinkEnabled
             autoSwitchInternalPlayerOnErrorEnabled = settings.autoSwitchInternalPlayerOnError
-            addonSubtitlesEnabled = settings.addonSubtitlesEnabled
             currentInternalPlayerEngine = resolvedInternalPlayerEngine
             streamAutoPlayModeSetting = settings.streamAutoPlayMode
             streamAutoPlayNextEpisodeEnabledSetting = settings.streamAutoPlayNextEpisodeEnabled
             streamAutoPlayTimeoutSecondsSetting = settings.streamAutoPlayTimeoutSeconds
-            preloadNextEpisodeSourcesSetting = false // next-episode sources come from the binge lookahead
+            preloadNextEpisodeSourcesSetting = settings.preloadNextEpisodeSources
             _uiState.update {
                 it.copy(
                     streamAutoPlayMode = settings.streamAutoPlayMode,
@@ -528,19 +443,16 @@ internal fun PlayerRuntimeController.observeSubtitleSettings() {
 
             applySubtitlePreferences(
                 settings.subtitleStyle.preferredLanguage,
-                settings.subtitleStyle.secondaryPreferredLanguage,
-                settings.subtitleStyle.tertiaryPreferredLanguage
+                settings.subtitleStyle.secondaryPreferredLanguage
             )
             val subtitlePreferenceChanged =
                 lastSubtitlePreferredLanguage != settings.subtitleStyle.preferredLanguage ||
                     lastSubtitleSecondaryLanguage != settings.subtitleStyle.secondaryPreferredLanguage ||
-                    lastSubtitleTertiaryLanguage != settings.subtitleStyle.tertiaryPreferredLanguage ||
                     lastUseForcedSubtitles != settings.subtitleStyle.useForcedSubtitles
             if (subtitlePreferenceChanged) {
                 if (!subtitleDisabledByPersistedPreference && !subtitleAddonRestoredByPersistedPreference) autoSubtitleSelected = false
                 lastSubtitlePreferredLanguage = settings.subtitleStyle.preferredLanguage
                 lastSubtitleSecondaryLanguage = settings.subtitleStyle.secondaryPreferredLanguage
-                lastSubtitleTertiaryLanguage = settings.subtitleStyle.tertiaryPreferredLanguage
                 lastUseForcedSubtitles = settings.subtitleStyle.useForcedSubtitles
                 tryAutoSelectPreferredSubtitleFromAvailableTracks()
             }
@@ -563,8 +475,6 @@ internal fun PlayerRuntimeController.observeSubtitleSettings() {
 
             val wasEnabled = skipIntroEnabled
             skipIntroEnabled = settings.skipIntroEnabled
-            applyChaptersEnabled(settings.chaptersEnabled)
-            seekingMode = settings.seekingMode
             parentalGuideEnabled = settings.parentalGuideEnabled
             autoSkipSegmentTypes = settings.autoSkipSegmentTypes
             playerSettingsInitialized = true
@@ -578,12 +488,10 @@ internal fun PlayerRuntimeController.observeSubtitleSettings() {
             if (!skipIntroEnabled) {
                 if (skipIntervals.isNotEmpty() || _uiState.value.activeSkipInterval != null) {
                     skipIntervals = emptyList()
+                    apiSkipIntervals = emptyList()
                     chapterSkipIntervals = emptyList()
                     skipChaptersComputedForDuration = 0L
                     skipIntroFetchedKey = null
-                    serverSkipIntervals = emptyList()
-                    providerSkipIntervals = emptyList()
-                    serverSkipFetchedKey = null
                     autoSkippedIntervalKeys.clear()
                     _uiState.update { it.copy(activeSkipInterval = null, skipIntervalDismissed = true) }
                 }
@@ -604,7 +512,7 @@ internal fun PlayerRuntimeController.loadSavedProgressFor(season: Int?, episode:
 
     scope.launch {
         pendingResumeProgress = null
-        val progress = if (isCloudLibraryPlayback) {
+        val local = if (isCloudLibraryPlayback) {
             loadCloudLibraryResumeProgress()
         } else if (season != null && episode != null) {
             watchProgressRepository.getEpisodeProgress(
@@ -616,6 +524,7 @@ internal fun PlayerRuntimeController.loadSavedProgressFor(season: Int?, episode:
         } else {
             watchProgressRepository.getProgress(progressContentId!!, profileId).firstOrNull()
         }
+        val progress = newerServerProgress(local)
 
         progress?.let { saved ->
 
@@ -653,20 +562,19 @@ internal suspend fun PlayerRuntimeController.loadSavedProgressSuspend(season: In
     if (!isCloudLibraryPlayback && progressContentId == null) return
 
     pendingResumeProgress = null
-    val progress = if (isCloudLibraryPlayback) {
+    val local = if (isCloudLibraryPlayback) {
         loadCloudLibraryResumeProgress()
-    } else savedOrServerProgress {
-        if (season != null && episode != null) {
-            watchProgressRepository.getEpisodeProgress(
-                progressContentId!!,
-                season,
-                episode,
-                profileId
-            ).firstOrNull()
-        } else {
-            watchProgressRepository.getProgress(progressContentId!!, profileId).firstOrNull()
-        }
+    } else if (season != null && episode != null) {
+        watchProgressRepository.getEpisodeProgress(
+            progressContentId!!,
+            season,
+            episode,
+            profileId
+        ).firstOrNull()
+    } else {
+        watchProgressRepository.getProgress(progressContentId!!, profileId).firstOrNull()
     }
+    val progress = newerServerProgress(local)
 
     progress?.let { saved ->
         if (saved.isInProgress()) {
@@ -679,39 +587,6 @@ internal suspend fun PlayerRuntimeController.loadSavedProgressSuspend(season: In
             )
         }
     }
-}
-
-/**
- * Joins the saved-progress read launched at
- * preparePlaybackBeforeStart. Called on both engine branches of
- * initializePlayer immediately before the resume position is read. The
- * runway to that point is the whole player build, so the residual block
- * here should be ~0; it is logged per play.
- *
- * A failed read is swallowed: losing the resume position must not kill
- * the prep coroutine and stop playback from starting.
- * Cancellation of the AWAITING coroutine is rethrown so cancellation
- * stays cooperative; only cancellation of the deferred itself (a newer
- * press superseding this one) is swallowed.
- */
-internal suspend fun PlayerRuntimeController.awaitSavedProgressLoad() {
-    val deferred = savedProgressDeferred ?: return
-    val awaitT0 = android.os.SystemClock.elapsedRealtime()
-    try {
-        deferred.await()
-    } catch (ce: kotlinx.coroutines.CancellationException) {
-        if (!deferred.isCancelled) throw ce
-    } catch (e: Exception) {
-        Log.d(
-            PlayerRuntimeController.TAG,
-            "awaitSavedProgressLoad: read failed, starting without resume: ${e.message}"
-        )
-    }
-    savedProgressDeferred = null
-    android.util.Log.i(
-        "TTFF_STAGE",
-        "SAVED_PROGRESS_AWAIT ms=${android.os.SystemClock.elapsedRealtime() - awaitT0}"
-    )
 }
 
 private fun PlayerRuntimeController.loadCloudLibraryResumeProgress(): WatchProgress? {
@@ -742,8 +617,7 @@ internal fun PlayerRuntimeController.fetchSkipIntervals(id: String?, season: Int
     if (!skipIntroEnabled) return
     if (id.isNullOrBlank()) return
 
-    // Prefer videoId over contentId — videoId carries the season/episode-specific ID
-    val requestedVideoId = currentVideoId
+    // Prefer videoId over contentId - videoId carries the season/episode-specific ID
     val effectiveId = currentVideoId?.takeIf { it.isNotBlank() } ?: id
 
     if (contentType.equals("movie", ignoreCase = true)) {
@@ -751,13 +625,10 @@ internal fun PlayerRuntimeController.fetchSkipIntervals(id: String?, season: Int
         if (skipIntroFetchedKey == key) return
         skipIntroFetchedKey = key
         scope.launch {
-            val fetchedIntervals = withTimeoutOrNull(15_000L) {
+            val api = withTimeoutOrNull(15_000L) {
                 skipIntroRepository.getMovieSkipIntervals(id, effectiveId)
             } ?: emptyList()
-            if (skipIntroEnabled && skipIntroFetchedKey == key && currentVideoId == requestedVideoId && contentId == id) {
-                providerSkipIntervals = fetchedIntervals
-                recomputeMergedSkipIntervals()
-            }
+            setApiSkipIntervals(api)
         }
         return
     }
@@ -777,13 +648,10 @@ internal fun PlayerRuntimeController.fetchSkipIntervals(id: String?, season: Int
         skipIntroFetchedKey = key
         val imdbId = id?.takeIf { it.startsWith("tt") } ?: metaImdbId
         scope.launch {
-            val fetchedIntervals = withTimeoutOrNull(15_000L) {
+            val api = withTimeoutOrNull(15_000L) {
                 skipIntroRepository.getSkipIntervalsForMal(malId, malEpisode, imdbId = imdbId, imdbSeason = season, imdbEpisode = episode)
             } ?: emptyList()
-            if (skipIntroEnabled && skipIntroFetchedKey == key && currentVideoId == requestedVideoId) {
-                providerSkipIntervals = fetchedIntervals
-                recomputeMergedSkipIntervals()
-            }
+            setApiSkipIntervals(api)
         }
         return
     }
@@ -798,13 +666,10 @@ internal fun PlayerRuntimeController.fetchSkipIntervals(id: String?, season: Int
         skipIntroFetchedKey = key
         val imdbId = id?.takeIf { it.startsWith("tt") } ?: metaImdbId
         scope.launch {
-            val fetchedIntervals = withTimeoutOrNull(15_000L) {
+            val api = withTimeoutOrNull(15_000L) {
                 skipIntroRepository.getSkipIntervalsForKitsu(kitsuId, kitsuEpisode, imdbId = imdbId, imdbSeason = season, imdbEpisode = episode)
             } ?: emptyList()
-            if (skipIntroEnabled && skipIntroFetchedKey == key && currentVideoId == requestedVideoId) {
-                providerSkipIntervals = fetchedIntervals
-                recomputeMergedSkipIntervals()
-            }
+            setApiSkipIntervals(api)
         }
         return
     }
@@ -817,40 +682,25 @@ internal fun PlayerRuntimeController.fetchSkipIntervals(id: String?, season: Int
     skipIntroFetchedKey = key
 
     scope.launch {
-        val fetchT0 = android.os.SystemClock.elapsedRealtime()
-        val fetchedIntervals = withTimeoutOrNull(15_000L) {
+        val api = withTimeoutOrNull(15_000L) {
             skipIntroRepository.getSkipIntervals(imdbId, season, episode)
         } ?: emptyList()
-        if (!skipIntroEnabled || skipIntroFetchedKey != key || currentVideoId != requestedVideoId) return@launch
-        providerSkipIntervals = fetchedIntervals
-        recomputeMergedSkipIntervals()
-        // SkipIntroRepository logs only its no-data path, and at DEBUG, so
-        // without this line a late next-episode card cannot be told apart:
-        // intervals returned but no outro among them, no data at all, or the
-        // 15 s timeout elapsing. Logged at INFO under TTFF_STAGE.
-        //
-        // PlayerNextEpisodeRules is deliberately NOT instrumented: it is a
-        // pure object under unit test, and android.util.Log there would throw
-        // in the JVM test source set. The interval list is the input that
-        // decides its branch, so logging it here is sufficient.
-        val intervalTypes = if (skipIntervals.isEmpty()) {
-            "-"
-        } else {
-            skipIntervals.joinToString(",") { it.type }
-        }
-        android.util.Log.i(
-            "TTFF_STAGE",
-            "SKIP_INTERVALS n=${skipIntervals.size} types=$intervalTypes " +
-                "ms=${android.os.SystemClock.elapsedRealtime() - fetchT0} key=$key"
-        )
+        setApiSkipIntervals(api)
     }
 }
 
-/** Server markers first, then chapter titles and the skip providers per segment. */
+/** Store API results and recompute the merged skipIntervals. */
+private fun PlayerRuntimeController.setApiSkipIntervals(api: List<SkipInterval>) {
+    apiSkipIntervals = api
+    recomputeMergedSkipIntervals()
+}
+
+/** Recompute the merged skipIntervals from chapters (priority) + API (gap-fill). */
 internal fun PlayerRuntimeController.recomputeMergedSkipIntervals() {
     val isMovie = contentType.equals("movie", ignoreCase = true)
-    val others = mergeSkipIntervals(providerSkipIntervals, chapterSkipIntervals, isMovie = isMovie)
-    skipIntervals = mergeServerSkipIntervals(serverSkipIntervals, others)
+    val merged = mergeSkipIntervals(apiSkipIntervals, chapterSkipIntervals, isMovie = isMovie)
+    if (merged == skipIntervals) return
+    skipIntervals = merged
 }
 
 internal fun PlayerRuntimeController.tryApplyPendingResumeProgress(player: Player) {
@@ -939,204 +789,14 @@ internal fun PlayerRuntimeController.retryCurrentStreamWithVc1TrackSelectionBypa
     scheduleDeferredPlayerReinitialize(fromPositionMs = fromPositionMs)
 }
 
-internal fun PlayerRuntimeController.retryCurrentStreamWithoutTunneling(fromPositionMs: Long) {
-    scheduleDeferredPlayerReinitialize(fromPositionMs = fromPositionMs)
-}
-
-internal fun PlayerRuntimeController.retryCurrentStreamKeepingTunneling(fromPositionMs: Long) {
-    scheduleDeferredPlayerReinitialize(fromPositionMs = fromPositionMs)
-}
-
 internal fun PlayerRuntimeController.cancelFirstFrameWatchdog() {
     firstFrameWatchdogJob?.cancel()
     firstFrameWatchdogJob = null
 }
 
-internal fun PlayerRuntimeController.cancelTunnelAvSyncWatchdog() {
-    tunnelAvSyncWatchdogJob?.cancel()
-    tunnelAvSyncWatchdogJob = null
-}
-
 internal fun PlayerRuntimeController.cancelStallWatchdog() {
     stallWatchdogJob?.cancel()
     stallWatchdogJob = null
-}
-
-internal fun PlayerRuntimeController.cancelStartupWatchdog() {
-    startupWatchdogJob?.cancel()
-    startupWatchdogJob = null
-}
-
-/**
- * Startup watchdog: armed when the stream starts loading, disarmed at first
- * frame (real onRenderedFirstFrame or the tunneled synthetic first frame at READY)
- * and on stream reset/reinit. Fires once if no frame has rendered inside
- * [PlayerRuntimeController.STARTUP_WATCHDOG_TIMEOUT_MS] and surfaces an actionable
- * error instead of an infinite spinner. Deliberately does NOT auto-retry: the known
- * trigger is the vendor Codec2 service wedging during decoder allocation, where a
- * reinit just hangs again; the honest remedy is telling the user (a device restart
- * clears the wedge). Exo engine path only, matching the arm site.
- */
-internal fun PlayerRuntimeController.scheduleStartupWatchdog() {
-    cancelStartupWatchdog()
-    startupWatchdogJob = scope.launch {
-        // Extend-with-ceiling on buffered-AHEAD growth.
-        // Absolute bufferedPosition against a 0 baseline would misfire on every
-        // resume (position opens at the resume offset) and measures the
-        // timeline, not data flow. totalBufferedDuration is the
-        // buffered-ahead amount in ms -- a delta, resume-safe by construction
-        // (the analytics layer already treats it as buffered-ahead). If it
-        // grew since the last check and another full interval fits inside the
-        // ceiling, re-arm instead of firing.
-        var armedAtMs = System.currentTimeMillis()
-        var lastBufferedAheadMs = 0L
-        var lastPositionMs = _exoPlayer?.currentPosition ?: 0L
-        var videoRestarted = false
-        var slowStart = SlowStartServer.matches(currentStreamUrl)
-        while (isActive) {
-            delay(PlayerRuntimeController.STARTUP_WATCHDOG_TIMEOUT_MS)
-            if (hasRenderedFirstFrame) return@launch
-            // The film waits on purpose while thumbnails are made before play; time it from when that screen closes.
-            // A film let go for the screen opens again from scratch, so it gets the slow-server allowance.
-            if (SeekThumbnails.prepareUi.value !is SeekThumbnails.PrepareUi.Hidden) {
-                Log.i(PlayerRuntimeController.TAG, "STARTUP_WATCHDOG: waiting for the thumbnails screen")
-                while (isActive && SeekThumbnails.prepareUi.value !is SeekThumbnails.PrepareUi.Hidden) delay(500)
-                slowStart = true
-                armedAtMs = System.currentTimeMillis()
-                lastBufferedAheadMs = 0L
-                lastPositionMs = _exoPlayer?.currentPosition ?: 0L
-                continue
-            }
-            val livePlayer = _exoPlayer ?: return@launch
-            val elapsedMs = System.currentTimeMillis() - armedAtMs
-            val bufferedAheadMs = livePlayer.totalBufferedDuration.coerceAtLeast(0L)
-            val positionMs = livePlayer.currentPosition
-            val ceilingMs =
-                if (slowStart) SlowStartServer.STARTUP_CEILING_MS else PlayerRuntimeController.STARTUP_WATCHDOG_CEILING_MS
-            val step = StartupWatchdogDecision.next(
-                elapsedMs = elapsedMs,
-                intervalMs = PlayerRuntimeController.STARTUP_WATCHDOG_TIMEOUT_MS,
-                ceilingMs = ceilingMs,
-                slowStart = slowStart,
-                bufferedAheadMs = bufferedAheadMs,
-                lastBufferedAheadMs = lastBufferedAheadMs,
-                ready = livePlayer.playbackState == Player.STATE_READY,
-                playing = livePlayer.isPlaying,
-                positionMs = positionMs,
-                lastPositionMs = lastPositionMs,
-                videoRestarted = videoRestarted,
-                tracksRead = hasScannedTextTracksOnce,
-                hasVideoTrack = currentStreamHasVideoTrack,
-                videoSelected = currentVideoTrackSelected,
-            )
-            lastPositionMs = positionMs
-            when (step) {
-                StartupWatchdogDecision.Step.WaitForData -> {
-                    // A home server or a Usenet stream may still be fetching what playback asked for (start or resume point).
-                    Log.w(
-                        PlayerRuntimeController.TAG,
-                        "STARTUP_WATCHDOG: no data ${elapsedMs}ms after starting_stream from a server that may still " +
-                            "be preparing it; waiting (ceiling=${SlowStartServer.STARTUP_CEILING_MS}ms)"
-                    )
-                    continue
-                }
-                StartupWatchdogDecision.Step.Extend -> {
-                    Log.w(
-                        PlayerRuntimeController.TAG,
-                        "STARTUP_WATCHDOG: no first frame ${elapsedMs}ms after starting_stream " +
-                            "but buffered-ahead growing (${lastBufferedAheadMs}ms -> ${bufferedAheadMs}ms); " +
-                            "extending (ceiling=${ceilingMs}ms)"
-                    )
-                    com.nuvio.tv.core.util.TtffTrace.mark("startup_watchdog_extended")
-                    lastBufferedAheadMs = bufferedAheadMs
-                    continue
-                }
-                StartupWatchdogDecision.Step.RestartVideo -> {
-                    videoRestarted = true
-                    Log.w(
-                        PlayerRuntimeController.TAG,
-                        "STARTUP_WATCHDOG: playing without a picture ${elapsedMs}ms after starting_stream " +
-                            "(pos=$positionMs bufferedAheadMs=$bufferedAheadMs); seeking in place to restart the video"
-                    )
-                    com.nuvio.tv.core.util.TtffTrace.mark("startup_watchdog_video_restart")
-                    livePlayer.seekTo(positionMs)
-                    continue
-                }
-                is StartupWatchdogDecision.Step.Fire -> Unit
-            }
-            val stateName = when (livePlayer.playbackState) {
-                Player.STATE_IDLE -> "IDLE"
-                Player.STATE_BUFFERING -> "BUFFERING"
-                Player.STATE_READY -> "READY"
-                Player.STATE_ENDED -> "ENDED"
-                else -> livePlayer.playbackState.toString()
-            }
-            val fireReason = (step as StartupWatchdogDecision.Step.Fire).reason
-            val fireMessage = when (fireReason) {
-                "video_track_unsupported" ->
-                    context.getString(com.nuvio.tv.R.string.player_error_startup_video_track_unsupported)
-                "tracks_not_read", "no_video_track", "no_data_buffered" ->
-                    context.getString(com.nuvio.tv.R.string.player_error_startup_no_stream_data)
-                else ->
-                    context.getString(com.nuvio.tv.R.string.player_error_startup_timeout)
-            }
-            Log.w(
-                PlayerRuntimeController.TAG,
-                "STARTUP_WATCHDOG: no first frame ${elapsedMs}ms " +
-                    "after starting_stream (state=$stateName bufferedAheadMs=${bufferedAheadMs} " +
-                    "pos=${livePlayer.currentPosition} reason=$fireReason " +
-                    "scannedTracks=$hasScannedTextTracksOnce hasVideoTrack=$currentStreamHasVideoTrack " +
-                    "videoSelected=$currentVideoTrackSelected); " +
-                    "surfacing error"
-            )
-            com.nuvio.tv.core.util.TtffTrace.mark("startup_watchdog_fired")
-            _uiState.update {
-                if (it.error == null) {
-                    it.copy(
-                        error = fireMessage,
-                        showLoadingOverlay = false
-                    )
-                } else {
-                    it
-                }
-            }
-            return@launch
-        }
-    }
-}
-
-/**
- * The startup watchdog deliberately does not stop the player, so a
- * slow-but-healthy start can render its first frame after the watchdog has
- * already surfaced the startup-timeout error, leaving a stale error screen
- * over running playback. The rendered frame is
- * ground truth: retract exactly that error. Any other error (a real decode
- * failure racing the frame) is left untouched.
- */
-internal fun PlayerRuntimeController.retractStartupTimeoutErrorAfterFirstFrame() {
-    // The watchdog can surface three different messages; a late
-    // first frame disproves all of them equally, so retract whichever fired.
-    val startupWatchdogMessages = setOf(
-        context.getString(com.nuvio.tv.R.string.player_error_startup_timeout),
-        context.getString(com.nuvio.tv.R.string.player_error_startup_video_track_unsupported),
-        context.getString(com.nuvio.tv.R.string.player_error_startup_no_stream_data),
-    )
-    var retracted = false
-    _uiState.update {
-        if (it.error != null && it.error in startupWatchdogMessages) {
-            retracted = true
-            it.copy(error = null)
-        } else {
-            it
-        }
-    }
-    if (retracted) {
-        Log.w(
-            PlayerRuntimeController.TAG,
-            "STARTUP_WATCHDOG: first frame rendered after fire; retracting startup-timeout error"
-        )
-        com.nuvio.tv.core.util.TtffTrace.mark("startup_watchdog_retracted")
-    }
 }
 
 /** Tiny skip past the buffered edge to force Media3 to cancel the in-flight Range request. */
@@ -1276,187 +936,11 @@ internal fun PlayerRuntimeController.maybeScheduleFirstFrameWatchdog() {
     }
 }
 
-internal fun PlayerRuntimeController.noteOutputChangeForTunnelWatch() {
-    lastOutputChangeForTunnelMs = android.os.SystemClock.elapsedRealtime()
-}
-
-internal fun PlayerRuntimeController.maybeScheduleTunnelAvSyncWatchdog() {
-    if (!isTunnelingActiveForCurrentPlayback) return
-    if (_exoPlayer?.isTunnelingEnabled != true) return
-    if (nativeVideoSelection.isSelected) return
-    if (!currentStreamHasVideoTrack) return
-    if (tunnelingDisabledStreamUrls.contains(currentStreamUrl)) return
-    if (tunnelAvSyncWatchdogJob?.isActive == true) return
-
-    tunnelAvSyncWatchdogJob = scope.launch {
-        var lastPositionMs: Long? = null
-        var stalledMs = 0L
-        var readyMs = 0L
-        var firstReadyPositionMs: Long? =
-            PlayerTunnelAvSyncPolicy.strikeForStream(currentStreamUrl, tunnelStallStrike)?.firstReadyPositionMs
-        var pendingDeadClockMemo: Pair<String, String>? = null
-        while (isActive) {
-            delay(PlayerRuntimeController.TUNNEL_AV_SYNC_CHECK_MS)
-            val livePlayer = _exoPlayer ?: return@launch
-            val positionMs = livePlayer.currentPosition
-            if (firstReadyPositionMs == null && livePlayer.playbackState == Player.STATE_READY) {
-                firstReadyPositionMs = positionMs
-            }
-            val renderedFrames = livePlayer.videoDecoderCounters
-                ?.also { it.ensureUpdated() }
-                ?.renderedOutputBufferCount
-            val frameReportKey = PlayerTunnelAvSyncPolicy.frameReportKey(
-                android.os.Build.FINGERPRINT,
-                playbackAnalyticsDiagnostics.hudSample().videoDecoderName
-            )
-            if (frameReportKey != null && renderedFrames != null && renderedFrames > 0 &&
-                livePlayer.isTunnelingEnabled && PlayerTunnelAvSyncPolicy.frameReportDecoders.add(frameReportKey)
-            ) {
-                Log.i(PlayerRuntimeController.TAG, "TUNNEL_AV_SYNC: tunnelled frames reported by $frameReportKey")
-                scope.launch { runCatching { deviceLocalPlayerPreferences.addTunnelFrameReportDecoder(frameReportKey) } }
-            }
-            val result = PlayerTunnelAvSyncPolicy.evaluate(
-                PlayerTunnelAvSyncPolicy.Input(
-                    isTunnelingActive = isTunnelingActiveForCurrentPlayback && !nativeVideoSelection.isSelected,
-                    isTunnelingApplied = livePlayer.isTunnelingEnabled,
-                    hasVideoTrack = currentStreamHasVideoTrack,
-                    isReady = livePlayer.playbackState == Player.STATE_READY,
-                    playWhenReady = livePlayer.playWhenReady,
-                    userPausedManually = userPausedManually,
-                    positionMs = positionMs,
-                    bufferedPositionMs = livePlayer.bufferedPosition,
-                    lastPositionMs = lastPositionMs,
-                    stalledMs = stalledMs,
-                    intervalMs = PlayerRuntimeController.TUNNEL_AV_SYNC_CHECK_MS,
-                    stallThresholdMs = PlayerRuntimeController.TUNNEL_AV_SYNC_STALL_MS,
-                    renderedOutputBufferCount = renderedFrames,
-                    frameReportsTrusted = frameReportKey != null &&
-                        frameReportKey in PlayerTunnelAvSyncPolicy.frameReportDecoders,
-                    readyMs = readyMs,
-                    noFrameThresholdMs = PlayerRuntimeController.TUNNEL_AV_SYNC_NO_FRAME_MS,
-                    tunnelingAlreadyDisarmed = tunnelingDisabledStreamUrls.contains(currentStreamUrl),
-                )
-            )
-            lastPositionMs = positionMs
-            stalledMs = result.stalledMs
-            readyMs = result.readyMs
-            when (result.decision) {
-                PlayerTunnelAvSyncPolicy.Decision.Stop -> return@launch
-                PlayerTunnelAvSyncPolicy.Decision.None -> Unit
-                PlayerTunnelAvSyncPolicy.Decision.DisableTunnelingAndRebuild -> {
-                    val audioClass = playbackSpeedAwareAudioSink?.currentTunnelAudioClass
-                    val audioLabel = audioClass ?: "unknown"
-                    val response = PlayerTunnelAvSyncPolicy.stallResponse(
-                        result.reason, currentStreamUrl, tunnelStallStrike
-                    )
-                    if (response == PlayerTunnelAvSyncPolicy.StallResponse.ReloadKeepingTunnel) {
-                        tunnelStallStrike = PlayerTunnelAvSyncPolicy.StallStrike(currentStreamUrl, firstReadyPositionMs)
-                        Log.w(
-                            PlayerRuntimeController.TAG,
-                            "TUNNEL_AV_SYNC: position frozen at ${positionMs}ms for ${stalledMs}ms under " +
-                                "tunnelling (audio=$audioLabel); first stall in this play; reloading with tunnelling kept"
-                        )
-                        queuePlaybackRawEventLine(
-                            "tunnel_av_sync_reload_keep_tunneling stalledMs=$stalledMs positionMs=$positionMs " +
-                                "audioClass=$audioLabel reason=position-frozen"
-                        )
-                        retryCurrentStreamKeepingTunneling(positionMs)
-                        return@launch
-                    }
-                    val remembered = PlayerTunnelAvSyncPolicy.remembersStall(
-                        android.os.SystemClock.elapsedRealtime(),
-                        lastOutputChangeForTunnelMs
-                    )
-                    if (result.reason == PlayerTunnelAvSyncPolicy.Reason.PositionFrozen) {
-                        if (!remembered) {
-                            Log.i(
-                                PlayerRuntimeController.TAG,
-                                "TUNNEL_AV_SYNC: freeze right after a display or audio output change; not remembered"
-                            )
-                        }
-                        if (audioClass != null && remembered) {
-                            PlayerTunnelAvSyncPolicy.deadAudioClasses.add(audioClass)
-                            val signature = tunnelDeadClockSignature
-                            if (signature != null && positionMs == firstReadyPositionMs) {
-                                pendingDeadClockMemo = audioClass to signature
-                            }
-                        }
-                        Log.w(
-                            PlayerRuntimeController.TAG,
-                            "TUNNEL_AV_SYNC: position frozen at ${positionMs}ms for ${stalledMs}ms under " +
-                                "tunnelling (audio=$audioLabel); disabling tunnelling for this stream"
-                        )
-                        queuePlaybackRawEventLine(
-                            "tunnel_av_sync_disable_tunneling stalledMs=$stalledMs positionMs=$positionMs " +
-                                "audioClass=$audioLabel reason=position-frozen"
-                        )
-                    } else {
-                        Log.w(
-                            PlayerRuntimeController.TAG,
-                            "TUNNEL_AV_SYNC: no tunnelled video frame rendered after ${readyMs}ms at " +
-                                "position ${positionMs}ms (audio=$audioLabel); disabling tunnelling for this stream"
-                        )
-                        queuePlaybackRawEventLine(
-                            "tunnel_av_sync_disable_tunneling readyMs=$readyMs positionMs=$positionMs " +
-                                "audioClass=$audioLabel reason=no-rendered-frames"
-                        )
-                    }
-                    tunnelingDisabledStreamUrls.add(currentStreamUrl)
-                    val rebuiltFrom = livePlayer
-                    retryCurrentStreamWithoutTunneling(positionMs)
-                    pendingDeadClockMemo?.let { (memoClass, signature) ->
-                        persistDeadClockMemoWhenRebuildPlays(memoClass, signature, currentStreamUrl, rebuiltFrom)
-                    }
-                    return@launch
-                }
-            }
-        }
-    }
-}
-
-private fun PlayerRuntimeController.persistDeadClockMemoWhenRebuildPlays(
-    audioClass: String,
-    signature: String,
-    streamUrl: String,
-    rebuiltFrom: Player
-) {
-    scope.launch {
-        var lastPositionMs: Long? = null
-        var playedMs = 0L
-        repeat(PlayerTunnelAvSyncPolicy.MEMO_CONFIRM_SAMPLES) {
-            delay(PlayerRuntimeController.TUNNEL_AV_SYNC_CHECK_MS)
-            if (isReleasingPlayer || currentStreamUrl != streamUrl) return@launch
-            val player = _exoPlayer ?: return@repeat
-            if (player === rebuiltFrom || player.playbackState != Player.STATE_READY) return@repeat
-            val positionMs = player.currentPosition
-            lastPositionMs?.let { last ->
-                playedMs += PlayerTunnelAvSyncPolicy.memoAdvanceMs(
-                    last, positionMs, PlayerRuntimeController.TUNNEL_AV_SYNC_CHECK_MS
-                )
-            }
-            lastPositionMs = positionMs
-            if (PlayerTunnelAvSyncPolicy.memoConfirmed(playedMs)) {
-                playerSettingsDataStore.recordTunnelDeadAudioClass(audioClass, signature)
-                Log.i(
-                    PlayerRuntimeController.TAG,
-                    "TUNNEL_AV_SYNC: dead-clock memo persisted class=$audioClass (untunnelled rebuild playing)"
-                )
-                return@launch
-            }
-        }
-        Log.i(
-            PlayerRuntimeController.TAG,
-            "TUNNEL_AV_SYNC: dead-clock memo not persisted class=$audioClass (untunnelled rebuild did not play long enough)"
-        )
-    }
-}
-
 internal fun PlayerRuntimeController.handleVc1PlaybackFailure(errorMessage: String? = null) {
     val displayMessage = errorMessage?.takeIf { it.isNotBlank() }
         ?: _exoPlayer?.playerError?.toDisplayMessage(context)
         ?: return
     cancelFirstFrameWatchdog()
-    cancelTunnelAvSyncWatchdog()
     cancelStallWatchdog()
     cancelStableProgressReset()
     errorRetryJob?.cancel()
@@ -1485,9 +969,7 @@ internal fun PlayerRuntimeController.scheduleDeferredPlayerReinitialize(
     clearResumeProgress: Boolean = false
 ) {
     cancelFirstFrameWatchdog()
-    cancelTunnelAvSyncWatchdog()
     cancelStallWatchdog()
-    cancelStartupWatchdog()
     if (clearResumeProgress) {
         pendingResumeProgress = null
     }

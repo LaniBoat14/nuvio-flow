@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.sentry.android.gradle)
 }
 
 import com.android.build.gradle.internal.tasks.CompileArtProfileTask
@@ -78,24 +79,27 @@ val devProperties = Properties().apply {
 }
 
 val enableDoviNative = parseBooleanProperty(
-    resolveProperty(devProperties, localProperties, "DOVI_NATIVE_ENABLED", "true")
+    resolveProperty(devProperties, localProperties, "DOVI_NATIVE_ENABLED")
 )
 val doviExtractorHookReady = parseBooleanProperty(
-    resolveProperty(devProperties, localProperties, "DOVI_EXTRACTOR_HOOK_READY", "true")
+    resolveProperty(devProperties, localProperties, "DOVI_EXTRACTOR_HOOK_READY")
 )
 val doviEnableRealLink = parseBooleanProperty(
-    resolveProperty(devProperties, localProperties, "DOVI_ENABLE_REAL_LINK", "true")
+    resolveProperty(devProperties, localProperties, "DOVI_ENABLE_REAL_LINK")
 )
-if (gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }) {
-    check(enableDoviNative && doviExtractorHookReady && doviEnableRealLink) {
-        "Fork release builds require the native Dolby Vision bridge, extractor hook and real libdovi linkage."
-    }
-}
-val enableAmlFelNative = resolveProperty(devProperties, localProperties, "AML_FEL_NATIVE_ENABLED", "true").let(::parseBooleanProperty)
 val doviStaticLibPath = resolveProperty(devProperties, localProperties, "DOVI_LIBDOVI_STATIC_LIB")
 val doviIncludeDirPath = resolveProperty(devProperties, localProperties, "DOVI_LIBDOVI_INCLUDE_DIR")
 val doviPrebuiltRootPath = resolveProperty(devProperties, localProperties, "DOVI_LIBDOVI_PREBUILT_ROOT")
 val sponsorNames = resolveProperty(devProperties, localProperties, "SPONSOR_NAMES", "ragmehos.")
+val sentryDsn = providers.environmentVariable("SENTRY_DSN").orNull?.trim()?.takeIf { it.isNotBlank() }
+    ?: resolveProperty(devProperties, localProperties, "SENTRY_DSN")
+val sentryAuthToken = providers.environmentVariable("SENTRY_AUTH_TOKEN").orNull?.trim()?.takeIf { it.isNotBlank() }
+    ?: resolveProperty(devProperties, localProperties, "SENTRY_AUTH_TOKEN").takeIf { it.isNotBlank() }
+val sentryOrg = providers.environmentVariable("SENTRY_ORG").orNull?.trim()?.takeIf { it.isNotBlank() }
+    ?: resolveProperty(devProperties, localProperties, "SENTRY_ORG").takeIf { it.isNotBlank() }
+val sentryProject = providers.environmentVariable("SENTRY_PROJECT").orNull?.trim()?.takeIf { it.isNotBlank() }
+    ?: resolveProperty(devProperties, localProperties, "SENTRY_PROJECT").takeIf { it.isNotBlank() }
+val sentryMappingUploadEnabled = sentryAuthToken != null && sentryOrg != null && sentryProject != null
 
 fun env(name: String): String? = providers.environmentVariable(name).orNull
 
@@ -124,6 +128,7 @@ val releaseStorePasswordValue = env("NUVIO_RELEASE_STORE_PASSWORD")
 android {
     namespace = "com.nuvio.tv"
     compileSdk = 36
+    buildToolsVersion = "36.0.0"
     ndkVersion = "29.0.14206865"
 
     defaultConfig {
@@ -131,12 +136,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 24
         targetSdk = 36
-        versionCode = 2011
-        versionName = "1.1.0-beta.9.flow.13"
-        // Optional -PnuvioAppIdSuffix=.name installs a local test build next to the main app.
-        providers.gradleProperty("nuvioAppIdSuffix").orNull?.takeIf { it.isNotBlank() }?.let {
-            applicationIdSuffix = it
-        }
+        versionCode = 2012
+        versionName = "1.1.0-beta.9.flow.14"
 
         buildConfigField("String", "PARENTAL_GUIDE_API_URL", "\"${localProperties.getProperty("PARENTAL_GUIDE_API_URL", "")}\"")
         buildConfigField("String", "INTRODB_API_URL", "\"${localProperties.getProperty("INTRODB_API_URL", "")}\"")
@@ -151,25 +152,14 @@ android {
         buildConfigField("String", "SIMKL_APP_NAME", buildConfigString(resolveProperty(devProperties, localProperties, "SIMKL_APP_NAME", "nuvio")))
         buildConfigField("String", "MDBLIST_CLIENT_ID", buildConfigString(resolveProperty(devProperties, localProperties, "MDBLIST_CLIENT_ID")))
         buildConfigField("String", "TMDB_API_KEY", "\"${localProperties.getProperty("TMDB_API_KEY", "")}\"")
-        buildConfigField("String", "TVDB_API_KEY", "\"${localProperties.getProperty("TVDB_API_KEY", "")}\"")
         buildConfigField("String", "TV_LOGIN_WEB_BASE_URL", "\"${localProperties.getProperty("TV_LOGIN_WEB_BASE_URL", "https://nuvio.tv/tv-login")}\"")
         buildConfigField("String", "DEVICE_LOGIN_WEB_BASE_URL", "\"${localProperties.getProperty("DEVICE_LOGIN_WEB_BASE_URL", "https://nuvio.tv/link")}\"")
         buildConfigField("boolean", "DOVI_NATIVE_ENABLED", enableDoviNative.toString())
         buildConfigField("boolean", "DOVI_EXTRACTOR_HOOK_READY", doviExtractorHookReady.toString())
-        buildConfigField("boolean", "AML_FEL_NATIVE_ENABLED", enableAmlFelNative.toString())
-        // libnuviothumb is always built; dovi_bridge and aml_fel only when enabled.
-        externalNativeBuild {
-            cmake {
-                arguments(
-                    "-DNUVIO_BUILD_DOVI=${if (enableDoviNative) "ON" else "OFF"}"
-                )
-            }
-        }
-        if (enableDoviNative || enableAmlFelNative) {
+        if (enableDoviNative) {
             externalNativeBuild {
                 cmake {
                     arguments(
-                        "-DAML_FEL_NATIVE_ENABLED=${if (enableAmlFelNative) "ON" else "OFF"}",
                         "-DDOVI_ENABLE_LIBDOVI=${if (doviEnableRealLink) "ON" else "OFF"}",
                         "-DDOVI_LIBDOVI_STATIC_LIB=${cmakePath(doviStaticLibPath)}",
                         "-DDOVI_LIBDOVI_INCLUDE_DIR=${cmakePath(doviIncludeDirPath)}",
@@ -185,12 +175,11 @@ android {
         buildConfigField("String", "PLAYBACK_REPORTS_BASE_URL", buildConfigString(localProperties.getProperty("PLAYBACK_REPORTS_BASE_URL", "")))
         buildConfigField("String", "PREMIUMIZE_CLIENT_ID", "\"${localProperties.getProperty("PREMIUMIZE_CLIENT_ID", "")}\"")
         buildConfigField("String", "SPONSOR_NAMES", buildConfigString(sponsorNames))
+        buildConfigField("String", "SENTRY_DSN", buildConfigString(sentryDsn))
 
-        // One beta stream for this fork, including GitHub prereleases.
-        buildConfigField("String", "GITHUB_OWNER", "\"LaniBoat14\"")
-        buildConfigField("String", "GITHUB_REPO", "\"nuvio-flow\"")
-        buildConfigField("String", "GITHUB_REPO_NEW_NAME", "\"nuvio-flow\"")
-        buildConfigField("boolean", "UPDATE_CHECK_ENABLED", "true")
+        // In-app updater (GitHub Releases)
+        buildConfigField("String", "GITHUB_OWNER", buildConfigString(env("FLOW_GITHUB_OWNER") ?: localProperties.getProperty("FLOW_GITHUB_OWNER", "LaniBoat14")))
+        buildConfigField("String", "GITHUB_REPO", buildConfigString(env("FLOW_GITHUB_REPO") ?: localProperties.getProperty("FLOW_GITHUB_REPO", "nuvio-flow")))
     }
 
     flavorDimensions += "distribution"
@@ -198,18 +187,30 @@ android {
         create("full") {
             dimension = "distribution"
             buildConfigField("boolean", "FEATURE_PLUGINS_ENABLED", "true")
+            // Flow installs signed APKs from its own release feed.
             buildConfigField("boolean", "FEATURE_IN_APP_UPDATES_ENABLED", "true")
             buildConfigField("boolean", "FEATURE_IN_APP_TRAILERS_ENABLED", "true")
             buildConfigField("boolean", "FEATURE_EXTERNAL_TRAILERS_ENABLED", "true")
             buildConfigField("boolean", "FEATURE_EXTERNAL_PLAYBACK_KEEP_ALIVE_ENABLED", "true")
             buildConfigField("boolean", "FEATURE_CUSTOM_SERVER_CONNECTIONS_ENABLED", "true")
         }
-
+        create("playstore") {
+            dimension = "distribution"
+            applicationId = "com.nuvio.app"
+            buildConfigField("boolean", "FEATURE_PLUGINS_ENABLED", "false")
+            buildConfigField("boolean", "FEATURE_IN_APP_UPDATES_ENABLED", "false")
+            buildConfigField("boolean", "FEATURE_IN_APP_TRAILERS_ENABLED", "false")
+            buildConfigField("boolean", "FEATURE_EXTERNAL_TRAILERS_ENABLED", "true")
+            buildConfigField("boolean", "FEATURE_EXTERNAL_PLAYBACK_KEEP_ALIVE_ENABLED", "false")
+            buildConfigField("boolean", "FEATURE_CUSTOM_SERVER_CONNECTIONS_ENABLED", "false")
+        }
     }
 
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
+    if (enableDoviNative) {
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+            }
         }
     }
 
@@ -217,19 +218,21 @@ android {
         create("release") {
             keyAlias = releaseKeyAliasValue
             keyPassword = releaseKeyPasswordValue
-            storeFile = releaseStoreFilePath?.let(::file) ?: error("Flow signing keystore must be supplied by CI")
+            storeFile = releaseStoreFilePath?.let(::file)
+                ?: error("NUVIO_RELEASE_STORE_FILE must point to the Flow signing keystore")
             storePassword = releaseStorePasswordValue
         }
     }
 
     buildTypes {
         debug {
+            signingConfig = signingConfigs.getByName("release")
             applicationIdSuffix = ".debug"
-            signingConfig = signingConfigs.getByName("debug")
             isDebuggable = parseBooleanProperty(providers.gradleProperty("debuggable").orNull)
             isMinifyEnabled = false
 
             buildConfigField("boolean", "IS_DEBUG_BUILD", "true")
+            buildConfigField("String", "SENTRY_ENVIRONMENT", buildConfigString("debug"))
 
             // Dev environment (from local.dev.properties)
             buildConfigField("String", "SUPABASE_URL", buildConfigString(resolveProperty(devProperties, localProperties, "NUVIO_SUPABASE_URL")))
@@ -265,6 +268,7 @@ android {
             }
 
             buildConfigField("boolean", "IS_DEBUG_BUILD", "false")
+            buildConfigField("String", "SENTRY_ENVIRONMENT", buildConfigString("production"))
 
             // Production environment (from local.properties)
             buildConfigField("String", "SUPABASE_URL", buildConfigString(localProperties.getProperty("NUVIO_SUPABASE_URL", "")))
@@ -296,6 +300,7 @@ android {
                 "proguard-rules.pro"
             )
             buildConfigField("boolean", "IS_DEBUG_BUILD", "true")
+            buildConfigField("String", "SENTRY_ENVIRONMENT", buildConfigString("benchmark"))
             applicationIdSuffix = ".debug"
             matchingFallbacks += "release"
         }
@@ -305,6 +310,8 @@ android {
         abi {
             isEnable = !buildingAppBundle
             reset()
+            // The target Onn 4K Plus is a 32-bit armeabi-v7a device. Keeping one ABI
+            // makes the in-place update smaller and avoids shipping unused native code.
             include("armeabi-v7a")
             isUniversalApk = false
         }
@@ -342,7 +349,7 @@ android {
 
     packaging {
         jniLibs {
-            useLegacyPackaging = false
+            useLegacyPackaging = true
             // Keep one consistent native set across dependencies.
             pickFirsts += listOf(
                 "lib/*/libc++_shared.so",
@@ -406,25 +413,35 @@ configurations.all {
 
 baselineProfile {
     automaticGenerationDuringBuild = false
-    dexLayoutOptimization = true
     saveInSrc = true
     mergeIntoMain = true
     baselineProfileOutputDir = "generated/baselineProfiles"
-    // Keep in step with KEPT_PACKAGES in BaselineProfileGenerator.kt.
     filter {
         include("com.nuvio.tv.**")
-        include("androidx.**")
-        include("kotlin.**")
-        include("kotlinx.coroutines.**")
-        include("okhttp3.**")
-        include("okio.**")
-        include("retrofit2.**")
-        include("com.squareup.moshi.**")
-        include("coil3.**")
-        include("dagger.**")
     }
 }
 
+sentry {
+    includeProguardMapping.set(true)
+    autoUploadProguardMapping.set(sentryMappingUploadEnabled)
+    uploadNativeSymbols.set(false)
+    autoUploadNativeSymbols.set(false)
+    includeNativeSources.set(false)
+    includeSourceContext.set(false)
+    autoUploadSourceContext.set(false)
+    includeDependenciesReport.set(false)
+    telemetry.set(false)
+    sentryAuthToken?.let(authToken::set)
+    sentryOrg?.let(org::set)
+    sentryProject?.let(projectName::set)
+    ignoredBuildTypes.set(setOf("debug"))
+    autoInstallation {
+        enabled.set(false)
+    }
+    tracingInstrumentation {
+        enabled.set(false)
+    }
+}
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
@@ -505,9 +522,6 @@ dependencies {
     implementation("androidx.media3:media3-database:1.8.0")
     implementation("androidx.annotation:annotation-experimental:1.3.1")
 
-    // Other libraries pull concurrent-futures in transitively; this pins its version.
-    implementation("androidx.concurrent:concurrent-futures:1.2.0")
-
     // Nuvio Engine local AARs (replaces lib-exoplayer, lib-common, lib-datasource, lib-datasource-okhttp, lib-exoplayer-hls, lib-extractor)
     implementation(files(
         "libs/lib-common-release.aar",
@@ -519,10 +533,12 @@ dependencies {
     ))
     implementation(libs.media3.ui)
 
-    // Local decoder AAR (AV1)
+    // Local decoder AARs (AV1, IAMF, MPEG-H)
     implementation(files(
-        "libs/lib-decoder-av1-release.aar"
+        "libs/lib-decoder-av1-release.aar",
+        "libs/lib-decoder-mpegh-release.aar"
     ))
+    add("fullImplementation", files("libs/lib-decoder-iamf-release.aar"))
     implementation(files("libs/lib-nuvio-engine-android-0.1.6.aar"))
     if (useLocalFfmpegDecoder) {
         implementation(project(":ffmpeg-decoder-downmix"))
@@ -532,7 +548,6 @@ dependencies {
 
     // libass - atlas-based subtitle rendering (from NuvioMedia/nuvio-libass)
     implementation(files("libs/nuvio-libass-release.aar"))
-    implementation("androidx.annotation:annotation-experimental:1.5.1")
     // Local nextlib-mediainfo fork (static FFmpeg; no libav*.so in final AAR)
     implementation(files("libs/nextlib-mediainfo-local.aar"))
     implementation("io.github.abdallahmehiz:mpv-android-lib:0.1.12")
@@ -571,7 +586,9 @@ dependencies {
     implementation(libs.supabase.auth)
     implementation(libs.supabase.postgrest)
     implementation(libs.supabase.storage)
+    implementation(libs.supabase.realtime)
     implementation(libs.ktor.client.okhttp)
+    implementation(libs.sentry.android)
 
     // Kotlinx Serialization
     implementation(libs.kotlinx.serialization.json)
@@ -579,11 +596,6 @@ dependencies {
     // Performance profiling
     implementation("androidx.metrics:metrics-performance:1.0.0-rc01")  // JankStats
     debugImplementation("androidx.compose.runtime:runtime-tracing")
-    if (providers.gradleProperty("detailTracing").orNull == "true") {
-        add("releaseImplementation", "androidx.compose.runtime:runtime-tracing")
-        add("releaseImplementation", "androidx.tracing:tracing-perfetto:1.0.0")
-        add("releaseImplementation", "androidx.tracing:tracing-perfetto-binary:1.0.0")
-    }
 
     add("fullImplementation", "org.webjars.npm:crypto-js:4.2.0")
 
@@ -592,7 +604,6 @@ dependencies {
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.json:json:20250517")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     testImplementation("io.mockk:mockk:1.13.12")
     testImplementation("com.squareup.okhttp3:mockwebserver:5.3.2")

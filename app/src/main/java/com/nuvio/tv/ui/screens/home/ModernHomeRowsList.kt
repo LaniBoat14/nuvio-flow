@@ -51,8 +51,6 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.compose.ui.ExperimentalComposeUiApi
 import coil3.imageLoader
 import coil3.memory.MemoryCache
-import com.nuvio.tv.core.image.homePosterPriority
-import com.nuvio.tv.core.image.homePosterCacheKey
 import coil3.request.ImageRequest
 import com.nuvio.tv.domain.model.ContinueWatchingCardStyle
 import com.nuvio.tv.domain.model.FocusedPosterTrailerPlaybackTarget
@@ -66,21 +64,9 @@ import com.nuvio.tv.ui.util.recompositionHighlighter
 import com.nuvio.tv.ui.components.rememberPlaceholderShimmerOffsetState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.Job
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
-
-// Vertical poster prefetch: rows just outside the viewport on BOTH flanks get their
-// leading posters decoded ahead of arrival (symmetric, direction-agnostic -- the return
-// leg of a vertical traversal gets the same treatment as the outbound leg). 2 rows x
-// 8 items is roughly one viewport-width of posters per warmed row on a 1080p UI.
-private const val VERTICAL_POSTER_PREFETCH_AHEAD_ROWS = 2
-private const val VERTICAL_POSTER_PREFETCH_ITEMS_PER_ROW = 8
-private const val VERTICAL_POSTER_PREFETCH_MAX_IN_FLIGHT = 32
+import kotlinx.coroutines.withContext
 
 @OptIn(
     ExperimentalFoundationApi::class,
@@ -110,7 +96,6 @@ internal fun ModernHomeRowsList(
     onNavigateToDetail: (String, String, String) -> Unit,
     onNavigateToFolderDetail: (String, String) -> Unit,
     onLoadMoreCatalog: (String, String, String) -> Unit,
-    onServerArtworkWindow: (List<Pair<String, List<MetaPreview>>>) -> Unit = {},
     onContinueWatchingClick: (ContinueWatchingItem) -> Unit,
     onContinueWatchingOptions: (ContinueWatchingItem) -> Unit,
     onRequestLazyCatalogLoad: (String) -> Unit,
@@ -125,7 +110,6 @@ internal fun ModernHomeRowsList(
     trailerPreviewAudioUrls: StableMap<String, String>,
     useLandscapePosters: Boolean,
     alwaysShowLandscapeClearlogo: Boolean = false,
-    addonLandscapeBackdropLogo: Boolean = false,
     showLabels: Boolean,
     posterCardCornerRadius: Dp,
     focusedPosterBackdropTrailerMuted: Boolean,
@@ -173,207 +157,61 @@ internal fun ModernHomeRowsList(
     val latestOnActiveItemIndexChange = rememberUpdatedState(onActiveItemIndexChange)
 
     val rowFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
-    val isV2 = com.nuvio.tv.ui.v2.appearance.LocalV2Appearance.current != null
-    val navigationScope = rememberCoroutineScope()
-    var verticalFocusJob by remember { mutableStateOf<Job?>(null) }
     val stableItemFocusRequestersByRow = remember { mutableMapOf<String, StableRef<MutableMap<Int, FocusRequester>>>() }
-    val verticalHeading = remember { VerticalHeading() }
-    // Up and Down keep the column, in the item coordinates every Home row shares.
-    fun focusedCardCenter(): Int? {
-        val rowKey = activeRowKey.value ?: return null
-        val index = focusedItemByRowMap[rowKey] ?: activeItemIndex.value
-        val info = rowListStatesMap[rowKey]?.layoutInfo ?: return null
-        val items = info.visibleItemsInfo
-        val first = items.firstOrNull() ?: return null
-        val last = items.last()
-        val end = info.viewportEndOffset - info.afterContentPadding
-        val span = last.size + info.mainAxisItemSpacing
-        return focusedColumnCenter(
-            index,
-            items.map { RowCardSpan(it.index, it.offset, it.size) },
-            end,
-            keepInView = isV2,
-            roomAheadPx = maxOf(0, last.offset + last.size + (info.totalItemsCount - 1 - last.index) * span - end),
-            roomBackPx = maxOf(0, first.index * span - first.offset)
-        )
-    }
-    val rowDensity = LocalDensity.current
-    // A row's normal card width, from its first card's kind and the poster settings, for rows not laid out yet.
-    fun rowCardWidthPx(row: HeroCarouselRow): Int? {
-        val item = row.items.list.firstOrNull() ?: return null
-        val width = if (item.payload is ModernPayload.ContinueWatching) continueWatchingCardWidth
-        else item.catalogCardRequestMetrics(
-            useLandscapePosters, portraitCatalogCardWidth, portraitCatalogCardHeight,
-            landscapeCatalogCardWidth, landscapeCatalogCardHeight
-        ).width
-        return with(rowDensity) { width.roundToPx() }
-    }
-    // The card a vertical move lands on, and why. The remembered card is only used when there is no column to keep.
-    fun columnTarget(row: HeroCarouselRow, centerPx: Int?): Pair<Int, String> {
-        val last = (row.items.list.size - 1).coerceAtLeast(0)
-        val state = rowListStatesMap[row.key]
-        val cards = state?.layoutInfo?.visibleItemsInfo.orEmpty().map { RowCardSpan(it.index, it.offset, it.size) }
-        if (centerPx != null) {
-            sameColumnCardIndex(centerPx, cards)?.let { return it.coerceIn(0, last) to "same-spot" }
-            val spacing = rowListStatesMap.values.firstNotNullOfOrNull { other ->
-                other.layoutInfo.takeIf { it.visibleItemsInfo.isNotEmpty() }?.mainAxisItemSpacing
-            } ?: 0
-            val span = rowCardWidthPx(row)?.plus(spacing)
-            if (span != null && span > 0) {
-                val index = estimatedColumnIndex(centerPx, state?.firstVisibleItemIndex ?: 0, state?.firstVisibleItemScrollOffset ?: 0, span)
-                return index.coerceIn(0, last) to "estimated"
-            }
-        }
-        return (focusedItemByRowMap[row.key] ?: 0).coerceIn(0, last) to "remembered"
-    }
-    fun logColumnMove(from: String?, centerPx: Int?, to: String, index: Int, reason: String) {
-        android.util.Log.d("HomeColumn", "move from=$from col=${centerPx ?: "none"}px to=$to index=$index reason=$reason")
-    }
 
     val density = LocalDensity.current
     val context = LocalContext.current
     val layoutDirection = LocalLayoutDirection.current
     val verticalPrefetchImageLoader = context.imageLoader
-    val imageViewport = remember { com.nuvio.tv.core.image.HomePosterViewport() }
-    com.nuvio.tv.core.image.HomePosterVisit(imageViewport)
-    LaunchedEffect(verticalRowListState) {
-        snapshotFlow { verticalRowListState.layoutInfo.visibleItemsInfo.map { it.index } to verticalRowListState.isScrollInProgress }.collect { (visible, scrolling) ->
-            imageViewport.scrolling = scrolling
-            imageViewport.firstRow = visible.firstOrNull() ?: 0
-            imageViewport.lastRow = visible.lastOrNull() ?: 1
-        }
-    }
     val latestCarouselRowsForImagePrefetch = rememberUpdatedState(carouselRows)
-    val latestOnServerArtworkWindow = rememberUpdatedState(onServerArtworkWindow)
-    LaunchedEffect(verticalRowListState) {
-        snapshotFlow {
-            val visible = verticalRowListState.layoutInfo.visibleItemsInfo
-            val rows = visible.firstOrNull()?.index?.let { it..visible.last().index } ?: IntRange.EMPTY
-            serverArtworkWindow(latestCarouselRowsForImagePrefetch.value.list, rows) { key ->
-                rowListStatesMap[key]?.layoutInfo?.visibleItemsInfo?.takeIf { it.isNotEmpty() }
-                    ?.let { it.first().index..it.last().index }
-            }
-        }
-            .distinctUntilChanged()
-            .debounce(150L)
-            .collect { window -> if (window.isNotEmpty()) latestOnServerArtworkWindow.value(window) }
-    }
-    ProgressiveHomePosterWarmup(
-        rows = latestCarouselRowsForImagePrefetch,
-        viewport = imageViewport,
-        rowStates = rowListStatesMap,
-        verticalScrolling = isVerticalRowsScrollingState,
-        useLandscapePosters = useLandscapePosters,
-        alwaysShowLandscapeClearlogo = alwaysShowLandscapeClearlogo,
-        addonLandscapeBackdropLogo = addonLandscapeBackdropLogo,
-        portraitWidth = portraitCatalogCardWidth,
-        portraitHeight = portraitCatalogCardHeight,
-        landscapeWidth = landscapeCatalogCardWidth,
-        landscapeHeight = landscapeCatalogCardHeight
-    )
 
     LaunchedEffect(
         verticalPrefetchImageLoader,
         verticalRowListState,
         density,
         useLandscapePosters,
-        alwaysShowLandscapeClearlogo,
-        addonLandscapeBackdropLogo,
         effectiveExpandEnabled,
         portraitCatalogCardWidth,
         portraitCatalogCardHeight,
         landscapeCatalogCardWidth,
         landscapeCatalogCardHeight
     ) {
-        var previousFirstRow = -1
-        val inFlight = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Job>>()
+        val prefetchAheadRows = 1
+        val prefetchItemsPerRow = 1
         snapshotFlow {
-            val visible = verticalRowListState.layoutInfo.visibleItemsInfo
-            val first = visible.firstOrNull()?.index ?: -1
-            val last = visible.lastOrNull()?.index ?: -1
-            // Retry warming when nearby catalogue placeholders become real items,
-            // even if the viewport itself has not moved.
-            val nearby = latestCarouselRowsForImagePrefetch.value.list
-            Triple(first, last, ((first - VERTICAL_POSTER_PREFETCH_AHEAD_ROWS)..(last + VERTICAL_POSTER_PREFETCH_AHEAD_ROWS)).map {
-                nearby.getOrNull(it)?.items?.list?.firstOrNull()?.imageUrl
-            })
+            verticalRowListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
         }
             .distinctUntilChanged()
-            .debounce(120L) // VERTICAL_PREFETCH_DEBOUNCE_MS
-            .collect { (firstVisibleRowIndex, lastVisibleRowIndex, _) ->
-                val warmRows = com.nuvio.tv.core.image.homePosterPrefetchRows(
-                    firstVisibleRowIndex, lastVisibleRowIndex, previousFirstRow, VERTICAL_POSTER_PREFETCH_AHEAD_ROWS
-                )
-                previousFirstRow = firstVisibleRowIndex
-                // Started requests survive viewport changes during a held scroll; only rows
-                // the user has already left behind are dropped.
-                val keepRows = com.nuvio.tv.core.image.homePosterAheadKeepRows(
-                    firstVisibleRowIndex, lastVisibleRowIndex, VERTICAL_POSTER_PREFETCH_AHEAD_ROWS
-                )
-                inFlight.forEach { (key, entry) ->
-                    if (entry.first !in keepRows && inFlight.remove(key, entry)) entry.second.cancel()
-                }
-                val rows = latestCarouselRowsForImagePrefetch.value.list
-                val viewportWidth = verticalRowListState.layoutInfo.viewportSize.width
-                // Visible cards own their requests. Warm upcoming rows in order,
-                // then the preceding row, without launching a second copy of visible artwork.
-                for (index in warmRows) {
-                    val row = rows.getOrNull(index) ?: continue
-                    val leadingItem = row.items.list.firstOrNull() ?: continue
-                    if (leadingItem.payload is ModernPayload.ContinueWatching) continue
-                    val leadingMetrics = leadingItem.catalogCardRequestMetrics(
-                        useLandscapePosters = useLandscapePosters,
-                        portraitCardWidth = portraitCatalogCardWidth,
-                        portraitCardHeight = portraitCatalogCardHeight,
-                        landscapeCardWidth = landscapeCatalogCardWidth,
-                        landscapeCardHeight = landscapeCatalogCardHeight,
-                        expandEnabled = false
-                    )
-                    val leadingWidth = with(density) { leadingMetrics.width.roundToPx() }.coerceAtLeast(1)
-                    val warmCount = if (viewportWidth > 0)
-                        (kotlin.math.ceil(viewportWidth.toDouble() / leadingWidth).toInt() + 1).coerceIn(4, 16)
-                    else VERTICAL_POSTER_PREFETCH_ITEMS_PER_ROW
-                    for (i in 0 until minOf(warmCount, row.items.list.size)) {
-                        if (inFlight.size >= VERTICAL_POSTER_PREFETCH_MAX_IN_FLIGHT) break
-                        val item = row.items.list[i]
-                        // CW request parity is not reproducible here (see ModernHomeRows): skip.
-                        if (item.payload is ModernPayload.ContinueWatching) continue
-                        val landscape = item.usesLandscapeCardTreatment(useLandscapePosters, addonLandscapeBackdropLogo)
-                        val url = item.collapsedArtworkUrl(
-                            landscape,
-                            alwaysShowLandscapeClearlogo = alwaysShowLandscapeClearlogo
-                        )?.takeUnless { it.isPlaceholder() } ?: continue
-                        val extras = item.customPosterCacheExtras(url, landscape)
-                        val metrics = item.catalogCardRequestMetrics(
-                            useLandscapePosters = useLandscapePosters,
-                            portraitCardWidth = portraitCatalogCardWidth,
-                            portraitCardHeight = portraitCatalogCardHeight,
-                            landscapeCardWidth = landscapeCatalogCardWidth,
-                            landscapeCardHeight = landscapeCatalogCardHeight,
-                            expandEnabled = false
-                        )
-                        val wPx = with(density) { metrics.width.roundToPx() }
-                        val hPx = with(density) { metrics.height.roundToPx() }
-                        if (wPx <= 0 || hPx <= 0) continue
-                        val cacheKey = homePosterCacheKey(url, wPx, hPx)
-                        if (inFlight.containsKey(cacheKey)) continue
-                        if (verticalPrefetchImageLoader.memoryCache?.get(MemoryCache.Key(cacheKey, extras)) != null) continue
-                        val job = launch(Dispatchers.IO, start = kotlinx.coroutines.CoroutineStart.LAZY) {
-                            verticalPrefetchImageLoader.execute(
+            .debounce(240L) // VERTICAL_PREFETCH_DEBOUNCE_MS
+            .collect { lastVisibleRowIndex ->
+                withContext(Dispatchers.IO) {
+                    for (rowOffset in 1..prefetchAheadRows) {
+                        val row = latestCarouselRowsForImagePrefetch.value.list
+                            .getOrNull(lastVisibleRowIndex + rowOffset) ?: continue
+                        for (i in 0 until minOf(prefetchItemsPerRow, row.items.list.size)) {
+                            val item = row.items.list[i]
+                            val url = item.imageUrl ?: continue
+                            val metrics = item.catalogCardRequestMetrics(
+                                useLandscapePosters = useLandscapePosters,
+                                portraitCardWidth = portraitCatalogCardWidth,
+                                portraitCardHeight = portraitCatalogCardHeight,
+                                landscapeCardWidth = landscapeCatalogCardWidth,
+                                landscapeCardHeight = landscapeCatalogCardHeight,
+                                expandEnabled = effectiveExpandEnabled
+                            )
+                            val wPx = with(density) { metrics.width.roundToPx() }
+                            val hPx = with(density) { metrics.height.roundToPx() }
+                            if (wPx <= 0 || hPx <= 0) continue
+                            val cacheKey = "${url}_${wPx}x${hPx}"
+                            if (verticalPrefetchImageLoader.memoryCache?.get(MemoryCache.Key(cacheKey)) != null) continue
+                            verticalPrefetchImageLoader.enqueue(
                                 ImageRequest.Builder(context)
                                     .data(url)
-                                    .homePosterPriority(com.nuvio.tv.core.image.HomePosterPriority(imageViewport, index, prefetch = true))
                                     .memoryCacheKey(cacheKey)
-                                    .memoryCacheKeyExtras(extras)
-                                    .scale(coil3.size.Scale.FILL)
                                     .size(width = wPx, height = hPx)
                                     .build()
                             )
                         }
-                        val entry = index to job
-                        inFlight[cacheKey] = entry
-                        job.invokeOnCompletion { inFlight.remove(cacheKey, entry) }
-                        job.start()
                     }
                 }
             }
@@ -390,8 +228,9 @@ internal fun ModernHomeRowsList(
             firstVisible to lastVisible
         }.collectLatest { (firstVisible, lastVisible) ->
             if (lastVisible < 0) return@collectLatest
-            // Request visible catalogue data immediately. Debouncing this during
-            // fast navigation left entire rows empty until the user stopped.
+            // Debounce: restarts on every new emission during rapid scroll.
+            // Only fires when visible indices stabilize for 240ms.
+            delay(240)
             val rows = latestCarouselRowsForLazy.value
             for (idx in firstVisible.coerceAtLeast(0)..(lastVisible + prefetchAheadForLazy)) {
                 val row = rows.list.getOrNull(idx) ?: continue
@@ -453,58 +292,6 @@ internal fun ModernHomeRowsList(
                 .focusRequester(contentFocusRequester)
                 .focusRestorer { focusRestorerRequester() }
                 .onPreviewKeyEvent { event ->
-                    // A lifted/scaled card sits above its row neighbours. Spatial Down can
-                    // therefore choose a neighbour in the same row. Cross rows by identity.
-                    if (event.type == KeyEventType.KeyDown &&
-                        event.nativeKeyEvent.repeatCount == 0 &&
-                        (event.key == Key.DirectionDown || event.key == Key.DirectionUp)) {
-                        // A press while the last move is still on its way continues from the row it is heading to.
-                        val fromRow = verticalMoveSource(
-                            activeRowKey.value, verticalHeading.rowKey,
-                            android.os.SystemClock.uptimeMillis() - verticalHeading.atMs
-                        )
-                        val heading = fromRow != activeRowKey.value
-                        val currentIndex = carouselRows.list.indexOfFirst { it.key == fromRow }
-                        val targetIndex = adjacentHomeRowIndex(currentIndex, carouselRows.list.size,
-                            event.key == Key.DirectionDown)
-                        if (targetIndex != null) {
-                            val target = carouselRows.list[targetIndex]
-                            val column = if (heading) verticalHeading.column else focusedCardCenter()
-                            verticalHeading.rowKey = target.key
-                            verticalHeading.column = column
-                            verticalHeading.atMs = android.os.SystemClock.uptimeMillis()
-                            verticalFocusJob?.cancel()
-                            verticalFocusJob = navigationScope.launch {
-                                val attached = verticalRowListState.layoutInfo.visibleItemsInfo.any { it.index == targetIndex }
-                                if (!attached) {
-                                    verticalRowListState.scrollToItem(targetIndex)
-                                    withFrameNanos { }
-                                }
-                                // Wait for the row to be laid out, so its own scroll decides which card is in the spot.
-                                for (frame in 0 until 6) {
-                                    if (rowListStatesMap[target.key]?.layoutInfo?.visibleItemsInfo?.isNotEmpty() == true) break
-                                    withFrameNanos { }
-                                }
-                                val (saved, reason) = columnTarget(target, column)
-                                // The row remembers this card too, so nothing that restores a row's card takes focus elsewhere.
-                                focusedItemByRowMap[target.key] = saved
-                                var itemTarget = stableItemFocusRequestersByRow[target.key]?.value?.get(saved)
-                                if (itemTarget == null || rowListStatesMap[target.key]?.layoutInfo?.visibleItemsInfo?.none { it.index == saved } == true) {
-                                    // Off screen: bring it in under the column rather than to the row's start.
-                                    val start = column?.let { it - (rowCardWidthPx(target) ?: 0) / 2 }?.coerceAtLeast(0) ?: 0
-                                    rowListStatesMap[target.key]?.scrollToItem(saved, -start)
-                                    repeat(2) { withFrameNanos { } }
-                                    itemTarget = stableItemFocusRequestersByRow[target.key]?.value?.get(saved)
-                                }
-                                val moved = runCatching { itemTarget?.requestFocus() == true }.getOrDefault(false)
-                                logColumnMove(fromRow, column, target.key, saved, if (moved) reason else "$reason+row")
-                                if (!moved) runCatching { rowFocusRequesters[target.key]?.requestFocus() }
-                            }
-                            return@onPreviewKeyEvent true
-                        }
-                        // Let Up at the first row reach top navigation; Down at the end stays put.
-                        if (isV2 && event.key == Key.DirectionDown) return@onPreviewKeyEvent true
-                    }
                     val firstRowKey = carouselRows.list.firstOrNull()?.key
                     val lastRowKey = carouselRows.list.lastOrNull()?.key
                     if (event.type == KeyEventType.KeyDown &&
@@ -532,7 +319,6 @@ internal fun ModernHomeRowsList(
                 }
                 .dpadVerticalFastScroll(
                     scrollableState = verticalRowListState,
-                    verticalVelocityDpPerSec = 2000f,
                     onFastScrollingChanged = onFastScrollingChanged,
                     shouldHaltForward = {
                         val info = verticalRowListState.layoutInfo
@@ -566,12 +352,8 @@ internal fun ModernHomeRowsList(
                         val targetRow = carouselRows.list.getOrNull(targetRowIndex)
                         if (targetRow == null) null
                         else {
-                            val column = focusedCardCenter()
-                            val (savedIdx, reason) = columnTarget(targetRow, column)
-                            logColumnMove(activeRowKey.value, column, targetRow.key, savedIdx, "hold-$reason")
-                            verticalHeading.rowKey = null
-                            // The landing card claims focus from the row's remembered card: point that at the column.
-                            focusedItemByRowMap[targetRow.key] = savedIdx
+                            val savedIdx = (focusedItemByRowMap[targetRow.key] ?: 0)
+                                .coerceIn(0, (targetRow.items.list.size - 1).coerceAtLeast(0))
                             latestOnActiveRowKeyChange.value(targetRow.key)
                             latestOnActiveItemIndexChange.value(savedIdx)
 
@@ -586,9 +368,9 @@ internal fun ModernHomeRowsList(
         ) {
             itemsIndexed(
                 items = carouselRows.list,
-                key = { _, row -> row.key },
+                key = { index, row -> "${row.key}_$index" },
                 contentType = { _, row -> row.apiType ?: "modern_home_row" }
-            ) { rowIndex, row ->
+            ) { _, row ->
                 val stableOnContinueWatchingOptions = remember(onContinueWatchingOptions) {
                     { item: ContinueWatchingItem -> onContinueWatchingOptions(item) }
                 }
@@ -599,7 +381,13 @@ internal fun ModernHomeRowsList(
                         
                         if (rowBecameActive || itemChanged) {
                             val now = System.currentTimeMillis()
-                            onHeroFocusSettleDelayChange(MODERN_HERO_FOCUS_DEBOUNCE_MS)
+                            val timeSinceLastHeroNav = now - lastHeroNavigationAtMs.value
+                            onHeroFocusSettleDelayChange(
+                                if (lastHeroNavigationAtMs.value != 0L &&
+                                    timeSinceLastHeroNav in 1 until 130L // MODERN_HERO_RAPID_NAV_THRESHOLD_MS
+                                ) 400L // MODERN_HERO_RAPID_NAV_SETTLE_MS
+                                else 450L // MODERN_HERO_FOCUS_DEBOUNCE_MS
+                            )
                             onLastHeroNavigationAtMsChange(now)
                             onActiveRowKeyChange(rowKey)
                             onActiveItemIndexChange(index)
@@ -621,11 +409,8 @@ internal fun ModernHomeRowsList(
                         onRowItemFocusedInternal(rowKey, index, isContinueWatchingRow)
                     }
                 }
-                val rowIsActive = remember(row.key, activeRowKey) {
-                    derivedStateOf { row.key == activeRowKey.value }
-                }
-                val isActiveRowLambda = remember(rowIsActive) {
-                    { rowIsActive.value }
+                val isActiveRowLambda = remember(row.key) {
+                    { row.key == activeRowKey.value }
                 }
                 val stableOnCatalogSelectionFocused = remember {
                     { selection: FocusedCatalogSelection ->
@@ -638,10 +423,6 @@ internal fun ModernHomeRowsList(
                         }
                     }
                 }
-                androidx.compose.runtime.CompositionLocalProvider(
-                    com.nuvio.tv.core.image.LocalHomePosterPriority provides
-                        com.nuvio.tv.core.image.HomePosterPriority(imageViewport, rowIndex)
-                ) {
                 ModernRowSection(
                     row = row,
                     isActiveRow = isActiveRowLambda,
@@ -650,7 +431,6 @@ internal fun ModernHomeRowsList(
                     defaultBringIntoViewSpec = defaultBringIntoViewSpec,
                     focusStateCatalogRowScrollIndex = focusState.catalogRowScrollStates[row.key] ?: 0,
                     focusStateCatalogRowScrollAnchor = focusState.catalogRowScrollAnchors[row.key],
-                    focusStateCatalogRowScrollOffset = focusState.catalogRowScrollOffsets[row.key] ?: 0,
                     focusedItemByRow = focusedItemByRow,
                     rowListStates = rowListStates,
                     loadMoreRequestedTotals = loadMoreRequestedTotals,
@@ -661,7 +441,6 @@ internal fun ModernHomeRowsList(
                     onRowItemFocused = stableOnRowItemFocused,
                     useLandscapePosters = useLandscapePosters,
                     alwaysShowLandscapeClearlogo = alwaysShowLandscapeClearlogo,
-                    addonLandscapeBackdropLogo = addonLandscapeBackdropLogo,
                     showLabels = showLabels,
                     posterCardCornerRadius = posterCardCornerRadius,
                     focusedPosterBackdropTrailerMuted = focusedPosterBackdropTrailerMuted,
@@ -700,15 +479,7 @@ internal fun ModernHomeRowsList(
                         StableRef(mutableMapOf())
                     }
                 )
-                }
             }
         }
     }
-}
-
-/** Where the last Up or Down is heading while focus has not arrived there yet. */
-private class VerticalHeading {
-    var rowKey: String? = null
-    var column: Int? = null
-    var atMs = 0L
 }

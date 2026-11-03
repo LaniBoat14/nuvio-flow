@@ -1,12 +1,8 @@
 package com.nuvio.tv.ui.screens.profile
 
-import com.nuvio.tv.core.util.StartupLatencyTrace
-
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.nuvio.tv.core.party.PartyAvatars
-import com.nuvio.tv.core.profile.LocalProfileAvatars
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.sync.ProfileSettingsSyncService
 import com.nuvio.tv.core.sync.ProfileSyncService
@@ -30,6 +26,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -53,20 +51,15 @@ class ProfileSelectionViewModel @Inject constructor(
     private val profileBackgroundRepository: ProfileBackgroundRepository,
     memberAccessRepository: MemberAccessRepository,
     private val profileLockStateDataStore: ProfileLockStateDataStore,
-    private val localAvatars: LocalProfileAvatars
+    private val themeDataStore: com.nuvio.tv.data.local.ThemeDataStore
 ) : ViewModel() {
     val activeProfileId: StateFlow<Int> = profileManager.activeProfileId
-    val profiles: StateFlow<List<UserProfile>> = combine(profileManager.profiles, localAvatars.avatars) { list, _ ->
-        list.map(localAvatars::shown)
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, profileManager.profiles.value.map(localAvatars::shown))
-
-    /** Avatars from the built-in set chosen on this box, by profile id. */
-    val localAvatarIds: StateFlow<Map<Int, String>> = localAvatars.avatars
+    val profiles: StateFlow<List<UserProfile>> = profileManager.profiles
 
     val canAddProfile: Boolean
         get() = profileManager.canCreateProfile
 
-    private val _avatarCatalog = MutableStateFlow(localAvatars.catalog)
+    private val _avatarCatalog = MutableStateFlow<List<AvatarCatalogItem>>(emptyList())
     val avatarCatalog: StateFlow<List<AvatarCatalogItem>> = _avatarCatalog.asStateFlow()
 
     val hasProfileAvatarAccess: StateFlow<Boolean> = memberAccessRepository.access
@@ -97,11 +90,6 @@ class ProfileSelectionViewModel @Inject constructor(
     val profilePinEnabled: StateFlow<Map<Int, Boolean>> = profileLockStateDataStore.pinEnabled
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
-    // The poster preview must distinguish an unloaded lock cache from an unlocked profile.
-    val posterPreviewPinStates: StateFlow<Map<Int, Boolean>?> = profileLockStateDataStore.pinEnabled
-        .map<Map<Int, Boolean>, Map<Int, Boolean>?> { it }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
-
     private val _isPinOperationInProgress = MutableStateFlow(false)
     val isPinOperationInProgress: StateFlow<Boolean> = _isPinOperationInProgress.asStateFlow()
 
@@ -126,6 +114,22 @@ class ProfileSelectionViewModel @Inject constructor(
                 }
             }
         }
+        viewModelScope.launch {
+            profiles.flatMapLatest { profileList ->
+                if (profileList.isEmpty()) {
+                    flowOf(emptyMap())
+                } else {
+                    combine(
+                        profileList.map { profile ->
+                            themeDataStore.observeThemeForProfile(profile.id)
+                                .map { theme -> profile.id to (theme ?: com.nuvio.tv.domain.model.AppTheme.WHITE) }
+                        }
+                    ) { entries -> entries.toMap() }
+                }
+            }.collectLatest { themes ->
+                _profileThemes.value = themes
+            }
+        }
     }
 
     fun loadAvatarCatalog() {
@@ -136,7 +140,7 @@ class ProfileSelectionViewModel @Inject constructor(
 
     private suspend fun loadAvatarCatalog(hasMemberAccess: Boolean) {
         try {
-            _avatarCatalog.value = avatarRepository.getAvatarCatalog(hasMemberAccess) + localAvatars.catalog
+            _avatarCatalog.value = avatarRepository.getAvatarCatalog(hasMemberAccess)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -146,7 +150,6 @@ class ProfileSelectionViewModel @Inject constructor(
 
     fun getAvatarImageUrl(avatarId: String?): String? {
         if (avatarId == null) return null
-        if (LocalProfileAvatars.isLocal(avatarId)) return PartyAvatars.imageUri(avatarId)
         return avatarRepository.getAvatarImageUrl(avatarId, _avatarCatalog.value)
     }
 
@@ -161,14 +164,12 @@ class ProfileSelectionViewModel @Inject constructor(
     var isSelectingProfile = false
         private set
 
-    fun selectProfile(id: Int, onComplete: () -> Unit, onFailure: () -> Unit = {}) {
+    fun selectProfile(id: Int, onComplete: () -> Unit, onFailure: () -> Unit) {
         if (isSelectingProfile) return
-        StartupLatencyTrace.begin("profile_tap")
         isSelectingProfile = true
         viewModelScope.launch {
             try {
                 profileManager.setActiveProfile(id)
-                StartupLatencyTrace.mark("profile_active_set")
                 onComplete()
             } catch (error: CancellationException) {
                 throw error
@@ -180,7 +181,6 @@ class ProfileSelectionViewModel @Inject constructor(
             }
         }
     }
-
 
     fun createProfile(
         name: String,
@@ -194,14 +194,12 @@ class ProfileSelectionViewModel @Inject constructor(
         viewModelScope.launch {
             _isCreating.value = true
             val result = try {
-                val local = avatarId?.takeIf(LocalProfileAvatars::isLocal)
                 val profile = profileManager.createProfile(
                     name = name,
                     avatarColorHex = avatarColorHex,
-                    avatarId = if (local != null) null else avatarId
+                    avatarId = avatarId
                 )
                 if (profile != null) {
-                    localAvatars.set(profile.id, local)
                     profileSyncService.pushToRemote()
                     val copyResult = copyFromProfileId?.let { sourceProfileId ->
                         profileSettingsSyncService.copyProfileSetup(
@@ -253,18 +251,7 @@ class ProfileSelectionViewModel @Inject constructor(
         if (_isSaving.value) return
         viewModelScope.launch {
             _isSaving.value = true
-            val stored = profileManager.profiles.value.firstOrNull { it.id == profile.id }
-            val local = profile.avatarId?.takeIf(LocalProfileAvatars::isLocal)
-            val hadLocal = localAvatars.get(profile.id) != null
-            val saved = when {
-                local != null -> profile.copy(avatarId = stored?.avatarId, avatarUrl = stored?.avatarUrl)
-                hadLocal && profile.avatarId == null && profile.avatarUrl == null ->
-                    profile.copy(avatarId = stored?.avatarId, avatarUrl = stored?.avatarUrl)
-                LocalProfileAvatars.isLocalImage(profile.avatarUrl) -> profile.copy(avatarUrl = stored?.avatarUrl)
-                else -> profile
-            }
-            localAvatars.set(profile.id, local)
-            profileManager.updateProfile(saved)
+            profileManager.updateProfile(profile)
             profileSyncService.pushToRemote()
             refreshProfilePinStates()
             _isSaving.value = false

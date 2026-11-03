@@ -18,7 +18,6 @@ class SettingsStructureTest {
                 PlaybackSection.UP_NEXT,
                 PlaybackSection.SKIP_SEGMENTS,
                 PlaybackSection.PLAYER_INTERFACE,
-                PlaybackSection.REMOTE_BUTTONS,
                 PlaybackSection.AUDIO,
                 PlaybackSection.SUBTITLES,
                 PlaybackSection.VIDEO,
@@ -50,7 +49,6 @@ class SettingsStructureTest {
                 LayoutSection.HOME_LAYOUT,
                 LayoutSection.HOME_CONTENT,
                 LayoutSection.SIDEBAR,
-                LayoutSection.CALENDAR,
                 LayoutSection.CONTINUE_WATCHING,
                 LayoutSection.FOCUSED_POSTER,
                 LayoutSection.POSTER_CARD,
@@ -82,22 +80,5 @@ class SettingsStructureTest {
     fun `focused poster has no options on the grid layout`() {
         assertFalse(LayoutSettingsUiState(selectedLayout = com.nuvio.tv.domain.model.HomeLayout.GRID).focusedPosterHasOptions())
         assertTrue(LayoutSettingsUiState(selectedLayout = com.nuvio.tv.domain.model.HomeLayout.CLASSIC).focusedPosterHasOptions())
-    }
-
-    @Test
-    fun `trailer logo row on modern needs the trailer in the expanded card`() {
-        val modern = LayoutSettingsUiState(selectedLayout = com.nuvio.tv.domain.model.HomeLayout.MODERN)
-        com.nuvio.tv.domain.model.FocusedPosterTrailerPlaybackTarget.entries.forEach { target ->
-            assertEquals(
-                target == com.nuvio.tv.domain.model.FocusedPosterTrailerPlaybackTarget.EXPANDED_CARD,
-                modern.copy(focusedPosterBackdropTrailerPlaybackTarget = target).showsTrailerLogoRow()
-            )
-            assertTrue(
-                modern.copy(
-                    selectedLayout = com.nuvio.tv.domain.model.HomeLayout.CLASSIC,
-                    focusedPosterBackdropTrailerPlaybackTarget = target
-                ).showsTrailerLogoRow()
-            )
-        }
     }
 }

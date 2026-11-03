@@ -53,9 +53,11 @@ object DebridFormatterWebPage {
     margin-bottom: 2.5rem;
   }
   .header-logo {
-    height: 48px;
+    height: 40px;
     width: auto;
     margin-bottom: 0.5rem;
+    filter: brightness(0) invert(1);
+    opacity: 0.9;
   }
   .header p {
     font-size: 0.875rem;
@@ -264,7 +266,7 @@ object DebridFormatterWebPage {
   @media (max-width: 480px) {
     .page { padding: 0 1rem 5rem; }
     .header { padding: 2rem 0 2rem; }
-    .header-logo { height: 40px; }
+    .header-logo { height: 32px; }
     .grid { grid-template-columns: 1fr; }
     .actions { flex-direction: column; }
     .tabs { grid-template-columns: 1fr; }
@@ -275,7 +277,7 @@ object DebridFormatterWebPage {
 <body>
 <div class="page">
   <div class="header">
-    <img src="/logo.png" alt="$appName" class="header-logo">
+    <img src="/logo.png" alt="NuvioTV" class="header-logo">
     <p>${s(R.string.web_debrid_title, "Direct Debrid Settings").html()}</p>
   </div>
 

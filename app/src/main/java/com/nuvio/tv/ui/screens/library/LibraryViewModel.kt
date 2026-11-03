@@ -174,8 +174,6 @@ class LibraryViewModel @Inject constructor(
     private val watchedSeriesStateHolder: com.nuvio.tv.data.local.WatchedSeriesStateHolder,
     private val profileManager: com.nuvio.tv.core.profile.ProfileManager,
     val posterOptions: com.nuvio.tv.ui.components.posteroptions.PosterOptionsController,
-    private val libraryGenreFill: com.nuvio.tv.data.repository.LibraryGenreFill,
-    private val partyRuntime: com.nuvio.tv.core.party.PartyRuntime,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -242,15 +240,6 @@ class LibraryViewModel @Inject constructor(
                 .first { it !is com.nuvio.tv.core.network.NetworkResult.Loading }
             watchProgressRepository.getAllEpisodeProgress(id.substringBefore(":")).first()
         }
-    }
-
-    fun setScreenVisible(visible: Boolean) {
-        libraryGenreFill.setScreenVisible(visible)
-    }
-
-    override fun onCleared() {
-        libraryGenreFill.setScreenVisible(false)
-        super.onCleared()
     }
 
     fun getCachedBackdrop(id: String, type: String): String? {
@@ -494,10 +483,7 @@ class LibraryViewModel @Inject constructor(
     }
 
     suspend fun getPlayerPreference(): PlayerPreference =
-        com.nuvio.tv.core.party.PartyPlayerRule.preferenceFor(
-            playerSettingsDataStore.playerSettings.first().playerPreference,
-            partyRuntime.state.value.isActive
-        )
+        playerSettingsDataStore.playerSettings.first().playerPreference
 
     fun onRefresh() {
         if (_uiState.value.isSyncing) return
@@ -920,16 +906,6 @@ class LibraryViewModel @Inject constructor(
         releaseInfo?.let { YEAR_REGEX.find(it)?.value }
 
     private fun LibraryUiState.withVisibleItems(): LibraryUiState {
-        val result = withVisibleItemsOnce()
-        // A genre or year that no longer exists is cleared, so filter again without it.
-        return if (result.selectedGenre != selectedGenre || result.selectedYear != selectedYear) {
-            result.withVisibleItemsOnce()
-        } else {
-            result
-        }
-    }
-
-    private fun LibraryUiState.withVisibleItemsOnce(): LibraryUiState {
         val listFiltered = if (sourceMode.providerId != null) {
             val listKey = selectedListKey ?: ""
             allItems.filter { entry -> entry.listKeys.contains(listKey) }

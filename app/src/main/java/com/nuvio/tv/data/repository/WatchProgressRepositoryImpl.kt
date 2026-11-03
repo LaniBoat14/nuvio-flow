@@ -9,21 +9,16 @@ import android.os.SystemClock
 import android.util.Log
 import com.nuvio.tv.data.local.TraktSettingsDataStore
 import com.nuvio.tv.data.local.WatchProgressSource
-import com.nuvio.tv.data.local.watchProgressMetadataType
 import com.nuvio.tv.data.local.WatchProgressPreferences
 import com.nuvio.tv.data.local.WatchedItemsPreferences
 import com.nuvio.tv.data.mediaserver.ServerItemRef
 import com.nuvio.tv.data.mediaserver.ServerWatchMark
 import com.nuvio.tv.data.mediaserver.ServerWatched
-import com.nuvio.tv.data.mediaserver.catalogIds
 import com.nuvio.tv.domain.model.WatchProgress
 import com.nuvio.tv.domain.model.WatchedItem
 import com.nuvio.tv.domain.model.WatchedMutationKey
 import com.nuvio.tv.core.tmdb.TmdbService
-import com.nuvio.tv.core.tracking.TrackingCatalogReference
-import com.nuvio.tv.core.tracking.TrackingExternalIds
 import com.nuvio.tv.core.tracking.TrackingHistoryItem
-import com.nuvio.tv.core.tracking.TrackingHistoryWriter
 import com.nuvio.tv.core.tracking.TrackingHistoryWriterRegistry
 import com.nuvio.tv.core.tracking.TrackingMediaReference
 import com.nuvio.tv.core.tracking.TrackingProgressProvider
@@ -33,21 +28,10 @@ import com.nuvio.tv.core.tracking.mergeWatchedEpisodeProjection
 import com.nuvio.tv.core.tracking.TrackingProviderId
 import com.nuvio.tv.core.tracking.TrackingRefreshIntent
 import com.nuvio.tv.core.tracking.buildTrackingMediaReference
-import com.nuvio.tv.core.tracking.trackingMediaKind
 import com.nuvio.tv.core.tracking.effectiveWatchProgressSource
 import com.nuvio.tv.core.tracking.providerId
 import com.nuvio.tv.domain.repository.MetaRepository
 import com.nuvio.tv.domain.repository.WatchProgressRepository
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.flow.flow
-import java.util.concurrent.atomic.AtomicLong
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -76,6 +60,8 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.async
@@ -177,110 +163,18 @@ class WatchProgressRepositoryImpl @Inject constructor(
         val runtimeMs: Long = 0L
     )
 
-    private data class ProgressMetadataKey(val type: String, val contentId: String)
-    private data class HydrationWorkKey(val metadata: ProgressMetadataKey, val entry: String?, val videoId: String?)
-    private fun metadataKey(progress: WatchProgress) = ProgressMetadataKey(
-        watchProgressMetadataType(progress.contentType), progress.contentId
-    )
-    private fun hydrationKey(progress: WatchProgress, provider: TrackingProgressProvider?) = HydrationWorkKey(
-        metadataKey(progress), if (provider == null) progressKey(progress) else null,
-        if (provider == null) progress.videoId else null
-    )
-
-    private data class RequestedProgressSource(val source: WatchProgressSource, val revision: Long)
-    private data class ProgressProviderConnections(val connections: Map<TrackingProviderId, Boolean>, val revision: Long)
-    private data class HydrationInputs(val requested: RequestedProgressSource, val connections: ProgressProviderConnections)
-
-    private data class HydrationIdentity(
+    private data class ProfileContentKey(
         val profileId: Int,
-        val selection: Long,
-        val history: Long,
-        val inputs: HydrationInputs,
-        val provider: TrackingProgressProvider?
+        val contentId: String
     )
-
-    /** One collector/selection owns optional work; required sync retains its independent scope. */
-    private inner class HydrationOwner(val identity: HydrationIdentity) {
-        private val job = SupervisorJob()
-        val scope = CoroutineScope(job + Dispatchers.IO)
-        val metadata = MutableStateFlow<Map<ProgressMetadataKey, ContentMetadata>>(emptyMap())
-        private val lock = Any()
-        private val attempts = mutableMapOf<HydrationWorkKey, MetadataAttempt>()
-        private val finished = mutableSetOf<HydrationWorkKey>()
-        private val jobs = mutableMapOf<HydrationWorkKey, Job>()
-        private var visible = emptySet<HydrationWorkKey>()
-        private val localAdmission = Semaphore(1)
-
-        fun isCurrent(): Boolean = job.isActive && identity.inputs.requested.revision > 0L &&
-            profileManager.activeProfileId.value == identity.profileId &&
-            profileManager.profileSelectionRevision.value == identity.selection &&
-            profileManager.profileHistoryGenerationChanges.value == identity.history &&
-            requestedProgressSourceState.value == identity.inputs.requested &&
-            progressProviderConnectionState.value == identity.inputs.connections &&
-            activeProgressProviderState.value === identity.provider &&
-            effectiveWatchProgressSource(identity.inputs.requested.source) { identity.inputs.connections.connections[it] == true }
-                .providerId == identity.provider?.providerId
-
-        fun close() { job.cancel() }
-
-        fun schedule(items: List<WatchProgress>) {
-            val provider = identity.provider
-            val candidates = items.sortedByDescending(WatchProgress::lastWatched)
-                .distinctBy { hydrationKey(it, provider) }
-                .take(if (provider != null) metadataHydrationLimit else 10)
-            val keys = candidates.mapTo(mutableSetOf()) { hydrationKey(it, provider) }
-            val contentKeys = keys.mapTo(mutableSetOf()) { it.metadata }
-            synchronized(lock) {
-                visible = keys
-                jobs.keys.filter { it !in keys }.forEach { key -> jobs.remove(key)?.cancel() }
-                attempts.keys.retainAll(keys)
-                finished.retainAll(keys)
-                metadata.update { old -> old.filterKeys { it in contentKeys } }
-                for (progress in candidates) {
-                    val key = hydrationKey(progress, provider)
-                    val missing = if (provider != null) progress.poster == null || progress.backdrop == null ||
-                        progress.episodeTitle == null else progress.poster == null && progress.backdrop == null
-                    if (!missing || progress.contentId.isBlank() || key in finished || key in jobs) continue
-                    val now = metadataClock()
-                    val attempt = attempts[key]
-                    if (attempt != null && (attempt.count >= METADATA_MAX_ATTEMPTS ||
-                            now - attempt.lastAttemptEpochMs < metadataRetryWindowMs * attempt.count)) continue
-                    attempts[key] = MetadataAttempt((attempt?.count ?: 0) + 1, now)
-                    val operation = scope.launch(start = CoroutineStart.LAZY) {
-                        try {
-                            val operationContext = currentCoroutineContext()
-                            val admitted = { operationContext.isActive && isCurrent() && synchronized(lock) { key in visible } }
-                            if (provider != null) {
-                                if (!admitted()) return@launch
-                                val result = fetchContentMetadata(progress.contentId, progress.contentType, admitted)
-                                    ?: return@launch
-                                if (admitted()) {
-                                    metadata.update { it + (key.metadata to result) }
-                                    synchronized(lock) { finished.add(key) }
-                                }
-                            } else localAdmission.withPermit {
-                                if (admitted() && hydrateProgressArtwork(progress, identity.profileId, admitted)) {
-                                    synchronized(lock) { finished.add(key) }
-                                }
-                            }
-                        } catch (error: Exception) {
-                            if (error is CancellationException) throw error
-                            Log.w(TAG, "Optional progress metadata failed for ${progress.contentId}", error)
-                        }
-                    }
-                    jobs[key] = operation
-                    operation.invokeOnCompletion { synchronized(lock) { if (jobs[key] === operation) jobs.remove(key) } }
-                    operation.start()
-                }
-            }
-        }
-    }
-
-    private data class MetadataAttempt(val count: Int, val lastAttemptEpochMs: Long)
-    internal var metadataRetryWindowMs = 2_000L
-    internal var metadataClock: () -> Long = System::currentTimeMillis
 
     private val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val hydratedProgressKeys = mutableSetOf<ProfileContentKey>()
+    private data class MetadataAttempt(val count: Int, val lastAttemptEpochMs: Long)
+    private val metadataAttempts = mutableMapOf<ProfileContentKey, MetadataAttempt>()
+    internal var metadataRetryWindowMs = 2_000L
+    internal var metadataClock: () -> Long = System::currentTimeMillis
+    private var lastHydratedProfileId: Int? = null
     private val syncJobs = mutableMapOf<Int, Job>()
     private val syncJobsLock = Any()
     private val remoteProgressWriteDeduplicator = RemoteProgressWriteDeduplicator()
@@ -288,6 +182,7 @@ class WatchProgressRepositoryImpl @Inject constructor(
     var hasCompletedInitialPull = false
     var hasCompletedInitialWatchedItemsPull = false
 
+    private val metadataState = MutableStateFlow<Map<String, ContentMetadata>>(emptyMap())
     private val optimisticContinueWatchingUpdates = MutableSharedFlow<WatchProgress>(
         replay = 1,
         extraBufferCapacity = 16
@@ -295,6 +190,8 @@ class WatchProgressRepositoryImpl @Inject constructor(
     // Optimistic watched-movie toggles, keyed by the profile that made them.
     private val optimisticWatchedMovieAdditions = MutableStateFlow<Map<Int, Set<String>>>(emptyMap())
     private val optimisticWatchedMovieRemovals = MutableStateFlow<Map<Int, Set<String>>>(emptyMap())
+    private val metadataMutex = Mutex()
+    private val inFlightMetadataKeys = mutableSetOf<ProfileContentKey>()
     private val metadataHydrationLimit = 30
 
     private fun triggerRemoteSync(profileId: Int) {
@@ -331,10 +228,77 @@ class WatchProgressRepositoryImpl @Inject constructor(
         }
     }
 
+    private fun canAttemptMetadata(key: ProfileContentKey, now: Long = metadataClock()): Boolean =
+        synchronized(metadataAttempts) {
+            val attempt = metadataAttempts[key] ?: return true
+            if (attempt.count >= METADATA_MAX_ATTEMPTS) return false
+            now - attempt.lastAttemptEpochMs >= (metadataRetryWindowMs * attempt.count)
+        }
+
+    private fun recordMetadataAttempt(key: ProfileContentKey, now: Long = metadataClock()) {
+        synchronized(metadataAttempts) {
+            val current = metadataAttempts[key]
+            val nextCount = (current?.count ?: 0) + 1
+            metadataAttempts[key] = MetadataAttempt(count = nextCount, lastAttemptEpochMs = now)
+        }
+    }
+
+    private fun hydrateMetadata(progressList: List<WatchProgress>, profileId: Int) {
+        val sorted = progressList.sortedByDescending { it.lastWatched }
+        val uniqueByContent = linkedMapOf<String, WatchProgress>()
+        sorted.forEach { progress ->
+            if (uniqueByContent.size < metadataHydrationLimit) {
+                uniqueByContent.putIfAbsent(progress.contentId, progress)
+            }
+        }
+
+        uniqueByContent.values.forEach { progress ->
+            val contentId = progress.contentId
+            if (contentId.isBlank()) return@forEach
+            val key = ProfileContentKey(profileId, contentId)
+            if (metadataState.value.containsKey(contentId)) return@forEach
+            if (!canAttemptMetadata(key)) return@forEach
+
+            syncScope.launch {
+                val shouldFetch = metadataMutex.withLock {
+                    if (profileManager.activeProfileId.value != profileId) return@withLock false
+                    if (metadataState.value.containsKey(contentId)) return@withLock false
+                    if (inFlightMetadataKeys.contains(key)) return@withLock false
+                    if (synchronized(hydratedProgressKeys) { key in hydratedProgressKeys }) return@withLock false
+                    if (!canAttemptMetadata(key)) return@withLock false
+                    inFlightMetadataKeys.add(key)
+                    recordMetadataAttempt(key)
+                    true
+                }
+                if (!shouldFetch) return@launch
+
+                try {
+                    val metadata = fetchContentMetadata(
+                        contentId = contentId,
+                        contentType = progress.contentType
+                    ) ?: return@launch
+                    if (profileManager.activeProfileId.value != profileId) return@launch
+                    synchronized(hydratedProgressKeys) {
+                        hydratedProgressKeys.add(key)
+                    }
+                    synchronized(metadataAttempts) {
+                        metadataAttempts.remove(key)
+                    }
+                    metadataState.update { current ->
+                        current + (contentId to metadata)
+                    }
+                } finally {
+                    metadataMutex.withLock {
+                        inFlightMetadataKeys.remove(key)
+                    }
+                }
+            }
+        }
+    }
+
     private suspend fun fetchContentMetadata(
         contentId: String,
-        contentType: String,
-        isCurrent: () -> Boolean
+        contentType: String
     ): ContentMetadata? {
         val typeCandidates = buildList {
             val normalized = contentType.lowercase()
@@ -355,15 +319,11 @@ class WatchProgressRepositoryImpl @Inject constructor(
 
         for (type in typeCandidates) {
             for (candidateId in idCandidates) {
-                currentCoroutineContext().ensureActive()
-                if (!isCurrent()) return null
                 val result = withTimeoutOrNull(3500) {
                     metaRepository.getMetaFromPrimaryAddon(type = type, id = candidateId)
                         .first { it !is NetworkResult.Loading }
                 } ?: continue
 
-                currentCoroutineContext().ensureActive()
-                if (!isCurrent()) return null
                 val meta = (result as? NetworkResult.Success)?.data ?: continue
                 val episodes = meta.videos
                     .mapNotNull { video ->
@@ -392,9 +352,9 @@ class WatchProgressRepositoryImpl @Inject constructor(
 
     private fun enrichWithMetadata(
         progress: WatchProgress,
-        metadataMap: Map<ProgressMetadataKey, ContentMetadata>
+        metadataMap: Map<String, ContentMetadata>
     ): WatchProgress {
-        val metadata = metadataMap[metadataKey(progress)] ?: return progress
+        val metadata = metadataMap[progress.contentId] ?: return progress
         val episodeMeta = if (progress.season != null && progress.episode != null) {
             metadata.episodes[progress.season to progress.episode]
         } else {
@@ -426,27 +386,14 @@ class WatchProgressRepositoryImpl @Inject constructor(
             provider.isAuthenticated.map { authenticated -> provider.providerId to authenticated }
         }
     ) { states -> states.toMap() }
-    private val connectionRevision = AtomicLong()
-    private val progressProviderConnectionState = progressProviderConnections.distinctUntilChanged()
-        .map { ProgressProviderConnections(it, connectionRevision.incrementAndGet()) }
-        .stateIn(syncScope, SharingStarted.Eagerly, ProgressProviderConnections(emptyMap(), 0L))
     @Volatile private var activeProgressProviderId: TrackingProviderId? = null
-
-    private val sourceRevision = AtomicLong()
-    // Ready local rows can emit before source observation; revision zero admits no optional lookup.
-    private val requestedProgressSourceState: StateFlow<RequestedProgressSource> = traktSettingsDataStore.watchProgressSource
-        .map { RequestedProgressSource(it, sourceRevision.incrementAndGet()) }
-        .stateIn(syncScope, SharingStarted.Eagerly, RequestedProgressSource(WatchProgressSource.NUVIO_SYNC, 0L))
-    private val hydrationInputs = combine(requestedProgressSourceState, progressProviderConnectionState) {
-            requested, connections -> HydrationInputs(requested, connections)
-    }
 
     @OptIn(FlowPreview::class)
     private val activeProgressProviderState: StateFlow<TrackingProgressProvider?> = combine(
-        requestedProgressSourceState,
-        progressProviderConnectionState
+        traktSettingsDataStore.watchProgressSource,
+        progressProviderConnections
     ) { requested, connections ->
-        effectiveWatchProgressSource(requested.source) { providerId -> connections.connections[providerId] == true }
+        effectiveWatchProgressSource(requested) { providerId -> connections[providerId] == true }
             .providerId
             ?.let(trackingProgressProviders::provider)
     }.debounce { provider ->
@@ -482,30 +429,53 @@ class WatchProgressRepositoryImpl @Inject constructor(
     }
 
     override val allProgress: Flow<List<WatchProgress>>
-        get() = combine(
-            profileManager.activeProfileId,
-            profileManager.profileSelectionRevision,
-            profileManager.profileHistoryGenerationChanges,
-            hydrationInputs,
-            activeProgressProviderState
-        ) { profileId, selection, history, inputs, provider ->
-            HydrationIdentity(profileId, selection, history, inputs, provider)
-        }.distinctUntilChanged().flatMapLatest { identity ->
-            flow {
-                val owner = HydrationOwner(identity)
-                try {
-                    val local = watchProgressPreferences.observeAllProgress(identity.profileId)
-                    val provider = identity.provider
-                    val rows = if (provider != null) combine(provider.allProgress, local, owner.metadata) {
-                            items, localItems, metadata ->
-                        mergeProgressProjectionWithRetainedLocal(items, localItems, provider::retainsLocalProgress)
-                            .map { enrichWithMetadata(it, metadata) }
+        get() = profileManager.activeProfileId.flatMapLatest { profileId ->
+            if (lastHydratedProfileId != profileId) {
+                lastHydratedProfileId = profileId
+                metadataState.value = emptyMap()
+                synchronized(hydratedProgressKeys) {
+                    hydratedProgressKeys.removeAll { it.profileId == profileId }
+                }
+                synchronized(metadataAttempts) {
+                    metadataAttempts.keys.removeAll { it.profileId == profileId }
+                }
+            }
+            activeProgressProviderFlow().flatMapLatest { provider ->
+                if (provider != null) {
+                    combine(
+                        provider.allProgress,
+                        watchProgressPreferences.observeAllProgress(profileId),
+                        metadataState
+                    ) { items, localItems, metadata ->
+                        mergeProgressProjectionWithRetainedLocal(
+                            providerEntries = items,
+                            localEntries = localItems,
+                            retainsLocalProgress = provider::retainsLocalProgress
+                        ).map { progress -> enrichWithMetadata(progress, metadata) }
                             .sortedByDescending(WatchProgress::lastWatched)
-                    } else local
-                    emitAll(rows.onEach(owner::schedule))
-                } finally {
-                    // Invalidate/cancel without joining a provider that ignores cancellation.
-                    owner.close()
+                    }.onEach { items ->
+                        val needsMetadata = items.filter { progress ->
+                            val key = ProfileContentKey(profileId, progress.contentId)
+                            (progress.poster == null || progress.backdrop == null ||
+                                progress.episodeTitle == null) &&
+                                synchronized(hydratedProgressKeys) { key !in hydratedProgressKeys } &&
+                                canAttemptMetadata(key)
+                        }
+                        if (needsMetadata.isNotEmpty()) hydrateMetadata(needsMetadata, profileId)
+                    }
+                } else {
+                    watchProgressPreferences.observeAllProgress(profileId)
+                        .onEach { items ->
+                            val needsArtwork = items.filter { progress ->
+                                val key = ProfileContentKey(profileId, progress.contentId)
+                                progress.poster == null && progress.backdrop == null &&
+                                    synchronized(hydratedProgressKeys) { key !in hydratedProgressKeys } &&
+                                    canAttemptMetadata(key)
+                            }
+                            if (needsArtwork.isNotEmpty()) {
+                                syncScope.launch { hydrateProgressArtwork(needsArtwork, profileId) }
+                            }
+                        }
                 }
             }
         }
@@ -760,12 +730,11 @@ class WatchProgressRepositoryImpl @Inject constructor(
 
     override suspend fun getWatchedShowEpisodes(): Map<String, Set<Pair<Int, Int>>> {
         val profileId = profileManager.activeProfileId.value
-        val watchedGeneration = watchedItemsPreferences.captureGeneration(profileId)
         val provider = activeProgressProvider()
         if (provider != null) {
             val providerEpisodes = provider.watchedShowEpisodes()
             if (profileManager.activeProfileId.value != profileId) return emptyMap()
-            val localItems = watchedItemsPreferences.getAllItems(profileId, watchedGeneration)
+            val localItems = watchedItemsPreferences.getAllItems(profileId)
             if (profileManager.activeProfileId.value != profileId) return emptyMap()
             return mergeWatchedEpisodeProjection(
                 providerEpisodes = providerEpisodes,
@@ -773,7 +742,7 @@ class WatchProgressRepositoryImpl @Inject constructor(
                 retainsLocalWatchedEpisode = provider::retainsLocalWatchedEpisode
             )
         }
-        return watchedItemsPreferences.getAllItems(profileId, watchedGeneration)
+        return watchedItemsPreferences.getAllItems(profileId)
             .filter { it.season != null && it.episode != null }
             .groupBy { it.contentId }
             .mapValues { (_, items) -> items.map { it.season!! to it.episode!! }.toSet() }
@@ -828,7 +797,6 @@ class WatchProgressRepositoryImpl @Inject constructor(
         profileId: Int,
         syncRemote: Boolean
     ) {
-        val watchedGeneration = watchedItemsPreferences.captureGeneration(profileId)
         if (progress.contentType.equals("series", ignoreCase = true) ||
             progress.contentType.equals("tv", ignoreCase = true)) {
             traktSettingsDataStore.removeDismissedNextUpKeysForContent(progress.contentId, profileId)
@@ -864,7 +832,7 @@ class WatchProgressRepositoryImpl @Inject constructor(
 
         if (progress.isCompleted()) {
             val watchedItem = progress.toWatchedItem()
-            watchedItemsPreferences.markAsWatched(watchedItem, profileId = profileId, generation = watchedGeneration)
+            watchedItemsPreferences.markAsWatched(watchedItem, profileId = profileId)
             if (syncRemote) {
                 mutationStore.queueWatchedUpserts(listOf(watchedItem), profileId)
             }
@@ -878,16 +846,8 @@ class WatchProgressRepositoryImpl @Inject constructor(
     }
 
     override suspend fun saveProgressBatch(progressList: List<WatchProgress>, syncRemote: Boolean) {
-        saveProgressBatch(progressList, profileManager.activeProfileId.value, syncRemote)
-    }
-
-    override suspend fun saveProgressBatch(
-        progressList: List<WatchProgress>,
-        profileId: Int,
-        syncRemote: Boolean
-    ) {
         if (progressList.isEmpty()) return
-        val watchedGeneration = watchedItemsPreferences.captureGeneration(profileId)
+        val profileId = profileManager.activeProfileId.value
         if (syncRemote) {
             mutationStore.queueProgressUpserts(
                 progressList.associateBy(::progressKey),
@@ -911,7 +871,7 @@ class WatchProgressRepositoryImpl @Inject constructor(
             .filter { it.isCompleted() }
             .map { progress -> progress.toWatchedItem() }
         if (completedWatchedItems.isNotEmpty()) {
-            watchedItemsPreferences.markAsWatchedBatch(completedWatchedItems, profileId = profileId, generation = watchedGeneration)
+            watchedItemsPreferences.markAsWatchedBatch(completedWatchedItems, profileId = profileId)
             if (syncRemote) {
                 mutationStore.queueWatchedUpserts(completedWatchedItems, profileId)
             }
@@ -948,7 +908,6 @@ class WatchProgressRepositoryImpl @Inject constructor(
 
     override suspend fun removeFromHistory(contentId: String, videoId: String?, season: Int?, episode: Int?) {
         val profileId = profileManager.activeProfileId.value
-        val watchedGeneration = watchedItemsPreferences.captureGeneration(profileId)
         val remoteDeleteKeys = resolveRemoteDeleteKeys(contentId, season, episode, profileId = profileId)
         val watchedDeleteKey = WatchedMutationKey(contentId, season, episode)
         mutationStore.queueProgressDeletes(remoteDeleteKeys, profileId)
@@ -970,7 +929,7 @@ class WatchProgressRepositoryImpl @Inject constructor(
             profileId = profileId
         )
         watchProgressPreferences.removeProgress(contentId, season, episode, profileId)
-        watchedItemsPreferences.unmarkAsWatched(contentId, season, episode, profileId = profileId, generation = watchedGeneration)
+        watchedItemsPreferences.unmarkAsWatched(contentId, season, episode, profileId = profileId)
         if (authManager.isAuthenticated && remoteDeleteKeys.isNotEmpty()) {
             watchProgressSyncService.deleteFromRemote(remoteDeleteKeys, profileId)
                 .onFailure { error ->
@@ -994,7 +953,6 @@ class WatchProgressRepositoryImpl @Inject constructor(
     ) {
         if (episodes.isEmpty()) return
         val profileId = profileManager.activeProfileId.value
-        val watchedGeneration = watchedItemsPreferences.captureGeneration(profileId)
         val episodePairs = episodes.map { (season, episode, _) -> season to episode }
         val remoteDeleteKeys = episodes.map { (season, episode, _) ->
             "${contentId}_s${season}e${episode}"
@@ -1005,7 +963,7 @@ class WatchProgressRepositoryImpl @Inject constructor(
         mutationStore.queueProgressDeletes(remoteDeleteKeys, profileId)
         mutationStore.queueWatchedDeletes(watchedDeleteKeys, profileId)
         watchProgressPreferences.removeProgressBatch(contentId, episodePairs, profileId)
-        watchedItemsPreferences.unmarkAsWatchedBatch(contentId, episodePairs, profileId = profileId, generation = watchedGeneration)
+        watchedItemsPreferences.unmarkAsWatchedBatch(contentId, episodePairs, profileId = profileId)
         connectedProgressProviders().forEach { provider ->
             episodes.forEach { (season, episode, _) ->
                 provider.applyOptimisticRemoval(contentId, season, episode)
@@ -1050,7 +1008,6 @@ class WatchProgressRepositoryImpl @Inject constructor(
         profileId: Int,
         broadcastTrackingHistory: Boolean
     ) {
-        val watchedGeneration = watchedItemsPreferences.captureGeneration(profileId)
         if (progress.contentType.equals("series", ignoreCase = true) ||
             progress.contentType.equals("tv", ignoreCase = true)) {
             traktSettingsDataStore.removeDismissedNextUpKeysForContent(progress.contentId, profileId)
@@ -1075,7 +1032,7 @@ class WatchProgressRepositoryImpl @Inject constructor(
         }
         watchProgressPreferences.saveProgress(completed, profileId = profileId)
         val watchedItem = completed.toWatchedItem(watchedAt = now)
-        watchedItemsPreferences.markAsWatched(watchedItem, profileId = profileId, generation = watchedGeneration)
+        watchedItemsPreferences.markAsWatched(watchedItem, profileId = profileId)
         mutationStore.queueWatchedUpserts(listOf(watchedItem), profileId)
         if (broadcastTrackingHistory) {
             broadcastHistoryAdd(profileId, listOf(completed.toTrackingHistoryItem(now)))
@@ -1088,7 +1045,6 @@ class WatchProgressRepositoryImpl @Inject constructor(
     override suspend fun markAsCompletedBatch(progressList: List<WatchProgress>) {
         if (progressList.isEmpty()) return
         val profileId = profileManager.activeProfileId.value
-        val watchedGeneration = watchedItemsPreferences.captureGeneration(profileId)
         val firstProgress = progressList.first()
         if (firstProgress.contentType.equals("series", ignoreCase = true) ||
             firstProgress.contentType.equals("tv", ignoreCase = true)) {
@@ -1120,7 +1076,7 @@ class WatchProgressRepositoryImpl @Inject constructor(
         }
         watchProgressPreferences.saveProgressBatch(completedList, profileId = profileId)
         val watchedItems = completedList.map { progress -> progress.toWatchedItem(watchedAt = now) }
-        watchedItemsPreferences.markAsWatchedBatch(watchedItems, profileId = profileId, generation = watchedGeneration)
+        watchedItemsPreferences.markAsWatchedBatch(watchedItems, profileId = profileId)
         mutationStore.queueWatchedUpserts(watchedItems, profileId)
         broadcastHistoryAdd(profileId, completedList.map { it.toTrackingHistoryItem(now) })
         syncServerWatched(completedList.map { it.toServerWatchMark() }, played = true, profileId = profileId)
@@ -1173,57 +1129,16 @@ class WatchProgressRepositoryImpl @Inject constructor(
             watchedAtEpochMs = watchedAt
         )
 
-    private suspend fun connectedHistoryWriters(): List<TrackingHistoryWriter> {
-        val connectedIds = connectedProgressProviders().mapTo(mutableSetOf()) { it.providerId }
-        return trackingHistoryWriters.writers().filter { writer -> writer.providerId in connectedIds }
-    }
-
-    /** Server titles go to trackers under their IMDb, TMDB or TVDB id; one without any is left out. */
-    private suspend fun <T> Collection<T>.withServerTrackerIds(
-        media: (T) -> TrackingMediaReference,
-        replace: (T, TrackingMediaReference) -> T
-    ): List<T> {
-        val resolved = mutableMapOf<String, TrackingExternalIds?>()
-        return mapNotNull { item ->
-            val reference = media(item)
-            val catalog = reference.catalog
-            if (catalog == null || !ServerItemRef.isServerId(catalog.contentId)) return@mapNotNull item
-            val ids = if (catalog.contentId in resolved) {
-                resolved[catalog.contentId]
-            } else {
-                serverTrackerIds(catalog).also { resolved[catalog.contentId] = it }
-            }
-            ids?.let {
-                replace(
-                    item,
-                    reference.copy(
-                        kind = trackingMediaKind(catalog.contentType, it),
-                        ids = it,
-                        catalog = catalog.copy(contentId = it.catalogIds().first(), videoId = null)
-                    )
-                )
-            }
-        }
-    }
-
-    private suspend fun serverTrackerIds(catalog: TrackingCatalogReference): TrackingExternalIds? =
-        metaRepository.getCachedMeta(catalog.contentType, catalog.contentId)
-            ?.imdbId
-            ?.takeIf { it.startsWith("tt") }
-            ?.let { TrackingExternalIds(imdb = it) }
-            ?: serverWatched.trackerIds(catalog.contentId)
-
     private suspend fun broadcastHistoryAdd(
         profileId: Int,
         items: Collection<TrackingHistoryItem>
     ) {
+        val items = items.filterNot { ServerItemRef.isServerId(it.media.catalog?.contentId) }
         if (items.isEmpty()) return
-        val writers = connectedHistoryWriters()
-        if (writers.isEmpty()) return
-        val items = items.withServerTrackerIds({ it.media }) { item, media -> item.copy(media = media) }
-        if (items.isEmpty()) return
+        val connectedIds = connectedProgressProviders().mapTo(mutableSetOf()) { it.providerId }
         supervisorScope {
-            writers
+            trackingHistoryWriters.writers()
+                .filter { writer -> writer.providerId in connectedIds }
                 .map { writer ->
                     async {
                         runCatching { writer.addToHistory(profileId, items) }
@@ -1240,13 +1155,12 @@ class WatchProgressRepositoryImpl @Inject constructor(
         profileId: Int,
         items: Collection<TrackingMediaReference>
     ) {
+        val items = items.filterNot { ServerItemRef.isServerId(it.catalog?.contentId) }
         if (items.isEmpty()) return
-        val writers = connectedHistoryWriters()
-        if (writers.isEmpty()) return
-        val items = items.withServerTrackerIds({ it }) { _, media -> media }
-        if (items.isEmpty()) return
+        val connectedIds = connectedProgressProviders().mapTo(mutableSetOf()) { it.providerId }
         supervisorScope {
-            writers
+            trackingHistoryWriters.writers()
+                .filter { writer -> writer.providerId in connectedIds }
                 .map { writer ->
                     async {
                         runCatching { writer.removeFromHistory(profileId, items) }
@@ -1313,37 +1227,73 @@ class WatchProgressRepositoryImpl @Inject constructor(
             ?: parentContentId
     }
 
-    private suspend fun hydrateProgressArtwork(
-        progress: WatchProgress,
-        profileId: Int,
-        isCurrent: () -> Boolean
-    ): Boolean {
-        if (!isCurrent()) return false
-        val storage = watchProgressPreferences.captureArtworkStorage(profileId)
-        val metadata = fetchContentMetadata(progress.contentId, progress.contentType, isCurrent) ?: return false
-        currentCoroutineContext().ensureActive()
-        if (!isCurrent()) return false
-        val episode = if (progress.season != null && progress.episode != null)
-            metadata.episodes[progress.season to progress.episode] else null
-        val duration = episode?.runtimeMs?.takeIf { it > 0 } ?: metadata.runtimeMs
-        var backdrop = metadata.backdrop
-        var poster = metadata.poster
-        if (backdrop == null && poster == null) {
-            if (!isCurrent()) return false
-            val images = tmdbService.fetchImdbImages(progress.contentId, progress.contentType)
-            currentCoroutineContext().ensureActive()
-            if (!isCurrent()) return false
-            backdrop = images?.backdropUrl
-            poster = images?.posterUrl
+    private suspend fun hydrateProgressArtwork(items: List<WatchProgress>, profileId: Int) {
+        items.take(10).forEach { progress ->
+            if (profileManager.activeProfileId.value != profileId) return
+            val key = ProfileContentKey(profileId, progress.contentId)
+            if (!canAttemptMetadata(key)) return@forEach
+            val shouldFetch = metadataMutex.withLock {
+                if (profileManager.activeProfileId.value != profileId) return@withLock false
+                if (inFlightMetadataKeys.contains(key)) return@withLock false
+                if (synchronized(hydratedProgressKeys) { key in hydratedProgressKeys }) return@withLock false
+                if (!canAttemptMetadata(key)) return@withLock false
+                inFlightMetadataKeys.add(key)
+                recordMetadataAttempt(key)
+                true
+            }
+            if (!shouldFetch) return@forEach
+            try {
+                val metadata = fetchContentMetadata(
+                    contentId = progress.contentId,
+                    contentType = progress.contentType
+                ) ?: return@forEach
+                if (profileManager.activeProfileId.value != profileId) return@forEach
+                val episodeRuntimeMs = if (progress.season != null && progress.episode != null)
+                    metadata.episodes[progress.season to progress.episode]?.runtimeMs ?: 0L
+                else 0L
+                val durationMs = progress.duration.takeIf { it > 0 }
+                    ?: episodeRuntimeMs.takeIf { it > 0 }
+                    ?: metadata.runtimeMs
+
+                // If addon returned no backdrop or poster, fall back to TMDB
+                var backdropToSave = progress.backdrop ?: metadata.backdrop
+                var posterToSave = progress.poster ?: metadata.poster
+                if (backdropToSave == null && posterToSave == null) {
+                    val tmdbImages = tmdbService.fetchImdbImages(progress.contentId, progress.contentType)
+                    if (profileManager.activeProfileId.value != profileId) return@forEach
+                    backdropToSave = tmdbImages?.backdropUrl
+                    posterToSave = tmdbImages?.posterUrl
+                }
+
+                val hasNewData = posterToSave != null || backdropToSave != null
+                    || metadata.logo != null || durationMs > 0
+                if (hasNewData) {
+                    watchProgressPreferences.saveProgress(
+                        progress.copy(
+                            poster = posterToSave,
+                            backdrop = backdropToSave,
+                            logo = progress.logo ?: metadata.logo,
+                            name = progress.name.takeIf { it.isNotBlank() && it != progress.contentId }
+                                ?: metadata.name ?: progress.name,
+                            duration = if (durationMs > 0) durationMs else progress.duration
+                        ),
+                        profileId = profileId
+                    )
+                }
+                synchronized(hydratedProgressKeys) {
+                    hydratedProgressKeys.add(key)
+                }
+                synchronized(metadataAttempts) {
+                    metadataAttempts.remove(key)
+                }
+            } catch (e: Throwable) {
+                Log.w(TAG, "Progress artwork hydration failed for ${progress.contentId}", e)
+            } finally {
+                metadataMutex.withLock {
+                    inFlightMetadataKeys.remove(key)
+                }
+            }
         }
-        if (poster != null || backdrop != null || metadata.logo != null || duration > 0 || episode?.title != null) {
-            watchProgressPreferences.updateArtworkIfPresent(
-                progress.copy(poster = poster, backdrop = backdrop, logo = metadata.logo,
-                    name = metadata.name ?: progress.name, duration = duration,
-                    episodeTitle = episode?.title), storage, isCurrent
-            )
-        }
-        return true
     }
 
     private fun parseRuntimeToMs(raw: String?): Long {

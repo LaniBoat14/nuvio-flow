@@ -18,7 +18,6 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,9 +31,6 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -68,15 +64,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.R
-import com.nuvio.tv.domain.model.MemberTier
-import com.nuvio.tv.ui.support.SupportNuvioDialog
-import com.nuvio.tv.ui.support.SupportNuvioViewModel
-import com.nuvio.tv.ui.support.SupportStatus
 import com.nuvio.tv.domain.model.AuthState
 import com.nuvio.tv.ui.components.BrandWordmark
 import com.nuvio.tv.ui.components.SkeletonBar
@@ -114,10 +105,6 @@ fun AuthQrSignInScreen(
     var exitRequested by remember { mutableStateOf(false) }
     var showSignOutConfirmation by remember { mutableStateOf(false) }
     val loginFocusRequester = remember { FocusRequester() }
-    val supportViewModel: SupportNuvioViewModel = hiltViewModel()
-    val supportState by supportViewModel.uiState.collectAsState()
-    var showSupportDialog by remember { mutableStateOf(false) }
-    var refocusLogin by remember { mutableStateOf(false) }
 
     fun leaveAuthScreen() {
         exitRequested = true
@@ -236,10 +223,7 @@ fun AuthQrSignInScreen(
                         leaveAuthScreen()
                     }
                 },
-                initialFocusRequester = loginFocusRequester,
-                showSupportButton = supportState.showSupportButton && !(isSignedIn && isOnboardingMode),
-                supporterTier = supportState.tier.takeIf { supportState.status == SupportStatus.SUPPORTER },
-                onSupport = { showSupportDialog = true }
+                initialFocusRequester = loginFocusRequester
             )
         }
 
@@ -255,33 +239,6 @@ fun AuthQrSignInScreen(
 
     LaunchedEffect(Unit) {
         loginFocusRequester.requestFocusAfterFrames(frames = 3)
-    }
-
-    LaunchedEffect(refocusLogin) {
-        if (refocusLogin) {
-            loginFocusRequester.requestFocusAfterFrames(frames = 3)
-            refocusLogin = false
-        }
-    }
-
-    if (showSupportDialog) {
-        SupportNuvioDialog(
-            onDismiss = { showSupportDialog = false },
-            onSignIn = if (!isSignedIn) {
-                {
-                    showSupportDialog = false
-                    refocusLogin = true
-                }
-            } else null,
-            onContinueWithoutAccount = if (isOnboardingMode && !isSignedIn) {
-                {
-                    showSupportDialog = false
-                    continueFromAuthScreen()
-                }
-            } else null,
-            onSuggestionsHidden = { refocusLogin = true },
-            viewModel = supportViewModel
-        )
     }
 
     if (showSignOutConfirmation) {
@@ -308,7 +265,7 @@ private fun AuthQrBrandPanel(
         verticalArrangement = Arrangement.Center
     ) {
         BrandWordmark(
-            contentDescription = stringResource(R.string.cd_nuvio_logo),
+            contentDescription = stringResource(R.string.cd_nuvio),
             modifier = Modifier.height(60.dp),
             contentScale = ContentScale.Fit
         )
@@ -367,10 +324,7 @@ private fun AuthQrLoginPane(
     onSignIn: (String, String) -> Unit,
     onRefreshOrSignOut: () -> Unit,
     onBackOrContinue: () -> Unit,
-    initialFocusRequester: FocusRequester,
-    showSupportButton: Boolean,
-    supporterTier: MemberTier?,
-    onSupport: () -> Unit
+    initialFocusRequester: FocusRequester
 ) {
     val focusEmail = useEmailLogin && !isSignedIn
     val focusMainAction = !focusEmail && !uiState.isLoading
@@ -418,55 +372,21 @@ private fun AuthQrLoginPane(
         }
 
         Spacer(modifier = Modifier.height(28.dp))
-        Column(
-            modifier = Modifier.width(IntrinsicSize.Max),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (isSignedIn || !useEmailLogin) {
-                    Button(
-                        onClick = onRefreshOrSignOut,
-                        enabled = !uiState.isLoading,
-                        modifier = if (focusMainAction) Modifier.focusRequester(initialFocusRequester) else Modifier,
-                        colors = ButtonDefaults.colors(
-                            containerColor = AuthSecondaryButtonBackground,
-                            focusedContainerColor = Color.White,
-                            contentColor = AuthTextPrimary,
-                            focusedContentColor = Color.Black,
-                            disabledContainerColor = AuthSecondaryButtonBackground.copy(alpha = 0.45f)
-                        ),
-                        border = ButtonDefaults.border(
-                            border = androidx.tv.material3.Border(
-                                border = androidx.compose.foundation.BorderStroke(1.dp, AuthSecondaryButtonBorder),
-                                shape = RoundedCornerShape(16.dp)
-                            )
-                        )
-                    ) {
-                        Text(
-                            when {
-                                isSignedIn -> stringResource(R.string.account_sign_out)
-                                uiState.isLoading -> stringResource(R.string.auth_qr_please_wait)
-                                else -> stringResource(R.string.auth_qr_refresh)
-                            }
-                        )
-                    }
-                }
+            if (isSignedIn || !useEmailLogin) {
                 Button(
-                    onClick = onBackOrContinue,
-                    modifier = if (!focusEmail && !focusMainAction) {
-                        Modifier.focusRequester(initialFocusRequester)
-                    } else {
-                        Modifier
-                    },
+                    onClick = onRefreshOrSignOut,
+                    enabled = !uiState.isLoading,
+                    modifier = if (focusMainAction) Modifier.focusRequester(initialFocusRequester) else Modifier,
                     colors = ButtonDefaults.colors(
                         containerColor = AuthSecondaryButtonBackground,
                         focusedContainerColor = Color.White,
                         contentColor = AuthTextPrimary,
-                        focusedContentColor = Color.Black
+                        focusedContentColor = Color.Black,
+                        disabledContainerColor = AuthSecondaryButtonBackground.copy(alpha = 0.45f)
                     ),
                     border = ButtonDefaults.border(
                         border = androidx.tv.material3.Border(
@@ -476,59 +396,42 @@ private fun AuthQrLoginPane(
                     )
                 ) {
                     Text(
-                        if (isOnboardingMode) {
-                            if (isSignedIn) stringResource(R.string.auth_qr_continue) else stringResource(R.string.auth_qr_continue_without_account)
-                        } else {
-                            stringResource(R.string.auth_qr_back)
+                        when {
+                            isSignedIn -> stringResource(R.string.account_sign_out)
+                            uiState.isLoading -> stringResource(R.string.auth_qr_please_wait)
+                            else -> stringResource(R.string.auth_qr_refresh)
                         }
                     )
                 }
             }
-            if (showSupportButton) {
-                AuthSupportButton(supporterTier = supporterTier, onClick = onSupport)
+            Button(
+                onClick = onBackOrContinue,
+                modifier = if (!focusEmail && !focusMainAction) {
+                    Modifier.focusRequester(initialFocusRequester)
+                } else {
+                    Modifier
+                },
+                colors = ButtonDefaults.colors(
+                    containerColor = AuthSecondaryButtonBackground,
+                    focusedContainerColor = Color.White,
+                    contentColor = AuthTextPrimary,
+                    focusedContentColor = Color.Black
+                ),
+                border = ButtonDefaults.border(
+                    border = androidx.tv.material3.Border(
+                        border = androidx.compose.foundation.BorderStroke(1.dp, AuthSecondaryButtonBorder),
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                )
+            ) {
+                Text(
+                    if (isOnboardingMode) {
+                        if (isSignedIn) stringResource(R.string.auth_qr_continue) else stringResource(R.string.auth_qr_continue_without_account)
+                    } else {
+                        stringResource(R.string.auth_qr_back)
+                    }
+                )
             }
-        }
-    }
-}
-
-@Composable
-private fun AuthSupportButton(
-    supporterTier: MemberTier?,
-    onClick: () -> Unit
-) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        colors = ButtonDefaults.colors(
-            containerColor = AuthSecondaryButtonBackground,
-            focusedContainerColor = Color.White,
-            contentColor = AuthTextPrimary,
-            focusedContentColor = Color.Black
-        ),
-        border = ButtonDefaults.border(
-            border = androidx.tv.material3.Border(
-                border = androidx.compose.foundation.BorderStroke(1.dp, AuthSecondaryButtonBorder),
-                shape = RoundedCornerShape(16.dp)
-            )
-        )
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = if (supporterTier != null) Icons.Filled.CheckCircle else Icons.Filled.Favorite,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp)
-            )
-            Text(
-                when (supporterTier) {
-                    MemberTier.SUPPORTER -> stringResource(R.string.supporter_membership_tier_supporter)
-                    MemberTier.SUPPORTER_PLUS -> stringResource(R.string.supporter_membership_tier_supporter_plus)
-                    null -> stringResource(R.string.support_nuvio_button)
-                }
-            )
         }
     }
 }

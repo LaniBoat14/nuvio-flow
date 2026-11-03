@@ -2,8 +2,11 @@ package com.nuvio.tv.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -38,15 +41,11 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
-// Sized against the lockup's lettering (x-height 32 % of the lockup, baseline at 71 %) and set on its baseline.
-private const val MemberWordmarkHeightRatio = 0.306f
-private const val MemberWordmarkVerticalOffsetRatio = 0.096f
-private const val MemberWordmarkSpacingRatio = 0.11f
+private const val MemberWordmarkHeightRatio = 132f / 344f
+private const val MemberWordmarkVerticalOffsetRatio = -12f / 344f
 internal const val MemberBadgeGradientAngleDegrees = 100f
 internal const val MemberBadgeGradientWidthMultiplier = 2.4f
 internal const val MemberBadgeSweepHalfDurationMs = 2_750
-/** Sweeps there and back when the badge appears, then rests, so a still page stops redrawing. */
-internal const val MemberBadgeSweepCycles = 1
 
 internal data class MemberBadgeStyle(
     val label: String,
@@ -127,7 +126,7 @@ private fun LocalMemberSuffix(
 
     MemberSuffixVisibility(
         visible = visible,
-        spacing = height * MemberWordmarkSpacingRatio
+        spacing = height * 0.14f
     ) {
         Text(
             text = badgeStyle.label,
@@ -148,15 +147,19 @@ internal fun rememberMemberBadgeGradientBrush(
     style: MemberBadgeStyle,
     size: IntSize
 ): Brush {
-    val sweep = remember { Animatable(0f) }
-    LaunchedEffect(sweep) {
-        val half = tween<Float>(MemberBadgeSweepHalfDurationMs, easing = CubicBezierEasing(0.42f, 0f, 0.58f, 1f))
-        repeat(MemberBadgeSweepCycles) {
-            sweep.animateTo(1f, half)
-            sweep.animateTo(0f, half)
-        }
-    }
-    val gradientProgress = sweep.value
+    val gradientTransition = rememberInfiniteTransition(label = "memberBadgeGradient")
+    val gradientProgress by gradientTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = MemberBadgeSweepHalfDurationMs,
+                easing = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "memberBadgeGradientProgress"
+    )
     return remember(style, size, gradientProgress) {
         memberBadgeGradientBrush(
             style = style,

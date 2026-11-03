@@ -3,52 +3,6 @@
     <style name="Theme.MyApplication" parent="Theme.AppCompat.DayNight.NoActionBar" />
 
     <style name="Theme.MyApplication.Launcher" parent="Theme.MyApplication">
-        <item name="android:windowBackground">@drawable/start_window</item>
-    </style>
-
-    <style name="Theme.MyApplication.Launcher.ArcticBlue">
-        <item name="android:windowBackground">@drawable/start_window_arctic_blue</item>
-    </style>
-    <style name="Theme.MyApplication.Launcher.Emerald">
-        <item name="android:windowBackground">@drawable/start_window_emerald</item>
-    </style>
-    <style name="Theme.MyApplication.Launcher.RoseGold">
-        <item name="android:windowBackground">@drawable/start_window_rose_gold</item>
-    </style>
-    <style name="Theme.MyApplication.Launcher.Copper">
-        <item name="android:windowBackground">@drawable/start_window_copper</item>
-    </style>
-    <style name="Theme.MyApplication.Launcher.Graphite">
-        <item name="android:windowBackground">@drawable/start_window_graphite</item>
-    </style>
-    <style name="Theme.MyApplication.Launcher.Gold">
-        <item name="android:windowBackground">@drawable/start_window_gold</item>
-    </style>
-    <style name="Theme.MyApplication.Launcher.Jade">
-        <item name="android:windowBackground">@drawable/start_window_jade</item>
-    </style>
-    <style name="Theme.MyApplication.Launcher.Glass">
-        <item name="android:windowBackground">@drawable/start_window_glass</item>
-    </style>
-    <style name="Theme.MyApplication.Launcher.Crimson">
-        <item name="android:windowBackground">@drawable/start_window_crimson</item>
-    </style>
-    <style name="Theme.MyApplication.Launcher.Ocean">
-        <item name="android:windowBackground">@drawable/start_window_ocean</item>
-    </style>
-    <style name="Theme.MyApplication.Launcher.Violet">
-        <item name="android:windowBackground">@drawable/start_window_violet</item>
-    </style>
-    <style name="Theme.MyApplication.Launcher.EmeraldGreen">
-        <item name="android:windowBackground">@drawable/start_window_emerald_green</item>
-    </style>
-    <style name="Theme.MyApplication.Launcher.Amber">
-        <item name="android:windowBackground">@drawable/start_window_amber</item>
-    </style>
-    <style name="Theme.MyApplication.Launcher.Rose">
-        <item name="android:windowBackground">@drawable/start_window_rose</item>
-    </style>
-    <style name="Theme.MyApplication.Launcher.White">
-        <item name="android:windowBackground">@drawable/start_window_white</item>
+        <item name="android:windowBackground">@drawable/splash_screen_background</item>
     </style>
 </resources>

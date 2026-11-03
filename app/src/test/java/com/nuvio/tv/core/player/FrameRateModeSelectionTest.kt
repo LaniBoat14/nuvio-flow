@@ -175,14 +175,6 @@ class FrameRateModeSelectionTest {
     }
 
     @Test
-    fun `a larger size with an inexact multiple does not beat exact pulldown at the video size`() {
-        val modes = listOf(mode(1, 1920, 1080, 59.94f), mode(2, 1920, 1080, 60f), mode(3, 3840, 2160, 120f))
-        assertEquals(1, pick(modes, film, 1920, 1080, activeId = 2))
-        val exact = listOf(mode(1, 1920, 1080, 59.94f), mode(2, 1920, 1080, 60f), mode(3, 3840, 2160, 119.88f))
-        assertEquals(3, pick(exact, film, 1920, 1080, activeId = 2))
-    }
-
-    @Test
     fun `a rate that is not a multiple is never picked over pulldown`() {
         assertEquals(60f, pickRate(listOf(60f, 165f), 24f))
     }
@@ -191,18 +183,6 @@ class FrameRateModeSelectionTest {
     fun `resolution matching also prefers a clean multiple to pulldown`() {
         val modes = listOf(mode(1, 1920, 1080, 60f), mode(2, 1920, 1080, 120f), mode(3, 3840, 2160, 60f))
         assertEquals(2, pick(modes, 24f, 1920, 1080, activeId = 1))
-    }
-
-    @Test
-    fun `an exact rate at a smaller size still beats a multiple`() {
-        val modes = listOf(mode(1, 3840, 2160, 60f), mode(2, 3840, 2160, 120f), mode(3, 1920, 1080, 24f))
-        assertEquals(3, pick(modes, 24f, 3840, 2160, activeId = 1))
-    }
-
-    @Test
-    fun `a larger size with a clean multiple beats pulldown at the video size`() {
-        val modes = listOf(mode(1, 1920, 1080, 60f), mode(2, 3840, 2160, 60f), mode(3, 3840, 2160, 120f))
-        assertEquals(3, pick(modes, 24f, 1920, 1080, activeId = 1))
     }
 
     @Test

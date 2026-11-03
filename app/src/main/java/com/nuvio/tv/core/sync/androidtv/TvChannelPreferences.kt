@@ -3,7 +3,6 @@ package com.nuvio.tv.core.sync.androidtv
 import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
@@ -21,7 +20,6 @@ class TvChannelPreferences @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val channelIdKey = longPreferencesKey("continue_watching_channel_id")
-    private val logoKey = stringPreferencesKey("continue_watching_channel_logo")
 
     suspend fun getChannelId(): Long? =
         context.tvChannelDataStore.data.map { it[channelIdKey] }.first()
@@ -31,14 +29,6 @@ class TvChannelPreferences @Inject constructor(
     }
 
     suspend fun clearChannelId() {
-        context.tvChannelDataStore.edit { it.remove(channelIdKey); it.remove(logoKey) }
-    }
-
-    /** Which launcher icon the channel logo was drawn from. */
-    suspend fun getLogoKey(): String? =
-        context.tvChannelDataStore.data.map { it[logoKey] }.first()
-
-    suspend fun setLogoKey(key: String) {
-        context.tvChannelDataStore.edit { it[logoKey] = key }
+        context.tvChannelDataStore.edit { it.remove(channelIdKey) }
     }
 }

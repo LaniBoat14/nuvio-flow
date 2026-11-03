@@ -1,6 +1,7 @@
 package com.nuvio.tv.ui.screens.player
 
 import android.content.Context
+import android.net.TrafficStats
 import android.os.Build
 import android.os.Debug
 import android.os.PowerManager
@@ -32,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.Text
+import com.nuvio.tv.core.network.StreamSpeedTester
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -63,12 +65,9 @@ internal data class PlayerSnapshot(
     val videoBitrate: Int,
     val audioBitrate: Int,
     val durationMs: Long,
-    val droppedFrames: Int?,
+    val droppedFrames: Int,
     val fileSizeBytes: Long?,
-    val skippedFrames: Int? = null,
-    val allocatorBytes: Long? = null,
-    val tunnelled: Boolean = false,
-    val transfer: PlaybackTransferRate? = null
+    val nativeMemoryBytes: Long? = null
 )
 
 @OptIn(UnstableApi::class)
@@ -80,7 +79,7 @@ internal fun PlayerDebugStatsOverlay(
     val context = LocalContext.current
     val sampler = remember { DebugStatsSampler(context) }
     var stats by remember { mutableStateOf(emptyList<DebugStat>()) }
-    val transferSampler = remember { PlaybackTransferRateSampler() }
+    var probedFileSize by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(Unit) {
         // Hold off until playback is running so the first samples are not startup noise, but give up
@@ -92,23 +91,28 @@ internal fun PlayerDebugStatsOverlay(
         }
         delay(2000L)
 
+        // Only some addons send videoSize, so ask the server once when nothing upstream knew it.
+        if (viewModel.getCurrentFileSizeBytes() == null) {
+            val url = viewModel.getCurrentStreamUrl()
+            if (url.isNotBlank()) {
+                probedFileSize = StreamSpeedTester
+                    .getStreamContentLength(url, viewModel.getCurrentHeaders())
+                    .takeIf { it > 0L }
+            }
+        }
+
         while (true) {
             // Player fields must be read on this thread; everything else blocks, so it goes to IO.
             val player = viewModel.exoPlayer
             val snapshot = player?.let {
-                val presentation = viewModel.sampleVideoPresentation()
-                val transfer = viewModel.sampleTransferSnapshot()
                 PlayerSnapshot(
                     aheadMs = (it.bufferedPosition - it.currentPosition).coerceAtLeast(0L),
                     videoBitrate = runCatching { it.videoFormat?.bitrate }.getOrNull() ?: -1,
                     audioBitrate = runCatching { it.audioFormat?.bitrate }.getOrNull() ?: -1,
                     durationMs = runCatching { it.duration }.getOrNull() ?: -1L,
-                    droppedFrames = viewModel.sampleDroppedFrames(presentation).count,
-                    skippedFrames = viewModel.sampleSkippedFrames(presentation)?.count,
-                    tunnelled = presentation.isTunnelled,
-                    fileSizeBytes = transfer.contentLength,
-                    allocatorBytes = viewModel.getPlayerSampleAllocatorBytes(),
-                    transfer = transferSampler.sample(transfer)
+                    droppedFrames = runCatching { it.videoDecoderCounters?.droppedBufferCount }.getOrNull() ?: 0,
+                    fileSizeBytes = viewModel.getCurrentFileSizeBytes() ?: probedFileSize,
+                    nativeMemoryBytes = viewModel.getPlayerNativeMemoryBytes()
                 )
             }
             stats = withContext(Dispatchers.IO) { sampler.sample(snapshot) }
@@ -165,8 +169,12 @@ private class DebugStatsSampler(context: Context) {
     private var lastCpuTicks = -1L
     private var lastMajorFaults = -1L
     private var lastProcAtMs = 0L
+    private var lastRxBytes = -1L
+    private var lastRxAtMs = 0L
     private var bufferTotal = 0.0
     private var bufferSamples = 0
+    private var networkTotal = 0.0
+    private var networkSamples = 0
     private var cpuTotal = 0.0
     private var cpuSamples = 0
     private var faultTotal = 0.0
@@ -188,7 +196,7 @@ private class DebugStatsSampler(context: Context) {
         add(memoryStat(snapshot))
         add(bufferStat(snapshot))
         add(bitrateStat(snapshot))
-        add(networkStat(snapshot))
+        add(networkStat())
         add(droppedStat(snapshot))
         addAll(thermalStats())
     }.filterNot { it.value == UNAVAILABLE }
@@ -232,15 +240,39 @@ private class DebugStatsSampler(context: Context) {
         )
     }.getOrNull()
 
-    // These are separate accounting scopes; the allocator is not a process-native total.
+    // Performance mode puts the player buffers in native memory, so the java heap alone hides them.
     private fun memoryStat(snapshot: PlayerSnapshot?): DebugStat {
         val runtime = Runtime.getRuntime()
         val usedMb = (runtime.totalMemory() - runtime.freeMemory()) / MB
         val maxMb = runtime.maxMemory() / MB
-        val nativeMb = runCatching { Debug.getNativeHeapAllocatedSize() / MB }.getOrNull()
-        val allocator = snapshot?.allocatorBytes?.let { " · sample allocator ${it / MB} MB" }.orEmpty()
-        val native = nativeMb?.let { " · native heap $it MB" }.orEmpty()
-        return DebugStat("memory", "Java heap $usedMb/$maxMb MB$native$allocator")
+        val playerNativeBytes = snapshot?.nativeMemoryBytes
+        val nativeMb = if (playerNativeBytes != null && playerNativeBytes >= 0L) {
+            playerNativeBytes / MB
+        } else {
+            runCatching { Debug.getNativeHeapAllocatedSize() / MB }.getOrDefault(-1L)
+        }
+        val targetBufferMb = NuvioExoPlayerPerformanceHelper.calculatedMemoryUsageMb
+        val nativeText = when {
+            nativeMb < 0L -> ""
+            targetBufferMb > 0 -> "   native $nativeMb / $targetBufferMb MB"
+            else -> "   native $nativeMb MB"
+        }
+        val safeLimitMb = NuvioExoPlayerPerformanceHelper.getSafeNativeMemoryLimitMb(appContext)
+        val warningLimitMb = NuvioExoPlayerPerformanceHelper.getWarningNativeMemoryLimitMb(appContext)
+
+        val severity = when {
+            nativeMb > 0L && nativeMb > warningLimitMb -> DebugStatSeverity.DANGER
+            nativeMb > 0L && nativeMb > safeLimitMb -> DebugStatSeverity.WARNING
+            maxMb > 0L && usedMb.toDouble() / maxMb >= 0.90 -> DebugStatSeverity.DANGER
+            maxMb > 0L && usedMb.toDouble() / maxMb >= 0.80 -> DebugStatSeverity.WARNING
+            else -> DebugStatSeverity.NORMAL
+        }
+
+        return DebugStat(
+            label = "memory",
+            value = "$usedMb / $maxMb MB$nativeText",
+            severity = severity
+        )
     }
 
     private fun bufferStat(snapshot: PlayerSnapshot?): DebugStat {
@@ -276,19 +308,32 @@ private class DebugStatsSampler(context: Context) {
         return DebugStat("bitrate", String.format(Locale.US, "%.1f Mbps tracks", totalMbps))
     }
 
-    private fun networkStat(snapshot: PlayerSnapshot?): DebugStat {
-        val transfer = snapshot?.transfer ?: return DebugStat("network", "Unavailable")
-        if (!transfer.sample.coverage.available) return DebugStat("network", "Unavailable · route not instrumented")
-        val bps = transfer.currentBps ?: return DebugStat("network", "Sampling · ${transfer.sample.coverage.label}")
-        return DebugStat("network", String.format(Locale.US, "%.1f Mbps · %s", bps / 1_000_000.0, transfer.sample.coverage.label))
+    private fun networkStat(): DebugStat {
+        val rx = runCatching { TrafficStats.getUidRxBytes(Process.myUid()) }.getOrDefault(-1L)
+        if (rx < 0L) return DebugStat("network", UNAVAILABLE)
+        val now = System.currentTimeMillis()
+        val previousRx = lastRxBytes
+        val previousAt = lastRxAtMs
+        lastRxBytes = rx
+        lastRxAtMs = now
+        if (previousRx < 0L || now <= previousAt) return DebugStat("network", "...")
+        val mbps = (rx - previousRx).toDouble() / ((now - previousAt) / 1000.0) * 8.0 / 1_000_000.0
+        networkTotal += mbps
+        networkSamples++
+        return DebugStat(
+            label = "network",
+            value = String.format(
+                Locale.US,
+                "%.1f Mbps   avg %.1f",
+                mbps,
+                networkTotal / networkSamples
+            )
+        )
     }
 
     private fun droppedStat(snapshot: PlayerSnapshot?): DebugStat {
-        val dropped = snapshot?.droppedFrames ?: return DebugStat("dropped", UNAVAILABLE)
-        val scope = if (snapshot.tunnelled) "renderer source only (tunnelled)" else "buffers · current renderer"
-        val skipped = snapshot.skippedFrames?.takeUnless { snapshot.tunnelled }
-        val skippedText = skipped?.let { " · skipped $it" }.orEmpty()
-        return DebugStat("dropped", "$dropped$skippedText · $scope", warn = dropped > 0 || (skipped ?: 0) > 0)
+        val dropped = snapshot?.droppedFrames ?: 0
+        return DebugStat("dropped", "$dropped frames", warn = dropped > 0)
     }
 
     // Headroom is normalised so 1.00 is the throttling point; the status line only matters once it trips.
@@ -297,7 +342,7 @@ private class DebugStatsSampler(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             return listOf(DebugStat("thermal", UNAVAILABLE))
         }
-        val headroom = com.nuvio.tv.core.performance.ThermalHeadroom.read(pm, 0)
+        val headroom = runCatching { pm.getThermalHeadroom(0) }.getOrDefault(Float.NaN)
         val status = runCatching { pm.currentThermalStatus }.getOrDefault(PowerManager.THERMAL_STATUS_NONE)
         val headroomStat = DebugStat(
             label = "thermal",

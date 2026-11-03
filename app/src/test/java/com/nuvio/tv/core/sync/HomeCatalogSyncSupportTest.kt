@@ -5,7 +5,6 @@ import com.nuvio.tv.domain.model.AddonResource
 import com.nuvio.tv.domain.model.CatalogDescriptor
 import com.nuvio.tv.domain.model.Collection
 import com.nuvio.tv.domain.model.ContentType
-import com.nuvio.tv.domain.model.WatchedTitlesMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -43,17 +42,6 @@ class HomeCatalogSyncSupportTest {
             homeLegacyDisabledCatalogKey(addon.baseUrl, "series", "series-list", "Series"),
             homeLegacyDisabledCatalogKey(addon.baseUrl, "Series", "series-list", "Series")
         )
-    }
-
-    @Test
-    fun `payload carries the watched titles choice`() {
-        val payload = buildHomeCatalogSyncPayload(
-            addons = emptyList(),
-            collections = emptyList(),
-            localState = LocalHomeCatalogSettingsState(watchedTitlesMode = WatchedTitlesMode.HIDE)
-        )
-
-        assertEquals(WatchedTitlesMode.HIDE.name, payload.watchedTitlesMode)
     }
 
     @Test

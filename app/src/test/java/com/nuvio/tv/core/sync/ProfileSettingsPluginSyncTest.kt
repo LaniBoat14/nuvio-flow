@@ -339,8 +339,7 @@ class ProfileSettingsPluginSyncTest {
         }
         val service = ProfileSettingsSyncService(
             authManager, postgrest, profileManager, factory, identity,
-            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
-            mockk(relaxed = true), ProfileSettingsSyncStateStore(mockk(relaxed = true))
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true)
         )
         services += service
         val plugins = PluginDataStore(mockk(relaxed = true), Moshi.Builder().build(), factory, profileManager)

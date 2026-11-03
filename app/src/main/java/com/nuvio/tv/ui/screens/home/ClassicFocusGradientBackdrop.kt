@@ -10,7 +10,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -123,34 +122,33 @@ internal fun ClassicFocusGradientBackdrop(
 
     val color0 = slotColors.first
     val color1 = slotColors.second
-    // Only crossing visibility thresholds changes composition. Alpha advances in the layers.
-    val slot0Visible by remember { derivedStateOf { crossfadeProgress <= 0.995f } }
-    val slot1Visible by remember { derivedStateOf { crossfadeProgress >= 0.005f } }
+    val alpha0 = 1f - crossfadeProgress
+    val alpha1 = crossfadeProgress
 
     // Skip compositing entirely when both layers are invisible.
-    if ((color0 == Color.Transparent || !slot0Visible) &&
-        (color1 == Color.Transparent || !slot1Visible)
+    if ((color0 == Color.Transparent || alpha0 < 0.005f) &&
+        (color1 == Color.Transparent || alpha1 < 0.005f)
     ) return
 
     Box(modifier = modifier.fillMaxSize()) {
-        if (color0 != Color.Transparent && slot0Visible) {
+        if (color0 != Color.Transparent && alpha0 >= 0.005f) {
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        alpha = 1f - crossfadeProgress
+                        alpha = alpha0
                         compositingStrategy = CompositingStrategy.Offscreen
                     }
             ) {
                 drawFocusGradient(color0)
             }
         }
-        if (color1 != Color.Transparent && slot1Visible) {
+        if (color1 != Color.Transparent && alpha1 >= 0.005f) {
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        alpha = crossfadeProgress
+                        alpha = alpha1
                         compositingStrategy = CompositingStrategy.Offscreen
                     }
             ) {

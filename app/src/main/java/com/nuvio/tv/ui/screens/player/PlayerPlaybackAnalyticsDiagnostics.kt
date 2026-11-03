@@ -1,8 +1,5 @@
 package com.nuvio.tv.ui.screens.player
 
-import android.util.Log
-import com.nuvio.tv.core.logging.redactLinksForLog
-
 import android.os.SystemClock
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -56,14 +53,12 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
     private var lastPositionForStallMs: Long = -1L
     private var positionLastAdvancedAtMs: Long = sessionStartedAtElapsedMs
     private var positionStallActive: Boolean = false
-    private var positionStallDetecting: Boolean = false
     private var positionStallCount: Int = 0
     private var longestPositionStallMs: Long = 0L
 
     private var droppedFrames: Int = 0
     private var maxDroppedFramesInEvent: Int = 0
     private var videoDecoderName: String? = null
-    private var activeVideoDecoderName: String? = null
     private var videoDecoderInitMs: Long? = null
     private var videoDecoderReleaseCount: Int = 0
     private var videoRenderedOutputBuffers: Int? = null
@@ -85,7 +80,6 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
     private var bandwidthEstimateBps: Long? = null
     private var bandwidthTransferDurationMs: Int? = null
     private var bandwidthBytesTransferred: Long? = null
-    private var bandwidthBytesTotal: Long = 0L
 
     private var loadStartedCount: Int = 0
     private var loadCompletedCount: Int = 0
@@ -94,18 +88,19 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
     private var totalBytesLoaded: Long = 0L
     private var lastLoad: PlaybackIssuePlaybackLoadInput? = null
     private var lastLoadError: PlaybackIssuePlaybackLoadErrorInput? = null
-    // Last COMPLETED load of dataType MEDIA only. The HUD's Request row
-    // reads this instead of lastLoad: on progressive streams the single long
-    // read only ever ends by CANCELLATION (seek/stop/track change), and its
-    // multi-minute running duration would show as a bogus "Request" figure. The
-    // issue-report path still uses lastLoad, cancellations included.
-    private var lastCompletedMediaLoad: PlaybackIssuePlaybackLoadInput? = null
     private var traceHost: String = "unknown"
     private var traceEngine: String = "unknown"
     private var launchStartedAtElapsedMs: Long? = null
     private var initializationStartedAtWallTimeMs: Long = 0L
     private var startPositionMs: Long? = null
     private var lastHealthSnapshotAtElapsedMs: Long = 0L
+
+    fun flowSummary(rebuffers: Int, totalMs: Long, startedMs: Long): FlowDiagnosticSummary =
+        FlowDiagnosticSummary(
+            videoDecoderName, audioDecoderName, droppedFrames, audioUnderrunCount,
+            loadErrorCount, bandwidthEstimateBps, rebuffers,
+            totalMs + if (startedMs > 0L) (SystemClock.elapsedRealtime() - startedMs).coerceAtLeast(0L) else 0L
+        )
 
     fun setTraceContext(host: String?, engine: String?) {
         traceHost = host?.takeIf { it.isNotBlank() } ?: "unknown"
@@ -124,64 +119,6 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
 
     fun setStartupStartPosition(positionMs: Long) {
         startPositionMs = positionMs.takeIf { it > 0L }
-    }
-
-    /** Point-in-time snapshot of the fields the live playback stats HUD needs. */
-    data class HudSample(
-        val videoDecoderName: String?,
-        val audioDecoderName: String?,
-        val droppedFrames: Int,
-        val bandwidthEstimateBps: Long?,
-        val bandwidthBytesTransferred: Long?,
-        val bandwidthTransferDurationMs: Int?,
-        val audioUnderrunCount: Int,
-        val totalBytesLoaded: Long,
-        val bandwidthBytesTotal: Long,
-        val loadErrorCount: Int,
-        val lastLoadDurationMs: Long?,
-        val lastLoadHost: String?,
-        val lastCompletedMediaLoadDurationMs: Long?,
-        val lastCompletedMediaLoadHost: String?,
-        val positionStallCount: Int,
-        val longestPositionStallMs: Long,
-        val frameProcessingOffsetAvgUs: Long?,
-        val startPositionMs: Long?,
-        val transferredBytesTotal: Long,
-        val transferredNetworkBytes: Long,
-        val transfer: PlaybackTransferSnapshot,
-        val lanes: PlaybackLanes? = null
-    )
-
-    fun hudSample(): HudSample {
-        val transfer = PlaybackByteCounter.snapshot()
-        return HudSample(
-        videoDecoderName = activeVideoDecoderName,
-        audioDecoderName = audioDecoderName,
-        droppedFrames = droppedFrames,
-        bandwidthEstimateBps = bandwidthEstimateBps,
-        bandwidthBytesTransferred = bandwidthBytesTransferred,
-        bandwidthTransferDurationMs = bandwidthTransferDurationMs,
-        audioUnderrunCount = audioUnderrunCount,
-        totalBytesLoaded = totalBytesLoaded,
-        bandwidthBytesTotal = bandwidthBytesTotal,
-        loadErrorCount = loadErrorCount,
-        lastLoadDurationMs = lastLoad?.durationMs,
-        lastLoadHost = lastLoad?.host,
-        lastCompletedMediaLoadDurationMs = lastCompletedMediaLoad?.durationMs,
-        lastCompletedMediaLoadHost = lastCompletedMediaLoad?.host,
-        positionStallCount = positionStallCount,
-        longestPositionStallMs = longestPositionStallMs,
-        frameProcessingOffsetAvgUs = if (videoFrameProcessingOffsetCount > 0) {
-            videoFrameProcessingOffsetTotalUs / videoFrameProcessingOffsetCount
-        } else {
-            null
-        },
-        startPositionMs = startPositionMs,
-        transferredBytesTotal = transfer.readBytes,
-        transferredNetworkBytes = transfer.networkBytes,
-        transfer = transfer,
-        lanes = PlaybackLanes.current()
-        )
     }
 
     fun reset() {
@@ -206,13 +143,11 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
         lastPositionForStallMs = -1L
         positionLastAdvancedAtMs = sessionStartedAtElapsedMs
         positionStallActive = false
-        positionStallDetecting = false
         positionStallCount = 0
         longestPositionStallMs = 0L
         droppedFrames = 0
         maxDroppedFramesInEvent = 0
         videoDecoderName = null
-        activeVideoDecoderName = null
         videoDecoderInitMs = null
         videoDecoderReleaseCount = 0
         videoRenderedOutputBuffers = null
@@ -232,7 +167,6 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
         bandwidthEstimateBps = null
         bandwidthTransferDurationMs = null
         bandwidthBytesTransferred = null
-        bandwidthBytesTotal = 0L
         loadStartedCount = 0
         loadCompletedCount = 0
         loadCanceledCount = 0
@@ -240,13 +174,11 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
         totalBytesLoaded = 0L
         lastLoad = null
         lastLoadError = null
-        lastCompletedMediaLoad = null
         rawEventLines.clear()
         launchStartedAtElapsedMs = null
         initializationStartedAtWallTimeMs = 0L
         startPositionMs = null
         lastHealthSnapshotAtElapsedMs = 0L
-        PlaybackByteCounter.reset()
         PlaybackConnectionEvents.clear()
         LoggingDataSource.clear()
     }
@@ -291,9 +223,7 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
             player.playWhenReady &&
             player.isPlaying &&
             player.playbackState == Player.STATE_READY
-        // No samples arrive while paused, so the first playing sample starts the clock again.
-        if (!shouldDetectStall || !positionStallDetecting) {
-            positionStallDetecting = shouldDetectStall
+        if (!shouldDetectStall) {
             lastPositionForStallMs = position
             positionLastAdvancedAtMs = now
             positionStallActive = false
@@ -302,7 +232,6 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
 
         if (lastPositionForStallMs < 0L || position > lastPositionForStallMs + POSITION_PROGRESS_EPSILON_MS) {
             if (positionStallActive) {
-                Log.i("NuvioPosFreeze", "FREEZE_END stallMs=${(now - positionLastAdvancedAtMs).coerceAtLeast(0L)} positionMs=$position")
                 record(
                     name = "position_stall_recovered",
                     eventTime = null,
@@ -324,7 +253,6 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
             if (!positionStallActive) {
                 positionStallActive = true
                 positionStallCount += 1
-                Log.i("NuvioPosFreeze", "FREEZE_BEGIN stallMs=$stalledForMs positionMs=$position bufferedMs=${player.bufferedPosition.coerceAtLeast(0L)} state=${player.playbackState.playbackStateName()}")
                 record(
                     name = "position_stall",
                     eventTime = null,
@@ -445,7 +373,6 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
         initializationDurationMs: Long
     ) {
         videoDecoderName = decoderName
-        activeVideoDecoderName = decoderName
         videoDecoderInitMs = initializationDurationMs.coerceAtLeast(0L)
         record(
             name = "video_decoder_initialized",
@@ -455,7 +382,6 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
     }
 
     fun onVideoDecoderReleased(eventTime: AnalyticsListener.EventTime, decoderName: String) {
-        if (activeVideoDecoderName == decoderName) activeVideoDecoderName = null
         videoDecoderReleaseCount += 1
         record(
             name = "video_decoder_released",
@@ -631,7 +557,6 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
     ) {
         bandwidthTransferDurationMs = totalLoadTimeMs.takeIf { it >= 0 }
         bandwidthBytesTransferred = totalBytesLoaded.coerceAtLeast(0L)
-        bandwidthBytesTotal += totalBytesLoaded.coerceAtLeast(0L)
         bandwidthEstimateBps = bitrateEstimate.takeIf { it > 0L }
         record(
             name = "bandwidth_estimate",
@@ -666,9 +591,6 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
         loadCompletedCount += 1
         totalBytesLoaded += loadEventInfo.bytesLoaded.coerceAtLeast(0L)
         lastLoad = loadEventInfo.toPlaybackLoad(mediaLoadData)
-        if (mediaLoadData.dataType == C.DATA_TYPE_MEDIA) {
-            lastCompletedMediaLoad = lastLoad
-        }
         record(
             name = "load_completed",
             eventTime = eventTime,
@@ -773,10 +695,6 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
             }
             addAll(PlaybackConnectionEvents.recentEvents())
             addAll(LoggingDataSource.recentEvents())
-            PlayerAudioBitrateMeter.bitrateBps()?.let {
-                add("measured_audio_bitrate_bps=$it")
-            }
-            add("iec_underruns=${PlayerAudioUnderrunCounter.current()}")
         }
         return PlaybackIssuePlaybackAnalyticsInput(
             schemaVersion = 1,
@@ -910,24 +828,15 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
         eventCount += 1
         val position = eventTime?.currentPlaybackPositionMs.safeTimeMs() ?: positionMs
         val bufferedPosition = eventTime?.bufferedPositionMs() ?: bufferedPositionMs
-        val rawLine = buildRawEventLine(
-            name = name,
-            elapsedMs = (now - sessionStartedAtElapsedMs).coerceAtLeast(0L),
-            positionMs = position,
-            bufferedPositionMs = bufferedPosition,
-            details = details
+        recordRawEventLine(
+            buildRawEventLine(
+                name = name,
+                elapsedMs = (now - sessionStartedAtElapsedMs).coerceAtLeast(0L),
+                positionMs = position,
+                bufferedPositionMs = bufferedPosition,
+                details = details
+            )
         )
-        recordRawEventLine(rawLine)
-        // Fork: mirror warning-class events and Loader load
-        // lifecycle events to logcat so a device log capture can see load_error
-        // exception/dataType and dropped_video_frames timing. The in-memory ring
-        // above is separate; media3 load events are per Loader load, not per
-        // chunk, so this is low volume.
-        if (name.isPlaybackWarningEvent()) {
-            Log.w(EXO_EVENT_LOG_TAG, rawLine.redactLinksForLog())
-        } else if (name.isLoaderLoadEvent()) {
-            Log.i(EXO_EVENT_LOG_TAG, rawLine.redactLinksForLog())
-        }
         events.addLast(
             PlaybackIssuePlaybackEventInput(
                 timeMs = timeMs,
@@ -971,13 +880,6 @@ internal fun PlayerRuntimeController.flushPendingPlaybackRawEventLines() {
         playbackAnalyticsDiagnostics.recordRawEventLine(pendingPlaybackRawEventLines.removeFirst())
     }
 }
-
-private const val EXO_EVENT_LOG_TAG = "NuvioExoEvent"
-
-private fun String.isLoaderLoadEvent(): Boolean =
-    this == "load_started" ||
-        this == "load_completed" ||
-        this == "load_canceled"
 
 private fun String.isPlaybackWarningEvent(): Boolean =
     this == "dropped_video_frames" ||

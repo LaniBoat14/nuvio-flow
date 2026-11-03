@@ -22,7 +22,6 @@ import static java.lang.Math.max;
 import static java.lang.Math.min;
 import static java.lang.annotation.ElementType.TYPE_USE;
 
-import android.os.SystemClock;
 import android.util.Pair;
 import android.util.SparseArray;
 import androidx.annotation.CallSuper;
@@ -60,8 +59,6 @@ import androidx.media3.extractor.TrueHdSampleRechunker;
 import androidx.media3.extractor.text.SubtitleParser;
 import androidx.media3.extractor.text.SubtitleTranscodingExtractorOutput;
 import com.google.common.collect.ImmutableList;
-import com.nuvio.tv.core.player.DolbyVisionBaseLayerColor;
-import com.nuvio.tv.core.util.TtffTrace;
 import java.io.ByteArrayOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
@@ -192,12 +189,6 @@ public class MatroskaExtractor implements Extractor {
     }
 
     /**
-     * Media time (us) of the block whose sample the next {@link #transformHevcSample} call carries
-     * (diagnostics only; laced blocks report the block time).
-     */
-    default void onSampleTimeUs(long timeUs) {}
-
-    /**
      * Optionally rewrites Dolby Vision codec signaling for output {@link Format}.
      *
      * <p>This is used when sample-level metadata conversion changes the effective Dolby Vision
@@ -252,7 +243,6 @@ public class MatroskaExtractor implements Extractor {
   // Bounds for the early DTS mime scan that peeks ahead right after the Tracks element.
   private static final int MAX_EARLY_DTS_SCAN_BYTES = 8 * 1024 * 1024;
   private static final int MAX_EARLY_DTS_FRAME_BYTES = 256 * 1024;
-  private static final int MAX_EARLY_DTS_BLOCK_HEADER_BYTES = 4096;
   private static final int MAX_EBML_HEADER_SIZE = 12; // 4-byte id + 8-byte data size.
   private static final int MAX_SEEK_HEAD_FOLLOWS = 4;
 
@@ -311,15 +301,6 @@ public class MatroskaExtractor implements Extractor {
   private static final int ID_TIMECODE_SCALE = 0x2AD7B1;
   private static final int ID_DURATION = 0x4489;
   private static final int ID_CLUSTER = 0x1F43B675;
-  // NuvioTV fork: malformed-container (Usenet zero-fill) recovery. Budget of
-  // resync attempts per extractor instance, and the forward byte span each
-  // resync scans looking for the next Cluster before giving up.
-  private static final int MAX_RESYNC_ATTEMPTS = 8;
-  private static final long MAX_RESYNC_SCAN_BYTES = 64L * 1024 * 1024;
-  // NuvioTV fork: in-memory search window for the malformed-container resync
-  // scan (see resyncToNextCluster). Bulk-peeked and scanned for the Cluster ID
-  // instead of walking one byte at a time - ~100x faster on device.
-  private static final int RESYNC_BLOCK_BYTES = 64 * 1024;
   private static final int ID_TIME_CODE = 0xE7;
   private static final int ID_SIMPLE_BLOCK = 0xA3;
   private static final int ID_BLOCK_GROUP = 0xA0;
@@ -336,11 +317,6 @@ public class MatroskaExtractor implements Extractor {
   private static final int ID_TRACK_TYPE = 0x83;
   private static final int ID_FLAG_DEFAULT = 0x88;
   private static final int ID_FLAG_FORCED = 0x55AA;
-  private static final int ID_FLAG_HEARING_IMPAIRED = 0x55AB;
-  private static final int ID_FLAG_VISUAL_IMPAIRED = 0x55AC;
-  private static final int ID_FLAG_TEXT_DESCRIPTIONS = 0x55AD;
-  private static final int ID_FLAG_ORIGINAL = 0x55AE;
-  private static final int ID_FLAG_COMMENTARY = 0x55AF;
   private static final int ID_DEFAULT_DURATION = 0x23E383;
   private static final int ID_MAX_BLOCK_ADDITION_ID = 0x55EE;
   private static final int ID_BLOCK_ADDITION_MAPPING = 0x41E4;
@@ -439,12 +415,6 @@ public class MatroskaExtractor implements Extractor {
   private static final int LACING_EBML = 3;
 
   private static final int FOURCC_COMPRESSION_DIVX = 0x58564944;
-  private static final int FOURCC_COMPRESSION_DIVX_LOWER = 0x78766964;
-  private static final int FOURCC_COMPRESSION_DX50 = 0x30355844;
-  private static final int FOURCC_COMPRESSION_XVID = 0x44495658;
-  private static final int FOURCC_COMPRESSION_XVID_LOWER = 0x64697678;
-  private static final int FOURCC_COMPRESSION_FMP4 = 0x34504D46;
-  private static final int FOURCC_COMPRESSION_MP4V = 0x5634504D;
   private static final int FOURCC_COMPRESSION_H263 = 0x33363248;
   private static final int FOURCC_COMPRESSION_VC1 = 0x31435657;
 
@@ -589,12 +559,6 @@ public class MatroskaExtractor implements Extractor {
   private final ParsableByteArray nalStartCode;
   private final ParsableByteArray nalLength;
   private final ParsableByteArray scratch;
-  // NuvioTV fork: 4-byte peek buffer and remaining resync budget for
-  // malformed-container recovery (see read() / resyncToNextCluster()).
-  private final byte[] resyncScratch = new byte[4];
-  private final byte[] resyncBlock = new byte[RESYNC_BLOCK_BYTES];
-  private int resyncBudget = MAX_RESYNC_ATTEMPTS;
-  private long ebmlFailurePosition = C.POSITION_UNSET;
   private final ParsableByteArray vorbisNumPageSamples;
   private final ParsableByteArray seekEntryIdBytes;
   private final ParsableByteArray sampleStrippedBytes;
@@ -647,9 +611,6 @@ public class MatroskaExtractor implements Extractor {
   // Cue related elements.
   private final SparseArray<List<MatroskaSeekMap.CuePointData>> perTrackCues;
   private boolean inCuesElement;
-  private long cuesStartMs = C.TIME_UNSET;
-  private long cuesStartReads;
-  private long cuesContentSize;
   private long currentCueTimeUs = C.TIME_UNSET;
   private int currentCueTrackNumber = C.INDEX_UNSET;
   private long currentCueClusterPosition = C.INDEX_UNSET;
@@ -661,16 +622,6 @@ public class MatroskaExtractor implements Extractor {
   private boolean seekForSeekHead;
   private int followedSeekHeadCount;
   private long seekPositionAfterBuildingCues = C.INDEX_UNSET;
-
-  // Chapters.
-  private final MatroskaChapterParser chapterParser = new MatroskaChapterParser();
-  @Nullable private ChaptersMetadata chaptersMetadata;
-  private long chaptersContentPosition = C.INDEX_UNSET;
-  private boolean seekForChapters;
-  private boolean inChaptersDetour;
-  private boolean chaptersDetourLanding;
-  private boolean chaptersDetourTried;
-  private long inputLength = C.LENGTH_UNSET;
   // Tracks placed after the Clusters (the SeekHead points at them): read them before any Cluster.
   private long tracksContentPosition = C.INDEX_UNSET;
   private boolean seekForTracks;
@@ -831,21 +782,12 @@ public class MatroskaExtractor implements Extractor {
   @CallSuper
   @Override
   public void seek(long position, long timeUs) {
-    resetParsingState();
-  }
-
-  // NuvioTV fork: extracted verbatim from the original seek() body so the
-  // malformed-container resync path can reuse the exact same clean-slate reset.
-  private void resetParsingState() {
     clusterTimecodeUs = C.TIME_UNSET;
     blockState = BLOCK_STATE_START;
     reader.reset();
     varintReader.reset();
     resetWriteSampleData();
     inCuesElement = false;
-    inChaptersDetour = false;
-    chaptersDetourLanding = false;
-    seekForChapters = false;
     currentCueTimeUs = C.TIME_UNSET;
     currentCueTrackNumber = C.INDEX_UNSET;
     currentCueClusterPosition = C.INDEX_UNSET;
@@ -861,58 +803,6 @@ public class MatroskaExtractor implements Extractor {
     }
   }
 
-  // NuvioTV fork: byte-scan forward from the current read position to the next
-  // Cluster (level-1) element, leaving the input positioned at the Cluster ID so
-  // the reader parses it fresh. Targets Cluster specifically (not any level-1 ID)
-  // because a Matroska cluster opens on a keyframe, giving the decoder a clean
-  // entry after the skipped hole. Bounded by MAX_RESYNC_SCAN_BYTES.
-  private boolean resyncToNextCluster(ExtractorInput input) throws IOException {
-    long scanned = 0;
-    while (scanned < MAX_RESYNC_SCAN_BYTES) {
-      input.resetPeekPosition();
-      int want = (int) Math.min((long) RESYNC_BLOCK_BYTES, MAX_RESYNC_SCAN_BYTES - scanned);
-      // Bulk-peek up to a full block from the current read position. peek() may
-      // return short, so loop until the block is full or the input ends.
-      int got = 0;
-      while (got < want) {
-        int r = input.peek(resyncBlock, got, want - got);
-        if (r == C.RESULT_END_OF_INPUT) {
-          break;
-        }
-        got += r;
-      }
-      if (got < 4) {
-        return false;
-      }
-      // Scan the block for the Cluster ID's canonical 4-byte encoding
-      // (0x1F 0x43 0xB6 0x75). The leading-byte compare short-circuits on the
-      // vast majority of positions, so this is far cheaper than a per-byte
-      // peekFully()/skipFully() round-trip through ExtractorInput.
-      for (int i = 0; i + 4 <= got; i++) {
-        if (resyncBlock[i] == (byte) 0x1F
-            && resyncBlock[i + 1] == (byte) 0x43
-            && resyncBlock[i + 2] == (byte) 0xB6
-            && resyncBlock[i + 3] == (byte) 0x75) {
-          // Advance the read position to the Cluster ID so the reader parses it
-          // fresh, exactly as the old byte-walk left it.
-          input.skipFully(i);
-          return true;
-        }
-      }
-      if (got < want) {
-        // Short read means we reached the input end; the whole tail was scanned
-        // above, so there is no further Cluster to find.
-        return false;
-      }
-      // Advance by (block - 3) so a Cluster ID straddling the block boundary is
-      // caught on the next pass.
-      int advance = got - 3;
-      input.skipFully(advance);
-      scanned += advance;
-    }
-    return false;
-  }
-
   @Override
   public final void release() {
     zlibSampleDecompressor.release();
@@ -920,7 +810,6 @@ public class MatroskaExtractor implements Extractor {
 
   @Override
   public final int read(ExtractorInput input, PositionHolder seekPosition) throws IOException {
-    ebmlFailurePosition = C.POSITION_UNSET;
     try {
       return readFromInput(input, seekPosition);
     } catch (EOFException e) {
@@ -945,66 +834,10 @@ public class MatroskaExtractor implements Extractor {
   }
 
   private int readFromInput(ExtractorInput input, PositionHolder seekPosition) throws IOException {
-    inputLength = input.getLength();
-    if (inChaptersDetour) {
-      try {
-        return readFromInputUnchecked(input, seekPosition);
-      } catch (ParserException | IllegalStateException | EOFException e) {
-        android.util.Log.w(
-            TAG, "MKV chapters at " + chaptersContentPosition + " unreadable: " + e.getMessage());
-        return leaveChaptersDetour(input, seekPosition);
-      }
-    }
-    return readFromInputUnchecked(input, seekPosition);
-  }
-
-  private int leaveChaptersDetour(ExtractorInput input, PositionHolder seekPosition) {
-    inChaptersDetour = false;
-    chaptersDetourLanding = false;
-    reader.reset();
-    chooseIndexSeekAtFirstCluster();
-    if (maybeSeekForCues(seekPosition, input.getPosition())) {
-      return Extractor.RESULT_SEEK;
-    }
-    return Extractor.RESULT_CONTINUE;
-  }
-
-  private int readFromInputUnchecked(ExtractorInput input, PositionHolder seekPosition)
-      throws IOException {
     haveOutputSample = false;
     boolean continueReading = true;
     while (continueReading && !haveOutputSample) {
-      try {
-        continueReading = reader.read(input);
-      } catch (ParserException | IllegalStateException malformed) {
-        // Preserve the parse failure location: a failed fork recovery scan can move
-        // tens of MB toward EOF, but must not turn mid-file corruption into a tail.
-        ebmlFailurePosition = input.getPosition();
-        // NuvioTV fork: Usenet zero-fill holes corrupt an element header or size
-        // varint mid-stream, surfacing here as ParserException (3001) or a varint
-        // IllegalStateException (2000). Skip the padded region and resync to the
-        // next Cluster instead of killing playback. Gated on sentSeekMap so this
-        // only runs past the header (inside cluster data), and budgeted so a
-        // pervasively-damaged stream still fails over via the caller.
-        if (!sentSeekMap || resyncBudget <= 0) {
-          throw malformed;
-        }
-        long failPosition = input.getPosition();
-        resyncBudget--;
-        resetParsingState();
-        if (!resyncToNextCluster(input)) {
-          throw malformed;
-        }
-        Log.w(
-            TAG,
-            "MKV_RESYNC: skipped malformed data near byte "
-                + failPosition
-                + " to next cluster (budget left "
-                + resyncBudget
-                + ")");
-        continueReading = true;
-        continue;
-      }
+      continueReading = reader.read(input);
       if (pendingFinishTracks) {
         pendingFinishTracks = false;
         // Input is positioned right after the Tracks element (typically the first cluster),
@@ -1017,9 +850,6 @@ public class MatroskaExtractor implements Extractor {
       }
     }
     if (!continueReading) {
-      if (inChaptersDetour) {
-        return leaveChaptersDetour(input, seekPosition);
-      }
       return finishReadAtEndOfInput();
     }
     return Extractor.RESULT_CONTINUE;
@@ -1043,8 +873,7 @@ public class MatroskaExtractor implements Extractor {
       return false;
     }
     long length = input.getLength();
-    long position = ebmlFailurePosition != C.POSITION_UNSET
-        ? ebmlFailurePosition : input.getPosition();
+    long position = input.getPosition();
     if (length == C.LENGTH_UNSET || length <= 0L) {
       return true;
     }
@@ -1069,10 +898,6 @@ public class MatroskaExtractor implements Extractor {
    */
   @CallSuper
   protected @EbmlProcessor.ElementType int getElementType(int id) {
-    int chapterElementType = MatroskaChapterParser.elementType(id);
-    if (chapterElementType != EbmlProcessor.ELEMENT_TYPE_UNKNOWN) {
-      return chapterElementType;
-    }
     switch (id) {
       case ID_EBML:
       case ID_SEGMENT:
@@ -1115,11 +940,6 @@ public class MatroskaExtractor implements Extractor {
       case ID_TRACK_TYPE:
       case ID_FLAG_DEFAULT:
       case ID_FLAG_FORCED:
-      case ID_FLAG_HEARING_IMPAIRED:
-      case ID_FLAG_VISUAL_IMPAIRED:
-      case ID_FLAG_TEXT_DESCRIPTIONS:
-      case ID_FLAG_ORIGINAL:
-      case ID_FLAG_COMMENTARY:
       case ID_DEFAULT_DURATION:
       case ID_MAX_BLOCK_ADDITION_ID:
       case ID_BLOCK_ADD_ID_TYPE:
@@ -1191,11 +1011,7 @@ public class MatroskaExtractor implements Extractor {
    */
   @CallSuper
   protected boolean isLevel1Element(int id) {
-    return id == ID_SEGMENT_INFO
-        || id == ID_CLUSTER
-        || id == ID_CUES
-        || id == ID_TRACKS
-        || id == MatroskaChapterParser.ID_CHAPTERS;
+    return id == ID_SEGMENT_INFO || id == ID_CLUSTER || id == ID_CUES || id == ID_TRACKS;
   }
 
   /**
@@ -1207,14 +1023,6 @@ public class MatroskaExtractor implements Extractor {
   protected void startMasterElement(int id, long contentPosition, long contentSize)
       throws ParserException {
     assertInitialized();
-    if (chaptersDetourLanding) {
-      chaptersDetourLanding = false;
-      if (id != MatroskaChapterParser.ID_CHAPTERS) {
-        inChaptersDetour = false;
-        chooseIndexSeekAtFirstCluster();
-      }
-    }
-    chapterParser.startMasterElement(id);
     switch (id) {
       case ID_SEGMENT:
         if (segmentContentPosition != C.INDEX_UNSET && segmentContentPosition != contentPosition) {
@@ -1231,9 +1039,6 @@ public class MatroskaExtractor implements Extractor {
       case ID_CUES:
         if (!sentSeekMap) {
           inCuesElement = true;
-          cuesStartMs = SystemClock.elapsedRealtime();
-          cuesStartReads = TtffTrace.sourceReads;
-          cuesContentSize = contentSize;
         }
         break;
       case ID_CUE_POINT:
@@ -1264,15 +1069,21 @@ public class MatroskaExtractor implements Extractor {
           break;
         }
         if (!sentSeekMap) {
-          if (shouldSeekForChapters(
+          // We need to build cues before parsing the cluster.
+          if (seekForCuesEnabled && cuesContentPosition != C.INDEX_UNSET) {
+            // We know where the Cues element is located. Seek to request it.
+            seekForCues = true;
+          } else if (shouldFollowNestedSeekHead(
               seekForCuesEnabled,
-              chapterParser.isFinished() || chaptersDetourTried,
-              chaptersContentPosition,
-              contentPosition,
-              inputLength)) {
-            seekForChapters = true;
+              cuesContentPosition,
+              pendingSeekHeadPosition,
+              followedSeekHeadCount)) {
+            seekForSeekHead = true;
           } else {
-            chooseIndexSeekAtFirstCluster();
+            // We don't know where the Cues element is located. It's most likely omitted. Allow
+            // playback, but disable seeking.
+            extractorOutput.seekMap(new SeekMap.Unseekable(durationUs));
+            sentSeekMap = true;
           }
         }
         break;
@@ -1302,35 +1113,6 @@ public class MatroskaExtractor implements Extractor {
     }
   }
 
-  private void logIndexRead() {
-    if (cuesStartMs == C.TIME_UNSET) {
-      return;
-    }
-    int points = 0;
-    for (int i = 0; i < perTrackCues.size(); i++) {
-      points += perTrackCues.valueAt(i).size();
-    }
-    TtffTrace.INSTANCE.mirror(
-        indexReadLine(
-            cuesContentSize,
-            points,
-            SystemClock.elapsedRealtime() - cuesStartMs,
-            TtffTrace.sourceReads - cuesStartReads));
-    cuesStartMs = C.TIME_UNSET;
-  }
-
-  static String indexReadLine(long indexBytes, int cuePoints, long elapsedMs, long sourceReads) {
-    return "[mkv_index] "
-        + (indexBytes / 1024)
-        + " KB, "
-        + cuePoints
-        + " cue points, "
-        + elapsedMs
-        + " ms, "
-        + sourceReads
-        + " source reads";
-  }
-
   /**
    * Called when the end of a master element is encountered.
    *
@@ -1339,15 +1121,6 @@ public class MatroskaExtractor implements Extractor {
   @CallSuper
   protected void endMasterElement(int id) throws ParserException {
     assertInitialized();
-    boolean wasInChapters = chapterParser.isInChapters();
-    chapterParser.endMasterElement(id);
-    if (wasInChapters && chapterParser.isFinished()) {
-      publishChapters();
-      if (inChaptersDetour) {
-        inChaptersDetour = false;
-        chooseIndexSeekAtFirstCluster();
-      }
-    }
     switch (id) {
       case ID_SEGMENT_INFO:
         if (timecodeScale == C.TIME_UNSET) {
@@ -1365,8 +1138,6 @@ public class MatroskaExtractor implements Extractor {
         }
         if (seekEntryId == ID_CUES) {
           cuesContentPosition = seekEntryPosition;
-        } else if (seekEntryId == MatroskaChapterParser.ID_CHAPTERS) {
-          chaptersContentPosition = seekEntryPosition;
         } else if (seekEntryId == ID_TRACKS) {
           tracksContentPosition = seekEntryPosition;
         } else if (seekEntryId == ID_SEEK_HEAD) {
@@ -1408,7 +1179,6 @@ public class MatroskaExtractor implements Extractor {
           }
           sentSeekMap = true;
           inCuesElement = false;
-          logIndexRead();
           for (int i = 0; i < tracks.size(); i++) {
             Track track = tracks.valueAt(i);
             track.maybeAddThumbnailMetadata(
@@ -1501,9 +1271,6 @@ public class MatroskaExtractor implements Extractor {
         } else {
           if (isCodecSupported(currentTrack.codecId)) {
             currentTrack.initializeFormat(currentTrack.number, dolbyVisionSampleTransformer);
-            if (chaptersMetadata != null) {
-              currentTrack.addChaptersMetadata(chaptersMetadata);
-            }
             currentTrack.output = extractorOutput.track(currentTrack.number, currentTrack.type);
             // Publish a provisional format even when DTS analysis is pending. Withholding it
             // blocks endTracks() until the first DTS sample is read, but the loader can stop
@@ -1602,10 +1369,6 @@ public class MatroskaExtractor implements Extractor {
    */
   @CallSuper
   protected void integerElement(int id, long value) throws ParserException {
-    if (chapterParser.isInChapters()) {
-      chapterParser.integerElement(id, value);
-      return;
-    }
     switch (id) {
       case ID_EBML_READ_VERSION:
         // Validate that EBMLReadVersion is supported. This extractor only supports v1.
@@ -1652,31 +1415,6 @@ public class MatroskaExtractor implements Extractor {
         break;
       case ID_FLAG_FORCED:
         getCurrentTrack(id).flagForced = value == 1;
-        break;
-      case ID_FLAG_HEARING_IMPAIRED:
-        if (currentTrack != null) {
-          currentTrack.flagHearingImpaired = value == 1;
-        }
-        break;
-      case ID_FLAG_VISUAL_IMPAIRED:
-        if (currentTrack != null) {
-          currentTrack.flagVisualImpaired = value == 1;
-        }
-        break;
-      case ID_FLAG_TEXT_DESCRIPTIONS:
-        if (currentTrack != null) {
-          currentTrack.flagTextDescriptions = value == 1;
-        }
-        break;
-      case ID_FLAG_ORIGINAL:
-        if (currentTrack != null) {
-          currentTrack.flagOriginal = value == 1;
-        }
-        break;
-      case ID_FLAG_COMMENTARY:
-        if (currentTrack != null) {
-          currentTrack.flagCommentary = value == 1;
-        }
         break;
       case ID_TRACK_TYPE:
         int matroskaTrackType = (int) value;
@@ -1948,10 +1686,6 @@ public class MatroskaExtractor implements Extractor {
    */
   @CallSuper
   protected void stringElement(int id, String value) throws ParserException {
-    if (chapterParser.isInChapters()) {
-      chapterParser.stringElement(id, value);
-      return;
-    }
     switch (id) {
       case ID_DOC_TYPE:
         // Validate that DocType is supported.
@@ -2234,7 +1968,7 @@ public class MatroskaExtractor implements Extractor {
       input.readFully(blockAdditionalData, 0, contentSize);
       track.pendingDolbyVisionBlockAdditionalData = blockAdditionalData;
 
-      if (dolbyVisionSampleTransformer != null && !track.hasContentEncryption) {
+      if (dolbyVisionSampleTransformer != null) {
         try {
           byte[] transformed =
               dolbyVisionSampleTransformer.onDolbyVisionBlockAdditionalData(
@@ -2503,7 +2237,7 @@ public class MatroskaExtractor implements Extractor {
         // If there is supplemental data, the structure of the sample data is:
         // encryption data (if any) || sample size (4 bytes) || sample data || supplemental data
         deferSupplementalMainSampleSizePrefix =
-            track.isHevc && !track.hasContentEncryption && track.requiresDolbyVisionTransform && dolbyVisionSampleTransformer != null;
+            track.isHevc && track.requiresDolbyVisionTransform && dolbyVisionSampleTransformer != null;
         if (!deferSupplementalMainSampleSizePrefix) {
           int sampleSize = size + sampleStrippedBytes.limit() - sampleBytesRead;
           writeSupplementalMainSampleSizePrefix(output, sampleSize);
@@ -2514,7 +2248,7 @@ public class MatroskaExtractor implements Extractor {
       sampleEncodingHandled = true;
     }
     size += sampleStrippedBytes.limit();
-    if (track.isHevc && !track.hasContentEncryption && track.requiresDolbyVisionTransform && dolbyVisionSampleTransformer != null) {
+    if (track.isHevc && track.requiresDolbyVisionTransform && dolbyVisionSampleTransformer != null) {
       try {
         // Phase-2 seam: sample event is surfaced here. Payload replacement is added in a later
         // step once DV conversion is wired for full HEVC access units.
@@ -2525,7 +2259,7 @@ public class MatroskaExtractor implements Extractor {
       }
     }
 
-    if (track.isHevc && !track.hasContentEncryption && track.requiresDolbyVisionTransform && dolbyVisionSampleTransformer != null) {
+    if (track.isHevc && track.requiresDolbyVisionTransform && dolbyVisionSampleTransformer != null) {
       int remainingSampleBytes = size - sampleBytesRead;
       if (dolbyVisionSampleBuffer.length < remainingSampleBytes) {
         int newSize = Math.max(remainingSampleBytes, dolbyVisionSampleBuffer.length * 2);
@@ -2539,7 +2273,6 @@ public class MatroskaExtractor implements Extractor {
       byte[] payloadToWrite = sampleLengthDelimitedData;
       int payloadLength = remainingSampleBytes;
       try {
-        dolbyVisionSampleTransformer.onSampleTimeUs(blockTimeUs);
         byte[] transformedPayload =
             dolbyVisionSampleTransformer.transformHevcSample(
                 sampleLengthDelimitedData,
@@ -2914,17 +2647,6 @@ public class MatroskaExtractor implements Extractor {
       seekPositionAfterReadingTracks = C.INDEX_UNSET;
       return true;
     }
-    if (seekForChapters) {
-      seekForChapters = false;
-      chaptersDetourTried = true;
-      if (seekPositionAfterBuildingCues == C.INDEX_UNSET) {
-        seekPositionAfterBuildingCues = currentPosition;
-      }
-      inChaptersDetour = true;
-      chaptersDetourLanding = true;
-      seekPosition.position = chaptersContentPosition;
-      return true;
-    }
     if (seekForSeekHead) {
       long target = pendingSeekHeadPosition;
       pendingSeekHeadPosition = C.INDEX_UNSET;
@@ -2963,51 +2685,6 @@ public class MatroskaExtractor implements Extractor {
     return false;
   }
 
-  /** Decides at the first Cluster how the seek index is found: Cues, a nested SeekHead, or none. */
-  private void chooseIndexSeekAtFirstCluster() {
-    if (sentSeekMap) {
-      return;
-    }
-    if (seekForCuesEnabled && cuesContentPosition != C.INDEX_UNSET) {
-      seekForCues = true;
-    } else if (shouldFollowNestedSeekHead(
-        seekForCuesEnabled, cuesContentPosition, pendingSeekHeadPosition, followedSeekHeadCount)) {
-      seekForSeekHead = true;
-    } else {
-      // No Cues: allow playback, but disable seeking.
-      checkNotNull(extractorOutput).seekMap(new SeekMap.Unseekable(durationUs));
-      sentSeekMap = true;
-    }
-  }
-
-  private void publishChapters() {
-    ChaptersMetadata chapters = chapterParser.result();
-    if (chapters == null || chaptersMetadata != null) {
-      return;
-    }
-    chaptersMetadata = chapters;
-    android.util.Log.i(TAG, "MKV chapters: " + chapters.chapters.size());
-    for (int i = 0; i < tracks.size(); i++) {
-      Track track = tracks.valueAt(i);
-      if (track.addChaptersMetadata(chapters) && track.output != null) {
-        track.output.format(checkNotNull(track.format));
-      }
-    }
-  }
-
-  static boolean shouldSeekForChapters(
-      boolean seekForCuesEnabled,
-      boolean chaptersReadOrTried,
-      long chaptersPosition,
-      long firstClusterContentPosition,
-      long inputLength) {
-    return seekForCuesEnabled
-        && !chaptersReadOrTried
-        && chaptersPosition != C.INDEX_UNSET
-        && chaptersPosition > firstClusterContentPosition
-        && (inputLength == C.LENGTH_UNSET || chaptersPosition < inputLength);
-  }
-
   /**
    * Whether to jump to a Tracks element the SeekHead placed after this Cluster before parsing it.
    * Only once, and only when no tracks are known yet.
@@ -3033,26 +2710,6 @@ public class MatroskaExtractor implements Extractor {
       extractorOutput.seekMap(new SeekMap.Unseekable(durationUs));
       sentSeekMap = true;
     }
-  }
-
-  /** Media3 role flags for the Matroska track flags; none set means no role. */
-  @C.RoleFlags
-  static int roleFlagsFor(
-      boolean commentary, boolean visualImpaired, boolean hearingImpaired, boolean original) {
-    @C.RoleFlags int roleFlags = 0;
-    if (commentary) {
-      roleFlags |= C.ROLE_FLAG_COMMENTARY;
-    }
-    if (visualImpaired) {
-      roleFlags |= C.ROLE_FLAG_DESCRIBES_VIDEO;
-    }
-    if (hearingImpaired) {
-      roleFlags |= C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND;
-    }
-    if (original && roleFlags == 0) {
-      roleFlags = C.ROLE_FLAG_MAIN;
-    }
-    return roleFlags;
   }
 
   static boolean shouldFollowNestedSeekHead(
@@ -3208,7 +2865,6 @@ public class MatroskaExtractor implements Extractor {
       }
       earlyDtsScanBuffer = Arrays.copyOf(earlyDtsScanBuffer, newSize);
     }
-    input.resetPeekPosition();
     return input.peekFully(earlyDtsScanBuffer, 0, length, true);
   }
 
@@ -3275,35 +2931,57 @@ public class MatroskaExtractor implements Extractor {
     if (track == null || !track.waitingForDtsAnalysis) {
       return;
     }
-    int searchStart = dataStart + trackNumberLength + 3;
-    int searchEnd =
-        (int) Math.min((long) dataEnd, (long) searchStart + MAX_EARLY_DTS_BLOCK_HEADER_BYTES);
-    if (searchStart + 4 > dataEnd || !ensureScanBytes(input, searchEnd)) {
+    int pos = dataStart + trackNumberLength;
+    if (pos + 3 > dataEnd) {
       return;
     }
-    int syncPos = -1;
-    for (int p = searchStart; p + 4 <= searchEnd; p++) {
-      int word =
-          (earlyDtsScanBuffer[p] & 0xFF) << 24
-              | (earlyDtsScanBuffer[p + 1] & 0xFF) << 16
-              | (earlyDtsScanBuffer[p + 2] & 0xFF) << 8
-              | (earlyDtsScanBuffer[p + 3] & 0xFF);
-      if (androidx.media3.extractor.DtsUtil.getFrameType(word)
-          != androidx.media3.extractor.DtsUtil.FRAME_TYPE_UNKNOWN) {
-        syncPos = p;
+    int flags = earlyDtsScanBuffer[pos + 2] & 0xFF;
+    pos += 3; // Skip the 2-byte timecode and the flags byte.
+    switch ((flags & 0x06) >> 1) {
+      case 1: { // Xiph lacing.
+        if (pos >= dataEnd) {
+          return;
+        }
+        int laces = earlyDtsScanBuffer[pos++] & 0xFF;
+        for (int i = 0; i < laces && pos < dataEnd; i++) {
+          while (pos < dataEnd && (earlyDtsScanBuffer[pos] & 0xFF) == 0xFF) {
+            pos++;
+          }
+          pos++;
+        }
         break;
       }
+      case 2: { // EBML lacing.
+        if (pos >= dataEnd) {
+          return;
+        }
+        pos++; // Lace count.
+        if (pos >= dataEnd) {
+          return;
+        }
+        int firstSizeLength = ebmlVintLength(earlyDtsScanBuffer[pos] & 0xFF);
+        if (firstSizeLength == 0) {
+          return;
+        }
+        pos += firstSizeLength; // First frame's signed size; frame data follows.
+        break;
+      }
+      case 3: { // Fixed-size lacing.
+        if (pos >= dataEnd) {
+          return;
+        }
+        pos++; // Lace count.
+        break;
+      }
+      default:
+        break; // No lacing.
     }
-    if (syncPos < 0) {
-      return;
-    }
-    int frameLength = Math.min(dataEnd - syncPos, MAX_EARLY_DTS_FRAME_BYTES);
-    if (frameLength < 16 || !ensureScanBytes(input, syncPos + frameLength)) {
+    int frameLength = Math.min(dataEnd - pos, MAX_EARLY_DTS_FRAME_BYTES);
+    if (frameLength < 16 || !ensureScanBytes(input, pos + frameLength)) {
       return;
     }
     String mimeType =
-        DtsUtil.getDtsAudioMimeType(
-            Arrays.copyOfRange(earlyDtsScanBuffer, syncPos, syncPos + frameLength));
+        DtsUtil.getDtsAudioMimeType(Arrays.copyOfRange(earlyDtsScanBuffer, pos, pos + frameLength));
     if (mimeType != null && !mimeType.equals(track.format.sampleMimeType)) {
       track.format = track.format.buildUpon().setSampleMimeType(mimeType).build();
     }
@@ -3441,8 +3119,6 @@ public class MatroskaExtractor implements Extractor {
     public float maxMasteringLuminance = Format.NO_VALUE;
     public float minMasteringLuminance = Format.NO_VALUE;
     public byte @MonotonicNonNull [] dolbyVisionConfigBytes;
-    public @C.ColorTransfer int bitstreamColorTransfer = Format.NO_VALUE;
-    public @C.ColorTransfer int dolbyVisionBaseLayerTransfer = Format.NO_VALUE;
     public byte @MonotonicNonNull [] pendingDolbyVisionBlockAdditionalData;
 
     // Audio elements. Initially set to their default values.
@@ -3459,11 +3135,6 @@ public class MatroskaExtractor implements Extractor {
 
     // Common track elements.
     public boolean flagDefault = true;
-    public boolean flagHearingImpaired;
-    public boolean flagVisualImpaired;
-    public boolean flagTextDescriptions;
-    public boolean flagOriginal;
-    public boolean flagCommentary;
     private String language = "eng";
 
     // Set when the output is initialized. nalUnitLengthFieldLength is only set for H264/H265.
@@ -3518,7 +3189,6 @@ public class MatroskaExtractor implements Extractor {
           initializationData = hevcConfig.initializationData;
           nalUnitLengthFieldLength = hevcConfig.nalUnitLengthFieldLength;
           codecs = hevcConfig.codecs;
-          bitstreamColorTransfer = hevcConfig.colorTransfer;
           break;
         case CODEC_ID_FOURCC:
           Pair<String, @NullableType List<byte[]>> pair =
@@ -3699,7 +3369,7 @@ public class MatroskaExtractor implements Extractor {
           } else {
           codecs = dolbyVisionConfig.codecs;
           mimeType = MimeTypes.VIDEO_DOLBY_VISION;
-          if (dolbyVisionSampleTransformer != null && !hasContentEncryption) {
+          if (dolbyVisionSampleTransformer != null) {
             @Nullable
             String transformedCodecs =
                     dolbyVisionSampleTransformer.onDolbyVisionCodecString(
@@ -3717,17 +3387,12 @@ public class MatroskaExtractor implements Extractor {
               if (DolbyVisionCompatibility.isHdr10BaseLayerModeActive()) {
                 mimeType = MimeTypes.VIDEO_H265;
                 codecs = hevcCodecsString;
-                dolbyVisionBaseLayerTransfer =
-                    DolbyVisionBaseLayerColor.baseLayerTransfer(
-                        dolbyVisionConfig.profile,
-                        DolbyVisionBaseLayerColor.compatibilityId(this.dolbyVisionConfigBytes),
-                        bitstreamColorTransfer);
               }
             }
           }
           }
         }
-      } else if (dolbyVisionSampleTransformer != null && !hasContentEncryption && codecs != null) {
+      } else if (dolbyVisionSampleTransformer != null && codecs != null) {
         String lower = codecs.toLowerCase(Locale.ROOT);
         if (lower.startsWith("dvhe.")
             || lower.startsWith("dvh1.")
@@ -3792,7 +3457,6 @@ public class MatroskaExtractor implements Extractor {
                   .setChromaBitdepth(bitsPerChannel)
                   .build();
         }
-        colorInfo = DolbyVisionBaseLayerColor.colorInfoFor(colorInfo, dolbyVisionBaseLayerTransfer);
         int rotationDegrees = Format.NO_VALUE;
 
         if (name != null && TRACK_NAME_TO_ROTATION_DEGREES.containsKey(name)) {
@@ -3811,18 +3475,6 @@ public class MatroskaExtractor implements Extractor {
             rotationDegrees = 180;
           } else if (Float.compare(projectionPoseRoll, -90f) == 0) {
             rotationDegrees = 270;
-          }
-        }
-        // Fork: surface the container-declared frame rate. Matroska's
-        // TrackEntry DefaultDuration is nanoseconds per frame for fixed-rate
-        // video; media3 parses it into defaultSampleDurationNs but never feeds
-        // Format.frameRate, so MKV (unlike MP4, whose BoxParser sets it)
-        // cannot otherwise trigger the track-format AFR path on ExoPlayer. The
-        // bounds reject malformed values and still-image tracks.
-        if (defaultSampleDurationNs > 0) {
-          float declaredFrameRate = 1_000_000_000f / defaultSampleDurationNs;
-          if (declaredFrameRate >= 5f && declaredFrameRate <= 121f) {
-            formatBuilder.setFrameRate(declaredFrameRate);
           }
         }
         formatBuilder
@@ -3856,18 +3508,12 @@ public class MatroskaExtractor implements Extractor {
               .setMaxInputSize(maxInputSize)
               .setLanguage(language)
               .setSelectionFlags(selectionFlags)
-              .setRoleFlags(
-                  roleFlagsFor(
-                      flagCommentary,
-                      flagVisualImpaired || flagTextDescriptions,
-                      flagHearingImpaired,
-                      flagOriginal))
               .setInitializationData(initializationData)
               .setCodecs(codecs)
               .setDrmInitData(drmInitData)
               .build();
       requiresDolbyVisionTransform =
-          dolbyVisionSampleTransformer != null && !hasContentEncryption
+          dolbyVisionSampleTransformer != null
               && dolbyVisionSampleTransformer.shouldTransform(codecs, dolbyVisionConfigBytes);
       isHevc = CODEC_ID_H265.equals(codecId);
     }
@@ -3936,27 +3582,6 @@ public class MatroskaExtractor implements Extractor {
       hdrStaticInfo.putShort((short) maxContentLuminance);
       hdrStaticInfo.putShort((short) maxFrameAverageLuminance);
       return hdrStaticInfoData;
-    }
-
-    /** Adds the chapters to the track's format; returns whether the format changed. */
-    private boolean addChaptersMetadata(ChaptersMetadata chapters) {
-      if (format == null) {
-        return false;
-      }
-      Metadata existingMetadata = format.metadata;
-      if (existingMetadata != null) {
-        for (int i = 0; i < existingMetadata.length(); i++) {
-          if (existingMetadata.get(i) instanceof ChaptersMetadata) {
-            return false;
-          }
-        }
-      }
-      Metadata newMetadata =
-          existingMetadata == null
-              ? new Metadata(chapters)
-              : existingMetadata.copyWithAppendedEntries(chapters);
-      format = format.buildUpon().setMetadata(newMetadata).build();
-      return true;
     }
 
     /**
@@ -4062,15 +3687,8 @@ public class MatroskaExtractor implements Extractor {
       try {
         buffer.skipBytes(16); // size(4), width(4), height(4), planes(2), bitcount(2).
         long compression = buffer.readLittleEndianUnsignedInt();
-        if (compression == FOURCC_COMPRESSION_DIVX
-            || compression == FOURCC_COMPRESSION_DIVX_LOWER
-            || compression == FOURCC_COMPRESSION_DX50
-            || compression == FOURCC_COMPRESSION_XVID
-            || compression == FOURCC_COMPRESSION_XVID_LOWER
-            || compression == FOURCC_COMPRESSION_FMP4
-            || compression == FOURCC_COMPRESSION_MP4V) {
-          // MPEG-4 ASP stored the VFW way; the VOL header is in-band.
-          return new Pair<>(MimeTypes.VIDEO_MP4V, null);
+        if (compression == FOURCC_COMPRESSION_DIVX) {
+          return new Pair<>(MimeTypes.VIDEO_DIVX, null);
         } else if (compression == FOURCC_COMPRESSION_H263) {
           return new Pair<>(MimeTypes.VIDEO_H263, null);
         } else if (compression == FOURCC_COMPRESSION_VC1) {

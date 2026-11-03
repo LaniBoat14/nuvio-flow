@@ -13,16 +13,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.compose.currentStateAsState
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -36,7 +36,6 @@ import com.nuvio.tv.core.player.LetterboxSampler
 import com.nuvio.tv.core.player.LetterboxTracker
 import com.nuvio.tv.core.player.LocalTrailerPlayerPool
 import com.nuvio.tv.core.player.TrailerPlayerPool
-import com.nuvio.tv.data.trailer.TrailerPlaybackFailures
 import com.nuvio.tv.data.trailer.YoutubeChunkedDataSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -46,15 +45,6 @@ import com.nuvio.tv.R
 import kotlinx.coroutines.delay
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-/**
- * Fork: uniform zoom applied to every trailer surface (hero, detail, shared
- * overlay, poster card). 1.0 = no crop. A value like 1.10 trims most of the
- * letterbox on 2.39:1 trailers but loses ~5% off every edge, including the
- * network logos in the safe area. Tune
- * here; callers may still override per surface.
- */
-const val TRAILER_OVERSCAN_ZOOM = 1.0f
-
 @Composable
 fun TrailerPlayer(
     trailerUrl: String?,
@@ -70,34 +60,26 @@ fun TrailerPlayer(
     onProgressChanged: (positionMs: Long, durationMs: Long) -> Unit = { _, _ -> },
     onRemoteKey: (keyCode: Int, action: Int, repeatCount: Int) -> Boolean = { _, _, _ -> false },
     cropToFill: Boolean = false,
-    transparentVideoBackground: Boolean = false,
-    onVideoAspectRatioChanged: (Float) -> Unit = {},
-    overscanZoom: Float = TRAILER_OVERSCAN_ZOOM,
+    overscanZoom: Float = 1f,
     autoCropLetterbox: Boolean = false,
     modifier: Modifier = Modifier,
     enter: EnterTransition = fadeIn(animationSpec = tween(800)),
     exit: ExitTransition = fadeOut(animationSpec = tween(500)),
     trailerPlayerPool: TrailerPlayerPool? = null
 ) {
+    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val lifecycleState by lifecycleOwner.lifecycle.currentStateAsState()
-    val playbackActive = isPlaying && lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
-    val playerOwner = remember { Any() }
-    val currentIsPaused by rememberUpdatedState(isPaused)
-    val currentOnEnded by rememberUpdatedState(onEnded)
+    val activityLifecycleOwner = remember(context) { context as? androidx.lifecycle.LifecycleOwner ?: lifecycleOwner }
     val currentIsPlaying by rememberUpdatedState(isPlaying)
+    val currentTrailerUrl by rememberUpdatedState(trailerUrl)
+    val currentTrailerAudioUrl by rememberUpdatedState(trailerAudioUrl)
+    val currentOnEnded by rememberUpdatedState(onEnded)
     val currentOnError by rememberUpdatedState(onError)
     val currentOnFirstFrameRendered by rememberUpdatedState(onFirstFrameRendered)
     val currentOnProgressChanged by rememberUpdatedState(onProgressChanged)
     val currentOnRemoteKey by rememberUpdatedState(onRemoteKey)
-    val currentOnVideoAspectRatioChanged by rememberUpdatedState(onVideoAspectRatioChanged)
+    val zoomScale = if (cropToFill) overscanZoom.coerceAtLeast(1f) else 1f
     var hasRenderedFirstFrame by remember(trailerUrl) { mutableStateOf(false) }
-    val popupBackdrop = com.nuvio.tv.ui.v2.components.LocalPopupGlassBackdrop.current
-    val rendersLiveFrames = playbackActive && !isPaused && hasRenderedFirstFrame
-    DisposableEffect(popupBackdrop, rendersLiveFrames) {
-        if (rendersLiveFrames) popupBackdrop?.attachTrailer()
-        onDispose { if (rendersLiveFrames) popupBackdrop?.detachTrailer() }
-    }
     val playerAlphaState = animateFloatAsState(
         targetValue = if (isPlaying && hasRenderedFirstFrame) 1f else 0f,
         animationSpec = tween(durationMillis = 300),
@@ -114,37 +96,20 @@ fun TrailerPlayer(
     // Resolve pool: explicit parameter > CompositionLocal
     val resolvedPool = trailerPlayerPool ?: LocalTrailerPlayerPool.current
 
-    LaunchedEffect(resolvedPool, trailerUrl, trailerAudioUrl, isPlaying, lifecycleState) {
-        if (!isPlaying && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && !trailerUrl.isNullOrBlank()) {
-            resolvedPool?.preload(com.nuvio.tv.data.trailer.TrailerPlaybackSource(trailerUrl, trailerAudioUrl))
+    // Use the shared pool instance instead of creating a new ExoPlayer per focus.
+    // The pool keeps one ExoPlayer alive across poster focus changes, eliminating
+    // the expensive create/teardown cycle that was the app-launch bottleneck.
+    val trailerPlayer = remember(trailerUrl, resolvedPool) {
+        if (trailerUrl != null) {
+            resolvedPool?.acquire()
+        } else {
+            null
         }
     }
 
-    // Acquire only for a visible, resumed preview. A resolved URL alone must not
-    // allocate a player during Details metadata loading or an outgoing transition.
-    var trailerPlayer by remember(resolvedPool) { mutableStateOf<ExoPlayer?>(null) }
-    var playbackGeneration by remember { mutableIntStateOf(0) }
-    var prepareStartedAtMs by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
-    var loadedTrailerUrl by remember { mutableStateOf<String?>(null) }
-    val hasTrailer = !trailerUrl.isNullOrBlank()
-    DisposableEffect(resolvedPool, lifecycleOwner, isPlaying, hasTrailer) {
-        val binding = com.nuvio.tv.core.player.TrailerLifecycleBinding(
-            lifecycleOwner.lifecycle,
-            resume = {
-                if (isPlaying && hasTrailer) {
-                    trailerPlayer = resolvedPool?.acquire(playerOwner)
-                    playbackGeneration++
-                }
-            },
-            pause = { resolvedPool?.stop(playerOwner) }
-        )
-        onDispose { binding.close() }
-    }
-
     // Configure player settings when acquired
-    LaunchedEffect(trailerPlayer, playbackGeneration, muted, cropToFill) {
+    LaunchedEffect(trailerPlayer, muted, cropToFill) {
         val player = trailerPlayer ?: return@LaunchedEffect
-        if (resolvedPool?.isOwner(playerOwner) != true) return@LaunchedEffect
         player.volume = if (muted) 0f else 1f
         player.videoScalingMode = if (cropToFill) {
             C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
@@ -153,13 +118,11 @@ fun TrailerPlayer(
         }
     }
 
-    // Keep the player consistent with the effect key when acquisition triggers recomposition.
-    val acquiredPlayer = trailerPlayer
-    LaunchedEffect(playbackActive, playbackGeneration, trailerUrl, trailerAudioUrl, acquiredPlayer) {
-        hasRenderedFirstFrame = false
-        val player = acquiredPlayer ?: return@LaunchedEffect
-        if (resolvedPool?.isOwner(playerOwner) != true) return@LaunchedEffect
-        if (playbackActive && trailerUrl != null) {
+    LaunchedEffect(isPlaying, trailerUrl, trailerAudioUrl, muted, trailerPlayer) {
+        val player = trailerPlayer ?: return@LaunchedEffect
+        player.volume = if (muted) 0f else 1f
+        if (isPlaying && trailerUrl != null) {
+            hasRenderedFirstFrame = false
             if (!trailerAudioUrl.isNullOrBlank()) {
                 val mediaSourceFactory = DefaultMediaSourceFactory(YoutubeChunkedDataSourceFactory())
                 val videoSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(trailerUrl))
@@ -168,18 +131,27 @@ fun TrailerPlayer(
             } else {
                 player.setMediaItem(MediaItem.fromUri(trailerUrl))
             }
-            loadedTrailerUrl = trailerUrl
-            prepareStartedAtMs = android.os.SystemClock.elapsedRealtime()
-            android.util.Log.d("TrailerPlayback", "prepare provider=${if (trailerUrl.contains(".media-imdb.com")) "imdb" else "other"} separateAudio=${!trailerAudioUrl.isNullOrBlank()}")
             player.prepare()
-            player.playWhenReady = !currentIsPaused
+            player.playWhenReady = true
+        } else {
+            hasRenderedFirstFrame = false
+            player.playWhenReady = false
+            // Defer heavy stop and clear until focus settling/collapse has finished
+            delay(150)
+            if (!isPlaying) {
+                player.stop()
+                player.clearMediaItems()
+            }
         }
     }
 
-    LaunchedEffect(isPaused, playbackActive, playbackGeneration, trailerPlayer) {
+    LaunchedEffect(trailerPlayer, cropToFill) {
         val player = trailerPlayer ?: return@LaunchedEffect
-        if (!playbackActive || resolvedPool?.isOwner(playerOwner) != true) return@LaunchedEffect
-        player.playWhenReady = !isPaused
+        player.videoScalingMode = if (cropToFill) {
+            C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+        } else {
+            C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+        }
     }
 
     LaunchedEffect(autoCropLetterbox, hasRenderedFirstFrame, trailerPlayer) {
@@ -203,18 +175,24 @@ fun TrailerPlayer(
         }
     }
 
+    LaunchedEffect(isPaused, trailerPlayer) {
+        val player = trailerPlayer ?: return@LaunchedEffect
+        if (!isPlaying) return@LaunchedEffect
+        player.playWhenReady = !isPaused
+    }
+
     LaunchedEffect(seekRequestToken, seekDeltaMs, trailerPlayer) {
         val player = trailerPlayer ?: return@LaunchedEffect
-        if (seekRequestToken <= 0 || resolvedPool?.isOwner(playerOwner) != true) return@LaunchedEffect
+        if (seekRequestToken <= 0) return@LaunchedEffect
         val duration = player.duration.takeIf { it > 0 } ?: 0L
         val current = player.currentPosition
         val target = (current + seekDeltaMs).coerceIn(0L, duration.coerceAtLeast(0L))
         player.seekTo(target)
     }
 
-    LaunchedEffect(trailerPlayer, playbackActive, playbackGeneration) {
+    LaunchedEffect(trailerPlayer, isPlaying) {
         val player = trailerPlayer ?: return@LaunchedEffect
-        while (playbackActive && resolvedPool?.isOwner(playerOwner) == true) {
+        while (isPlaying) {
             val position = player.currentPosition.coerceAtLeast(0L)
             val duration = player.duration.takeIf { it > 0 } ?: 0L
             currentOnProgressChanged(position, duration)
@@ -223,18 +201,11 @@ fun TrailerPlayer(
         currentOnProgressChanged(0L, 0L)
     }
 
-    DisposableEffect(trailerPlayer) {
+    DisposableEffect(activityLifecycleOwner, trailerPlayer) {
         val player = trailerPlayer ?: return@DisposableEffect onDispose {}
         val listener = object : Player.Listener {
-            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                if (resolvedPool?.isOwner(playerOwner) == true && videoSize.width > 0 && videoSize.height > 0) {
-                    currentOnVideoAspectRatioChanged(videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height)
-                }
-            }
-
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (resolvedPool?.isOwner(playerOwner) == true &&
-                    playbackState == Player.STATE_ENDED &&
+                if (playbackState == Player.STATE_ENDED &&
                     currentIsPlaying &&
                     player.playWhenReady
                 ) {
@@ -242,36 +213,61 @@ fun TrailerPlayer(
                 }
             }
 
-            override fun onPlayerError(error: PlaybackException) {
-                if (resolvedPool?.isOwner(playerOwner) != true) return
-                val failedUrl = loadedTrailerUrl
-                loadedTrailerUrl = null
-                failedUrl?.let(TrailerPlaybackFailures::report)
-                if (currentIsPlaying) currentOnError()
+            override fun onRenderedFirstFrame() {
+                hasRenderedFirstFrame = true
+                currentOnFirstFrameRendered()
             }
 
-            override fun onRenderedFirstFrame() {
-                if (resolvedPool?.isOwner(playerOwner) != true) return
-                onVideoSizeChanged(player.videoSize)
-                hasRenderedFirstFrame = true
-                // A seek renders a first frame again: only the one after prepare is the start time.
-                if (prepareStartedAtMs != 0L) {
-                    android.util.Log.d("TrailerPlayback", "firstFrameAfterPrepareMs=${android.os.SystemClock.elapsedRealtime() - prepareStartedAtMs} resolution=${player.videoSize.width}x${player.videoSize.height}")
-                    prepareStartedAtMs = 0L
+            // A trailer that fails to load or decode never renders a frame, so without this the
+            // caller stays in its trailer layout over a transparent player.
+            override fun onPlayerError(error: PlaybackException) {
+                if (currentIsPlaying) {
+                    currentOnError()
                 }
-                currentOnFirstFrameRendered()
+            }
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    if (currentIsPlaying && !currentTrailerUrl.isNullOrBlank()) {
+                        if (player.currentMediaItem == null) {
+                            if (!currentTrailerAudioUrl.isNullOrBlank()) {
+                                val mediaSourceFactory = DefaultMediaSourceFactory(YoutubeChunkedDataSourceFactory())
+                                val videoSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(currentTrailerUrl!!))
+                                val audioSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(currentTrailerAudioUrl!!))
+                                player.setMediaSource(MergingMediaSource(videoSource, audioSource))
+                            } else {
+                                player.setMediaItem(MediaItem.fromUri(currentTrailerUrl!!))
+                            }
+                            player.prepare()
+                        }
+                        player.playWhenReady = true
+                    }
+                }
+                Lifecycle.Event.ON_PAUSE,
+                Lifecycle.Event.ON_STOP -> {
+                    player.playWhenReady = false
+                    player.pause()
+                    player.stop()
+                    player.clearMediaItems()
+                }
+                // Do NOT release on destroy — the pool owns the lifecycle.
+                else -> Unit
             }
         }
         player.addListener(listener)
+        activityLifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            runCatching { activityLifecycleOwner.lifecycle.removeObserver(observer) }
             runCatching { player.removeListener(listener) }
-            // The acquisition effect relinquishes only this screen's ownership.
+            // Only stop — never release. The pool manages the ExoPlayer lifecycle.
+            resolvedPool?.stop()
         }
     }
 
     if (trailerPlayer != null) {
         AnimatedVisibility(
-            visible = playbackActive && hasTrailer,
+            visible = isPlaying,
             enter = enter,
             exit = exit
         ) {
@@ -279,11 +275,6 @@ fun TrailerPlayer(
                 factory = { ctx ->
                     (LayoutInflater.from(ctx).inflate(R.layout.trailer_player_view, null) as PlayerView).apply {
                         playerViewRef.value = this
-                        if (transparentVideoBackground) {
-                            setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                            setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
-                            (videoSurfaceView as? android.view.TextureView)?.isOpaque = false
-                        }
                         player = trailerPlayer
                         isFocusable = false
                         isFocusableInTouchMode = false
@@ -299,12 +290,6 @@ fun TrailerPlayer(
                     }
                 },
                 update = { view ->
-                    // A layout preference can change without replacing this AndroidView.
-                    (view.videoSurfaceView as? android.view.TextureView)?.let { texture ->
-                        if (texture.isOpaque == transparentVideoBackground) {
-                            texture.isOpaque = !transparentVideoBackground
-                        }
-                    }
                     // Re-attach player in case it was reclaimed after yield
                     if (view.player !== trailerPlayer) {
                         view.player = trailerPlayer
@@ -324,8 +309,8 @@ fun TrailerPlayer(
                     .clipToBounds()
                     .graphicsLayer {
                         alpha = playerAlphaState.value
-                        scaleX = overscanZoom * letterboxZoomState.value
-                        scaleY = overscanZoom * letterboxZoomState.value
+                        scaleX = zoomScale * letterboxZoomState.value
+                        scaleY = zoomScale * letterboxZoomState.value
                     }
             )
         }

@@ -8,7 +8,6 @@ import com.nuvio.tv.core.poster.patternForScreen
 import com.nuvio.tv.core.poster.withCustomPosterArt
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.domain.model.WatchProgress
-import com.nuvio.tv.domain.repository.MetaRepository
 import com.nuvio.tv.ui.screens.home.ContinueWatchingItem
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -30,8 +29,7 @@ import kotlin.math.abs
 class TvRecommendationManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val programBuilder: ProgramBuilder,
-    private val layoutPreferenceDataStore: LayoutPreferenceDataStore,
-    private val metaRepository: MetaRepository
+    private val layoutPreferenceDataStore: LayoutPreferenceDataStore
 ) {
 
     private val mutex = Mutex()
@@ -57,9 +55,7 @@ class TvRecommendationManager @Inject constructor(
         val poster: String?,
         val backdrop: String?,
         val season: Int?,
-        val episode: Int?,
-        val logo: String?,
-        val description: String?
+        val episode: Int?
     )
 
     companion object {
@@ -91,7 +87,7 @@ class TvRecommendationManager @Inject constructor(
         updateWatchNext(progressList)
     }
 
-    suspend fun updateWatchNext(items: List<WatchProgress>, descriptions: Map<String, String> = emptyMap()) {
+    suspend fun updateWatchNext(items: List<WatchProgress>) {
         if (!isTvDevice()) return
         mutex.withLock {
             withContext(Dispatchers.IO) {
@@ -110,7 +106,6 @@ class TvRecommendationManager @Inject constructor(
                     // Upsert current CW programs only if they actually changed
                     decorated.forEach { p ->
                         val id = programBuilder.watchNextId(p)
-                        val description = describe(p, descriptions[p.videoId])
                         val newFingerprint = ProgramFingerprint(
                             title = p.name,
                             position = p.position,
@@ -118,9 +113,7 @@ class TvRecommendationManager @Inject constructor(
                             poster = p.poster,
                             backdrop = p.backdrop,
                             season = p.season,
-                            episode = p.episode,
-                            logo = p.logo,
-                            description = description
+                            episode = p.episode
                         )
                         val oldFingerprint = syncedFingerprints[id]
                         if (oldFingerprint != null &&
@@ -129,8 +122,6 @@ class TvRecommendationManager @Inject constructor(
                             oldFingerprint.backdrop == newFingerprint.backdrop &&
                             oldFingerprint.season == newFingerprint.season &&
                             oldFingerprint.episode == newFingerprint.episode &&
-                            oldFingerprint.logo == newFingerprint.logo &&
-                            oldFingerprint.description == newFingerprint.description &&
                             oldFingerprint.duration == newFingerprint.duration &&
                             abs(oldFingerprint.position - newFingerprint.position) < 2_000L
                         ) {
@@ -138,7 +129,7 @@ class TvRecommendationManager @Inject constructor(
                             return@forEach
                         }
 
-                        val program = programBuilder.buildWatchNextProgram(p, description)
+                        val program = programBuilder.buildWatchNextProgram(p)
                         programBuilder.upsertWatchNextProgram(program, id)
                         syncedFingerprints[id] = newFingerprint
                     }
@@ -178,7 +169,6 @@ class TvRecommendationManager @Inject constructor(
             try {
                 val decorated = progress.withCustomPosterArt(recommendationPosterPattern())
                 val id = programBuilder.watchNextId(decorated)
-                val description = describe(decorated)
                 val newFingerprint = ProgramFingerprint(
                     title = decorated.name,
                     position = decorated.position,
@@ -186,9 +176,7 @@ class TvRecommendationManager @Inject constructor(
                     poster = decorated.poster,
                     backdrop = decorated.backdrop,
                     season = decorated.season,
-                    episode = decorated.episode,
-                    logo = decorated.logo,
-                    description = description
+                    episode = decorated.episode
                 )
                 val oldFingerprint = syncedFingerprints[id]
                 if (oldFingerprint != null &&
@@ -197,30 +185,19 @@ class TvRecommendationManager @Inject constructor(
                     oldFingerprint.backdrop == newFingerprint.backdrop &&
                     oldFingerprint.season == newFingerprint.season &&
                     oldFingerprint.episode == newFingerprint.episode &&
-                    oldFingerprint.logo == newFingerprint.logo &&
-                    oldFingerprint.description == newFingerprint.description &&
                     oldFingerprint.duration == newFingerprint.duration &&
                     abs(oldFingerprint.position - newFingerprint.position) < 2_000L
                 ) {
                     return@withContext
                 }
 
-                val program = programBuilder.buildWatchNextProgram(decorated, description)
+                val program = programBuilder.buildWatchNextProgram(decorated)
                 programBuilder.upsertWatchNextProgram(program, id)
                 syncedFingerprints[id] = newFingerprint
             } catch (e: Exception) {
                 Log.w(TAG, "updateSingleWatchNextProgram failed", e)
             }
         }
-    }
-
-    private fun describe(progress: WatchProgress, knownDescription: String? = null): String? {
-        val meta = if (knownDescription.isNullOrBlank()) {
-            metaRepository.getCachedMeta(progress.contentType, progress.contentId)
-        } else {
-            null
-        }
-        return watchNextDescription(progress, meta, knownDescription)
     }
 
     private suspend fun recommendationPosterPattern(): String {

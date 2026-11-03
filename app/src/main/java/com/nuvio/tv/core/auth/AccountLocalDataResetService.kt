@@ -6,7 +6,6 @@ import com.nuvio.tv.core.sync.androidtv.AndroidTvChannelManager
 import com.nuvio.tv.core.profile.ProfileScopedCredentialStore
 import com.nuvio.tv.data.local.ProfileDataStore
 import com.nuvio.tv.data.local.ProfileDataStoreFactory
-import com.nuvio.tv.data.local.ContinueWatchingSnapshotStorage
 import com.nuvio.tv.data.local.ProfileLockStateDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
@@ -14,8 +13,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.sync.withLock
 
 private const val ACCOUNT_RESET_TAG = "AccountDataReset"
 
@@ -26,30 +23,24 @@ class AccountLocalDataResetService @Inject constructor(
     private val profileDataStore: ProfileDataStore,
     private val profileLockStateDataStore: ProfileLockStateDataStore,
     private val credentialStores: Set<@JvmSuppressWildcards ProfileScopedCredentialStore>,
-    private val androidTvChannelManager: AndroidTvChannelManager,
-    private val snapshotStorage: ContinueWatchingSnapshotStorage = ContinueWatchingSnapshotStorage(context)
+    private val androidTvChannelManager: AndroidTvChannelManager
 ) {
-    suspend fun clearAfterSignOut() = snapshotStorage.lifecycleMutex.withLock {
-        withContext(Dispatchers.IO + NonCancellable) {
-            runCatching { androidTvChannelManager.clearAll() }
-                .onFailure { Log.w(ACCOUNT_RESET_TAG, "Failed to clear Android TV channel data", it) }
-            runCatching { snapshotStorage.clearAllProfiles() }
-                .onFailure { Log.w(ACCOUNT_RESET_TAG, "Failed to clear CW snapshots", it) }
-            runCatching { profileDataStoreFactory.clearProfileScopedData() }
-                .onFailure { Log.w(ACCOUNT_RESET_TAG, "Failed to clear profile-scoped data", it) }
-            runCatching { profileDataStore.clearAll() }
-                .onFailure { Log.w(ACCOUNT_RESET_TAG, "Failed to clear profile metadata", it) }
-            runCatching { profileLockStateDataStore.clearAll() }
-                .onFailure { Log.w(ACCOUNT_RESET_TAG, "Failed to clear profile lock states", it) }
-            runCatching { credentialStores.forEach(ProfileScopedCredentialStore::clearAllProfiles) }
-                .onFailure { Log.w(ACCOUNT_RESET_TAG, "Failed to clear profile credentials", it) }
-            runCatching { clearAccountFiles() }
-                .onFailure { Log.w(ACCOUNT_RESET_TAG, "Failed to clear account files", it) }
-        }
+    suspend fun clearAfterSignOut() = withContext(Dispatchers.IO) {
+        runCatching { androidTvChannelManager.clearAll() }
+            .onFailure { Log.w(ACCOUNT_RESET_TAG, "Failed to clear Android TV channel data", it) }
+        runCatching { profileDataStoreFactory.clearProfileScopedData() }
+            .onFailure { Log.w(ACCOUNT_RESET_TAG, "Failed to clear profile-scoped data", it) }
+        runCatching { profileDataStore.clearAll() }
+            .onFailure { Log.w(ACCOUNT_RESET_TAG, "Failed to clear profile metadata", it) }
+        runCatching { profileLockStateDataStore.clearAll() }
+            .onFailure { Log.w(ACCOUNT_RESET_TAG, "Failed to clear profile lock states", it) }
+        runCatching { credentialStores.forEach(ProfileScopedCredentialStore::clearAllProfiles) }
+            .onFailure { Log.w(ACCOUNT_RESET_TAG, "Failed to clear profile credentials", it) }
+        runCatching { clearAccountFiles() }
+            .onFailure { Log.w(ACCOUNT_RESET_TAG, "Failed to clear account files", it) }
     }
 
     private fun clearAccountFiles() {
-        com.nuvio.tv.ui.v2.profile.ProfilePosterWall.clear(context)
         val files = context.filesDir.listFiles() ?: return
         files.forEach { file ->
             if (isAccountFile(file)) {
@@ -59,7 +50,8 @@ class AccountLocalDataResetService @Inject constructor(
     }
 
     private fun isAccountFile(file: File): Boolean {
-        return file.name == "plugin_code" ||
+        return file.name == "cw_enrichment" ||
+            file.name == "plugin_code" ||
             file.name.startsWith("plugin_code_p")
     }
 }

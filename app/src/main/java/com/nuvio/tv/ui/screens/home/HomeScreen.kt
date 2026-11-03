@@ -18,8 +18,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Divider
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -40,6 +40,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.tv.material3.Button
+import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -48,27 +50,22 @@ import com.nuvio.tv.domain.model.LibraryListTab
 import com.nuvio.tv.domain.model.localizedMembershipTitle
 import com.nuvio.tv.domain.model.LibrarySourceMode
 import com.nuvio.tv.domain.model.MetaPreview
-import com.nuvio.tv.domain.model.WatchedTitlesMode
 import com.nuvio.tv.ui.components.ErrorState
 import com.nuvio.tv.ui.components.LoadingIndicator
-import com.nuvio.tv.ui.components.LocalDimWatchedPosters
-import com.nuvio.tv.ui.components.LocalLandscapePosterMode
 import com.nuvio.tv.ui.components.LocalStartupLoadingState
 import com.nuvio.tv.ui.components.LocalStartupSplashEnabled
 import com.nuvio.tv.ui.components.shouldShowHomeStartupLoader
 import com.nuvio.tv.ui.components.NuvioDialog
-import com.nuvio.tv.ui.components.PanelActionRow
-import com.nuvio.tv.ui.components.PlayerPanelRow
+import com.nuvio.tv.ui.components.PosterCardDefaults
 import com.nuvio.tv.ui.components.PosterCardStyle
-import com.nuvio.tv.ui.components.rememberPosterCardStyle
 import androidx.compose.ui.res.stringResource
 import com.nuvio.tv.R
-import com.nuvio.tv.ui.support.SupporterThanksNote
 import com.nuvio.tv.core.tracking.LOCAL_LIBRARY_LIST_KEY
 import com.nuvio.tv.core.tracking.supportsMembershipFor
 import com.nuvio.tv.data.local.StartupAuthNotice
 import com.nuvio.tv.ui.components.posteroptions.TrackingRemovalConfirmationDialog
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 private data class HomePosterOptionsTarget(
     val item: MetaPreview,
@@ -105,28 +102,15 @@ fun HomeScreen(
     // Home was the only major screen without a lifecycle observer, so nothing ever told it to
     // look at its catalogs again.
     val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, viewModel) {
+    DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.setTrailerPreviewActive(true)
                 viewModel.beginShuffleHomeVisit()
                 viewModel.refreshHomeCatalogsIfStale()
-            } else if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
-                com.nuvio.tv.core.performance.DetailEntryTrace.mark("home_paused", once = true)
-                // STOP can arrive after the destination has started its own search.
-                if (event == Lifecycle.Event.ON_PAUSE) com.nuvio.tv.core.stream.StreamPrefetchCache.cancelPending()
-                viewModel.setTrailerPreviewActive(false)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            viewModel.setTrailerPreviewActive(false)
-        }
-    }
-    DisposableEffect(viewModel) {
-        viewModel.onHomeShown()
-        onDispose { viewModel.onHomeLeft() }
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     val modernPresentation by viewModel.modernHomePresentation.collectAsStateWithLifecycle()
     val initialCwResolved by viewModel.initialCwResolved.collectAsStateWithLifecycle()
@@ -226,7 +210,19 @@ fun HomeScreen(
         }
     }
 
-    val posterCardStyle = rememberPosterCardStyle(uiState.posterCardWidthDp, uiState.posterCardCornerRadiusDp)
+    val posterCardStyle = remember(
+        uiState.posterCardWidthDp,
+        uiState.posterCardCornerRadiusDp
+    ) {
+        val computedHeightDp = (uiState.posterCardWidthDp * 1.5f).roundToInt()
+        PosterCardStyle(
+            width = uiState.posterCardWidthDp.dp,
+            height = computedHeightDp.dp,
+            cornerRadius = uiState.posterCardCornerRadiusDp.dp,
+            focusedBorderWidth = PosterCardDefaults.Style.focusedBorderWidth,
+            focusedScale = PosterCardDefaults.Style.focusedScale
+        )
+    }
 
     val noAddonsError = stringResource(R.string.home_empty_no_sources_title)
     val noCatalogAddonsError = stringResource(R.string.home_error_no_catalog_addons)
@@ -245,21 +241,7 @@ fun HomeScreen(
     }
 
     // Reports the home screen as fully drawn once it leaves the loading state so startup timing is measurable and post-launch work can be deferred.
-    val profileEntry = com.nuvio.tv.ui.v2.profile.LocalProfileEntryState.current
-    LaunchedEffect(profileEntry?.pending, showStartupLoader) {
-        if (profileEntry?.pending == true) {
-            profileEntry.homeReady = false
-            if (!showStartupLoader) {
-                // Let the populated/error surface and its existing focus targets attach.
-                repeat(2) { androidx.compose.runtime.withFrameNanos { } }
-                kotlinx.coroutines.delay(700)
-                profileEntry.homeReady = true
-            }
-        }
-    }
-    LaunchedEffect(profileEntry?.pending) { viewModel.setTrailerIntroHold(profileEntry?.pending == true) }
-    ReportDrawnWhen { !showStartupLoader && profileEntry?.pending != true }
-    com.nuvio.tv.ui.screens.calendar.CalendarHomeSignal(contentShown = !showStartupLoader)
+    ReportDrawnWhen { !showStartupLoader }
 
     val startupLoadingState = LocalStartupLoadingState.current
     val showHomeLoader = shouldShowHomeStartupLoader(
@@ -267,10 +249,8 @@ fun HomeScreen(
         sharedSplashEnabled = LocalStartupSplashEnabled.current,
         startupComplete = startupLoadingState?.complete != false
     )
-    LaunchedEffect(Unit) { com.nuvio.tv.core.util.StartupLatencyTrace.coldOnce("home_composed") }
     LaunchedEffect(showStartupLoader, startupLoadingState) {
         if (!showStartupLoader) {
-            com.nuvio.tv.core.util.StartupLatencyTrace.coldOnce("home_content")
             startupLoadingState?.complete = true
         }
     }
@@ -384,12 +364,6 @@ fun HomeScreen(
                                 )
                         }
                     ) {
-                        CompositionLocalProvider(
-                            LocalLandscapePosterMode provides
-                                (LocalLandscapePosterMode.current || uiState.modernLandscapePostersEnabled),
-                            LocalDimWatchedPosters provides
-                                (uiState.watchedTitlesMode != WatchedTitlesMode.SHOW)
-                        ) {
                         when (uiState.homeLayout) {
                             HomeLayout.CLASSIC -> ClassicHomeRoute(
                                 viewModel = viewModel,
@@ -434,7 +408,6 @@ fun HomeScreen(
                                 onCatalogItemLongPress = onCatalogItemLongPress
                             )
                         }
-                        }
                     }
                 }
             }
@@ -471,8 +444,6 @@ fun HomeScreen(
                 )
             }
         }
-
-        SupporterThanksNote(enabled = !showHomeLoader, modifier = Modifier.align(Alignment.TopEnd))
     }
 
     val selectedPoster = posterOptionsTarget
@@ -498,11 +469,11 @@ fun HomeScreen(
                 posterOptionsTarget = null
             },
             onToggleLibrary = {
-                viewModel.togglePosterLibrary(item, selectedPoster.addonBaseUrl)
-                posterOptionsTarget = null
-            },
-            onManageLists = {
-                viewModel.openPosterListPicker(item, selectedPoster.addonBaseUrl)
+                if (uiState.librarySourceMode != LibrarySourceMode.LOCAL) {
+                    viewModel.openPosterListPicker(item, selectedPoster.addonBaseUrl)
+                } else {
+                    viewModel.togglePosterLibrary(item, selectedPoster.addonBaseUrl)
+                }
                 posterOptionsTarget = null
             },
             onToggleWatched = {
@@ -601,10 +572,6 @@ private fun ClassicHomeRoute(
         },
         onRequestLazyCatalogLoad = remember(viewModel) {
             { catalogKey: String -> viewModel.requestLazyCatalogLoad(catalogKey) }
-        },
-        // Focus-dwell stream prefetch for CW cards.
-        onContinueWatchingItemFocused = remember(viewModel) {
-            { index: Int -> viewModel.onContinueWatchingItemFocused(index) }
         }
     )
 }
@@ -654,19 +621,9 @@ private fun GridHomeRoute(
             }
         },
         onSaveGridFocusState = remember(viewModel) {
-            { vi, vo, key, slot ->
-                viewModel.saveGridFocusState(
-                    vi,
-                    vo,
-                    focusedItemIndex = slot?.index ?: 0,
-                    focusedItemKey = key,
-                    focusedRowKey = slot?.sectionKey
-                )
+            { vi, vo, key ->
+                viewModel.saveGridFocusState(vi, vo, focusedItemKey = key)
             }
-        },
-        // Focus-dwell stream prefetch for CW cards.
-        onContinueWatchingItemFocused = remember(viewModel) {
-            { index: Int -> viewModel.onContinueWatchingItemFocused(index) }
         }
     )
 }
@@ -687,10 +644,10 @@ private fun ModernHomeRoute(
     val focusState by viewModel.focusState.collectAsStateWithLifecycle()
     val scrollToTopTrigger by viewModel.scrollToTopTrigger.collectAsStateWithLifecycle()
     val modernPresentation by viewModel.modernHomePresentation.collectAsStateWithLifecycle()
-    // Only the hero and the cards' ratings use these, so they are read there and not here.
+    // Passed down as State, not values: enrichment changes on most focus moves, and reading it
+    // here recomposed all of the home content for each one.
     val enrichingItemId = viewModel.enrichingItemId.collectAsStateWithLifecycle()
     val enrichedPreviews = viewModel.enrichedPreviews.collectAsStateWithLifecycle()
-    val heroSeriesFacts = viewModel.heroSeriesFacts.collectAsStateWithLifecycle()
     val failedEnrichmentIds = viewModel.failedEnrichmentIds.collectAsStateWithLifecycle()
     val requestTrailerPreview = remember(viewModel) {
         { itemId: String, title: String, releaseInfo: String?, apiType: String ->
@@ -724,11 +681,9 @@ private fun ModernHomeRoute(
         modernPresentation = modernPresentation,
         focusState = focusState,
         scrollToTopTrigger = scrollToTopTrigger,
-        enrichingItemId = { enrichingItemId.value },
-        enrichedPreviews = { enrichedPreviews.value },
-        failedEnrichmentIds = { failedEnrichmentIds.value },
-        heroSeriesFacts = { heroSeriesFacts.value },
-        onSeriesHeroSettled = remember(viewModel) { { ref: HeroSeriesRef -> viewModel.onSeriesHeroSettled(ref) } },
+        enrichingItemId = enrichingItemId,
+        enrichedPreviews = enrichedPreviews,
+        failedEnrichmentIds = failedEnrichmentIds,
         trailerPreviewUrls = viewModel.trailerPreviewUrls,
         trailerPreviewAudioUrls = viewModel.trailerPreviewAudioUrls,
         onNavigateToDetail = onNavigateToDetail,
@@ -738,9 +693,7 @@ private fun ModernHomeRoute(
         showContinueWatchingManualPlayOption = showContinueWatchingManualPlayOption,
         onRequestTrailerPreview = requestTrailerPreview,
         onLoadMoreCatalog = loadMoreCatalog,
-        onServerArtworkWindow = remember(viewModel) { { rows -> viewModel.requestServerArtwork(rows) } },
         onRemoveContinueWatching = removeContinueWatching,
-        onHideFromComingUp = remember(viewModel) { { item: ContinueWatchingItem -> viewModel.hideFromComingUp(item) } },
         isCatalogItemWatched = isCatalogItemWatched,
         onCatalogItemLongPress = onCatalogItemLongPress,
         onNavigateToFolderDetail = onNavigateToFolderDetail,
@@ -749,24 +702,11 @@ private fun ModernHomeRoute(
         },
         onPreloadAdjacentItem = preloadAdjacentItem,
         onSaveFocusState = saveModernFocusState,
-        onSaveRowScrollOffsets = remember(viewModel) {
-            { offsets: Map<String, Int> -> viewModel.saveCatalogRowScrollOffsets(offsets) }
-        },
         onFocusedRowKeyChanged = remember(viewModel) {
             { key: String? -> viewModel.setLiveFocusedRowKey(key) }
         },
         onRequestLazyCatalogLoad = remember(viewModel) {
             { catalogKey: String -> viewModel.requestLazyCatalogLoad(catalogKey) }
-        },
-        // Focus-dwell stream prefetch for CW cards. Gated on the CW
-        // row KEY, not the isCw flag -- ModernHomeRows sets that flag for the
-        // Upcoming row too, whose cards are unaired and must not be scraped.
-        onRowItemFocusedCallback = remember(viewModel) {
-            { rowKey: String, index: Int, _: Boolean ->
-                if (rowKey == MODERN_CONTINUE_WATCHING_ROW_KEY) {
-                    viewModel.onContinueWatchingItemFocused(index)
-                }
-            }
         }
     )
 }
@@ -785,7 +725,6 @@ private fun HomePosterOptionsDialog(
     onDismiss: () -> Unit,
     onDetails: () -> Unit,
     onToggleLibrary: () -> Unit,
-    onManageLists: () -> Unit,
     onToggleWatched: () -> Unit
 ) {
     val primaryFocusRequester = remember { FocusRequester() }
@@ -799,40 +738,59 @@ private fun HomePosterOptionsDialog(
         title = title,
         subtitle = stringResource(R.string.home_poster_dialog_subtitle)
     ) {
-        PanelActionRow(
-            label = stringResource(R.string.cw_action_go_to_details),
+        Button(
             onClick = onDetails,
-            focusRequester = primaryFocusRequester
-        )
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(primaryFocusRequester),
+            colors = ButtonDefaults.colors(
+                containerColor = NuvioTheme.colors.BackgroundCard,
+                contentColor = NuvioTheme.colors.TextPrimary
+            )
+        ) {
+            Text(stringResource(R.string.cw_action_go_to_details))
+        }
 
-        PanelActionRow(
-            label = if (isInLibrary) {
-                stringResource(R.string.hero_remove_from_library)
-            } else {
-                stringResource(R.string.hero_add_to_library)
-            },
+        Button(
             onClick = onToggleLibrary,
-            enabled = !isLibraryPending
-        )
-
-        if (showManageLists) {
-            PanelActionRow(
-                label = stringResource(R.string.library_manage_lists),
-                onClick = onManageLists,
-                enabled = !isLibraryPending
+            enabled = !isLibraryPending,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.colors(
+                containerColor = NuvioTheme.colors.BackgroundCard,
+                contentColor = NuvioTheme.colors.TextPrimary
+            )
+        ) {
+            Text(
+                if (showManageLists) {
+                    stringResource(R.string.library_manage_lists)
+                } else {
+                    if (isInLibrary) {
+                        stringResource(R.string.hero_remove_from_library)
+                    } else {
+                        stringResource(R.string.hero_add_to_library)
+                    }
+                }
             )
         }
 
         if (isMovie || isSeries) {
-            PanelActionRow(
-                label = if (isWatched) {
-                    stringResource(R.string.hero_mark_unwatched)
-                } else {
-                    stringResource(R.string.hero_mark_watched)
-                },
+            Button(
                 onClick = onToggleWatched,
-                enabled = !isWatchedPending
-            )
+                enabled = !isWatchedPending,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.colors(
+                    containerColor = NuvioTheme.colors.BackgroundCard,
+                    contentColor = NuvioTheme.colors.TextPrimary
+                )
+            ) {
+                Text(
+                    if (isWatched) {
+                        stringResource(R.string.hero_mark_unwatched)
+                    } else {
+                        stringResource(R.string.hero_mark_watched)
+                    }
+                )
+            }
         }
     }
 }
@@ -873,23 +831,48 @@ private fun HomeLibraryListPickerDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 300.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             items(tabs, key = { it.key }) { tab ->
                 val selected = membership[tab.key] == true
-                PlayerPanelRow(
-                    title = if (selected) "\u2713 ${tab.localizedMembershipTitle()}" else tab.localizedMembershipTitle(),
-                    selected = selected,
-                    onClick = { if (!isPending) onToggle(tab.key) },
-                    focusRequester = if (tab.key == tabs.firstOrNull()?.key) primaryFocusRequester else null
-                )
+                val titleText = if (selected) "\u2713 ${tab.localizedMembershipTitle()}" else tab.localizedMembershipTitle()
+                Button(
+                    onClick = { onToggle(tab.key) },
+                    enabled = !isPending,
+                    modifier = if (tab.key == tabs.firstOrNull()?.key) {
+                        Modifier
+                            .fillMaxWidth()
+                            .focusRequester(primaryFocusRequester)
+                    } else {
+                        Modifier.fillMaxWidth()
+                    },
+                    colors = ButtonDefaults.colors(
+                        containerColor = if (selected) NuvioTheme.colors.FocusBackground else NuvioTheme.colors.BackgroundCard,
+                        contentColor = NuvioTheme.colors.TextPrimary
+                    )
+                ) {
+                    Text(
+                        text = titleText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
 
-        PanelActionRow(
-            label = if (isPending) stringResource(R.string.action_saving) else stringResource(R.string.action_save),
-            onClick = onSave,
-            enabled = !isPending
-        )
+        Divider(color = NuvioTheme.colors.Border, thickness = NuvioTheme.spacing.hairline)
+
+        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+            Button(
+                onClick = onSave,
+                enabled = !isPending,
+                colors = ButtonDefaults.colors(
+                    containerColor = NuvioTheme.colors.BackgroundCard,
+                    contentColor = NuvioTheme.colors.TextPrimary
+                )
+            ) {
+                Text(if (isPending) stringResource(R.string.action_saving) else stringResource(R.string.action_save))
+            }
+        }
     }
 }

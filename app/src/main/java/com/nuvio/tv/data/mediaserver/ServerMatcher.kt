@@ -102,7 +102,7 @@ class ServerMatcher internal constructor(
         return title.copy(season = requestedSeason, episode = requestedEpisode)
     }
 
-    fun titleRequest(type: String, contentId: String): MatchRequest? {
+    private fun titleRequest(type: String, contentId: String): MatchRequest? {
         if (ServerItemRef.isServerId(contentId)) return null
         val kind = ServerMediaKind.fromContentType(type) ?: return null
         val parentId = contentId.split(':').take(parentSize(contentId)).joinToString(":")
@@ -118,11 +118,8 @@ class ServerMatcher internal constructor(
 
     private fun parentSize(id: String): Int = if (id.startsWith("tt")) 1 else 2
 
-    suspend fun matchTitle(connection: ServerConnection, request: MatchRequest): List<ServerItemRef> =
-        titleItemIds(connection, request, forceRefresh = false).map { ServerItemRef(connection.id, it) }
-
     fun supports(connection: ServerConnection, kind: ServerMediaKind): Boolean =
-        connection.librariesHolding(kind).isNotEmpty() &&
+        connection.selectedLibraries(kind).isNotEmpty() &&
             repository.provider(connection)?.supports(ServerCapability.EXTERNAL_ID_LOOKUP) == true
 
     suspend fun match(connection: ServerConnection, request: MatchRequest, forceRefresh: Boolean): List<ServerItemRef> {
@@ -144,7 +141,7 @@ class ServerMatcher internal constructor(
 
     private suspend fun titleItemIds(connection: ServerConnection, request: MatchRequest, forceRefresh: Boolean): List<String> {
         val ids = withConvertedIds(request)
-        val libraries = connection.librariesHolding(request.kind)
+        val libraries = connection.selectedLibraries(request.kind)
         val original = ids.tmdb?.let { originalTitle(it, request.kind) }?.takeIf { it.isNotBlank() }
         val query = ServerTitleQuery(ids, request.name, request.year, original)
         lookupItemIds(connection, request.kind, query, libraries, forceRefresh)?.let { return it }
@@ -222,7 +219,7 @@ class ServerMatcher internal constructor(
     }
 
     private fun build(connection: ServerConnection, library: ServerLibrary, forceRefresh: Boolean): IndexBuild {
-        val key = "${connection.id}:${library.id}:${library.kind}"
+        val key = "${connection.id}:${library.id}"
         val revision = repository.uiState.value.revision
         val now = System.currentTimeMillis()
         val build = synchronized(lock) {
@@ -241,7 +238,7 @@ class ServerMatcher internal constructor(
                 build.failed = true
                 build.result.completeExceptionally(error)
                 if (error is CancellationException) throw error
-                Log.w(TAG, "Indexing ${connection.providerId} library ${library.name} failed: ${error.forLog()}")
+                Log.w(TAG, "Indexing ${connection.providerId} library ${library.name} failed", error)
             }
         }
         return build

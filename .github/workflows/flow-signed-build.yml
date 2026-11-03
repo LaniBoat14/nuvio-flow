@@ -34,6 +34,7 @@ jobs:
           from pathlib import Path
           required = [
               "app/src/full/java/com/nuvio/tv/core/build/AppFeaturePolicy.kt",
+              "app/src/playstore/java/com/nuvio/tv/core/build/AppFeaturePolicy.kt",
               "app/src/main/java/com/nuvio/tv/core/build/TrailerPlaybackMode.kt",
               "app/src/main/res/raw/isrgrootx1.pem",
               "app/src/main/res/raw/isrg_root_x2.pem",
@@ -47,7 +48,7 @@ jobs:
       - name: Generate localhost TLS test fixture
         run: |
           mkdir -p app/src/test/resources
-          test -f app/src/test/resources/subtitle-redirect-test.p12 || keytool -genkeypair -alias subtitle-test -keyalg RSA -keysize 2048 -validity 3650 -storetype PKCS12 -keystore app/src/test/resources/subtitle-redirect-test.p12 -storepass changeit -keypass changeit -dname "CN=127.0.0.1" -ext "SAN=ip:127.0.0.1"
+          keytool -genkeypair -alias subtitle-test -keyalg RSA -keysize 2048 -validity 3650 -storetype PKCS12 -keystore app/src/test/resources/subtitle-redirect-test.p12 -storepass changeit -keypass changeit -dname "CN=127.0.0.1" -ext "SAN=ip:127.0.0.1"
       - name: Restore private build configuration
         env:
           FLOW_KEYSTORE_BASE64: ${{ secrets.FLOW_KEYSTORE_BASE64 }}
@@ -72,7 +73,7 @@ jobs:
               path = root / filename
               if not path.exists(): continue
               text = path.read_text()
-              values = {"DOVI_NATIVE_ENABLED": "true", "DOVI_EXTRACTOR_HOOK_READY": "true", "DOVI_ENABLE_REAL_LINK": "true", "AML_FEL_NATIVE_ENABLED": "true", "sdk.dir": os.environ["ANDROID_HOME"], "NUVIO_RELEASE_STORE_FILE": str(root / "flow-signing.keystore"), "DOVI_LIBDOVI_PREBUILT_ROOT": str(root / "DV7/libdovi")}
+              values = {"sdk.dir": os.environ["ANDROID_HOME"], "NUVIO_RELEASE_STORE_FILE": str(root / "flow-signing.keystore"), "DOVI_LIBDOVI_PREBUILT_ROOT": str(root / "DV7/libdovi")}
               for key, value in values.items():
                   pattern = r"(?m)^[ \t]*" + re.escape(key) + r"[ \t]*=.*$"
                   line = key + "=" + value
@@ -81,9 +82,10 @@ jobs:
           PY
       - name: Test and assemble optimized Flow
         run: |
-          python3 scripts/verify_arc_runtime.py
+          python3 scripts/test_flow_upstream.py
           chmod +x gradlew
-          ./gradlew :app:testFullReleaseUnitTest --tests "com.nuvio.tv.ui.screens.player.AutoSpeedup*" --tests "com.nuvio.tv.ui.screens.player.ParallelRange*" --tests "com.nuvio.tv.ui.screens.player.Playback*" --tests "com.nuvio.tv.ui.screens.player.HostSpeedsTest" --tests "com.nuvio.tv.ui.screens.player.TvArcAudioOutputTest" --tests "com.nuvio.tv.ui.screens.player.iec.*" --tests "com.nuvio.tv.core.player.*" --tests "com.nuvio.tv.ui.screens.settings.MemoryBudgetTest" --tests "com.nuvio.tv.ui.screens.settings.BufferSettingsNumbersTest" --tests "com.nuvio.tv.ui.screens.settings.ConnectionsChoiceTest" --tests "com.nuvio.tv.updater.*" :app:assembleFullRelease --max-workers=2 --no-daemon --console=plain --stacktrace "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process
+          ./gradlew :app:testFullReleaseUnitTest --tests com.nuvio.tv.ui.screens.player.FlowFreshConnectionTest --tests com.nuvio.tv.ui.screens.player.FlowAdaptiveSourceTest --tests com.nuvio.tv.core.network.adaptive.AdaptiveEngineTest --tests com.nuvio.tv.ui.screens.player.FlowNetworkPolicyTest --tests com.nuvio.tv.ui.screens.player.FlowBufferedReadTest --tests com.nuvio.tv.ui.screens.player.FlowMuxBitrateTest --tests com.nuvio.tv.ui.screens.player.LibassOverlayGeometryTest --tests com.nuvio.tv.ui.screens.player.PlaybackMatchTextTest --tests com.nuvio.tv.updater.FlowUpdateVersionTest --tests com.nuvio.tv.data.local.ContinueWatchingSnapshotDecoderTest --max-workers=2 --no-daemon --console=plain --stacktrace "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process
+          ./gradlew :app:assembleFullRelease --max-workers=2 --no-daemon --console=plain --stacktrace "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process
       - name: Collect test failure diagnostics
         if: failure()
         run: |
@@ -108,7 +110,6 @@ jobs:
         run: |
           APK=app/build/outputs/apk/full/release/app-full-armeabi-v7a-release.apk
           test -f "$APK"
-          python3 scripts/verify_native_apk.py --abi armeabi-v7a "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep "package: name='com.jeffrey.nuvioflow.debug'"
       - uses: actions/upload-artifact@v4

@@ -11,6 +11,7 @@ import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import com.nuvio.tv.data.local.PlayerSettings
 import com.nuvio.tv.data.local.PlayerSettingsDataStore
+import com.nuvio.tv.data.local.TrailerSettingsDataStore
 import com.nuvio.tv.ui.screens.settings.MemoryBudget
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.atomic.AtomicBoolean
@@ -42,7 +43,7 @@ import kotlinx.coroutines.launch
 class TrailerPlayerPool @Inject constructor(
     @ApplicationContext private val context: Context,
     private val playerSettingsDataStore: PlayerSettingsDataStore,
-    private val trailerMediaCache: com.nuvio.tv.data.trailer.TrailerMediaCache
+    private val trailerSettingsDataStore: TrailerSettingsDataStore
 ) {
     companion object {
         private const val TAG = "TrailerPlayerPool"
@@ -54,10 +55,8 @@ class TrailerPlayerPool @Inject constructor(
     }
 
     private var _player: ExoPlayer? = null
-    private var owner: Any? = null
     private val yielded = AtomicBoolean(false)
     private val released = AtomicBoolean(false)
-    private val screensaverSuppressed = AtomicBoolean(false)
     private val settingsScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _isTrailerPlaying = MutableStateFlow(false)
     val isTrailerPlaying: StateFlow<Boolean> = _isTrailerPlaying.asStateFlow()
@@ -68,8 +67,19 @@ class TrailerPlayerPool @Inject constructor(
     @Volatile
     private var cachedPlayerSettings: PlayerSettings? = null
 
+    @Volatile
+    private var cachedAllow4k: Boolean = TrailerVideoPolicy.default4kTrailers(context)
+
+    // Height cap currently applied to the player's track selection; reset when the player is rebuilt.
+    private var appliedMaxHeight: Int? = null
+
     // Kept current so a player rebuilt after [yield] picks up buffer changes made since launch.
     init {
+        settingsScope.launch {
+            runCatching {
+                trailerSettingsDataStore.settings.collect { cachedAllow4k = it.allow4k }
+            }
+        }
         settingsScope.launch {
             runCatching {
                 playerSettingsDataStore.nuvioPerformanceModeEnabled.collect { cachedForceNative = it }
@@ -84,30 +94,32 @@ class TrailerPlayerPool @Inject constructor(
 
     /**
      * Returns the shared trailer ExoPlayer, creating it lazily if needed.
-     * Returns null if [release] was called (process shutdown) or while the OLED
-     * screensaver has suppressed trailer playback via [setScreensaverSuppressed].
+     * Returns null only if [release] was called (process shutdown).
      */
-    fun acquire(owner: Any): ExoPlayer? {
+    fun acquire(): ExoPlayer? {
         if (released.get()) return null
-        if (screensaverSuppressed.get()) return null
         if (yielded.get()) {
             // Reclaim was not called yet but someone wants the player — rebuild.
             reclaim()
         }
-        return (_player ?: createPlayer().also { _player = it }).also { this.owner = owner }
+        val player = _player ?: createPlayer().also {
+            _player = it
+            appliedMaxHeight = null
+        }
+        applyVideoSizeCap(player)
+        return player
     }
 
-    fun isOwner(owner: Any): Boolean = this.owner === owner
-
-    suspend fun preload(source: com.nuvio.tv.data.trailer.TrailerPlaybackSource) {
-        if (!released.get() && !yielded.get() && !screensaverSuppressed.get()) trailerMediaCache.preload(source)
-    }
-
-    /** An outgoing screen must not stop a newer screen's preview during a transition. */
-    fun stop(owner: Any) {
-        if (!isOwner(owner)) return
-        this.owner = null
-        stop()
+    // Caps HLS variants; adaptive YouTube streams are already capped by the extractor.
+    private fun applyVideoSizeCap(player: ExoPlayer) {
+        val maxHeight = TrailerVideoPolicy.maxTrailerVideoHeight(cachedAllow4k)
+        if (appliedMaxHeight == maxHeight) return
+        val maxWidth = if (maxHeight == Int.MAX_VALUE) Int.MAX_VALUE else maxHeight * 16 / 9
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .setMaxVideoSize(maxWidth, maxHeight)
+            .build()
+        appliedMaxHeight = maxHeight
     }
 
     /**
@@ -126,20 +138,10 @@ class TrailerPlayerPool @Inject constructor(
     }
 
     /**
-     * While suppressed, [acquire] returns null so every trailer start silently no-ops.
-     * Set by the OLED screensaver on engage (together with [stop]) and cleared on wake.
-     * Trailers resume on their next natural trigger (focus change or hero rotation).
-     */
-    fun setScreensaverSuppressed(suppressed: Boolean) {
-        screensaverSuppressed.set(suppressed)
-    }
-
-    /**
      * Releases codec resources so the detail-screen player can claim hardware decoders.
      * The ExoPlayer instance is released here; [reclaim] will create a fresh one.
      */
     fun yield() {
-        owner = null
         if (yielded.compareAndSet(false, true)) {
             Log.d(TAG, "Yielding trailer player for detail playback")
             _isTrailerPlaying.value = false
@@ -167,7 +169,6 @@ class TrailerPlayerPool @Inject constructor(
      * Permanently releases the player. Called on process death / Application.onTerminate.
      */
     fun release() {
-        owner = null
         if (released.compareAndSet(false, true)) {
             _isTrailerPlaying.value = false
             _player?.let { player ->
@@ -189,10 +190,10 @@ class TrailerPlayerPool @Inject constructor(
         )
         val loadControlBuilder = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                /* minBufferMs = */ 15_000,
-                /* maxBufferMs = */ 30_000,
-                /* bufferForPlaybackMs = */ 1_500,
-                /* bufferForPlaybackAfterRebufferMs = */ 3_000
+                /* minBufferMs = */ 30_000,
+                /* maxBufferMs = */ 120_000,
+                /* bufferForPlaybackMs = */ 5_000,
+                /* bufferForPlaybackAfterRebufferMs = */ 10_000
             )
             .setTargetBufferBytes(targetBufferMb * 1024 * 1024)
             // The byte cap must hold even before minBufferMs is reached, or a high-bitrate
@@ -218,7 +219,6 @@ class TrailerPlayerPool @Inject constructor(
             )
         }
         return ExoPlayer.Builder(context)
-            .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(trailerMediaCache.playbackFactory()))
             .setLoadControl(loadControl)
             .setTrackSelector(trackSelector)
             .setBandwidthMeter(

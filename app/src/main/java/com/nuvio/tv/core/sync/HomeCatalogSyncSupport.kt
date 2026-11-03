@@ -6,15 +6,13 @@ import com.nuvio.tv.domain.model.catalogRowLegacyKey
 import com.nuvio.tv.domain.model.Addon
 import com.nuvio.tv.domain.model.CatalogDescriptor
 import com.nuvio.tv.domain.model.Collection
-import com.nuvio.tv.domain.model.WatchedTitlesMode
 import com.nuvio.tv.domain.model.enabledAddons
 
 internal data class LocalHomeCatalogSettingsState(
     val orderKeys: List<String> = emptyList(),
     val disabledKeys: Set<String> = emptySet(),
     val customTitles: Map<String, String> = emptyMap(),
-    val hideUnreleasedContent: Boolean = false,
-    val watchedTitlesMode: WatchedTitlesMode = WatchedTitlesMode.SHOW
+    val hideUnreleasedContent: Boolean = false
 )
 
 private data class HomeCatalogSyncEntry(
@@ -131,7 +129,6 @@ internal fun buildHomeCatalogSyncPayload(
 
     return SyncHomeCatalogPayload(
         hideUnreleasedContent = localState.hideUnreleasedContent,
-        watchedTitlesMode = localState.watchedTitlesMode.name,
         items = items
     )
 }

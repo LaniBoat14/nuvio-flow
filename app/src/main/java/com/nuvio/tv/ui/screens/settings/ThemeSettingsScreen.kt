@@ -2,18 +2,13 @@
 
 package com.nuvio.tv.ui.screens.settings
 
-import com.nuvio.tv.ui.v2.appearance.LocalV2Appearance
-import com.nuvio.tv.ui.screens.ambient.AMBIENT_BEFORE_OLED_DIM
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import android.content.Intent
 import android.os.Process
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.border
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.rememberScrollState
@@ -35,18 +30,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -65,9 +55,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.Color
 import android.widget.Toast
-import kotlinx.coroutines.launch
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Border
@@ -81,8 +69,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.LocaleCache
 import com.nuvio.tv.R
-import com.nuvio.tv.ui.support.SupportNuvioDialog
-import com.nuvio.tv.domain.model.AppIconChoice
+import com.nuvio.tv.domain.model.AppIconOption
 import com.nuvio.tv.domain.model.AppTheme
 import com.nuvio.tv.domain.model.CustomThemeColors
 import com.nuvio.tv.domain.model.SettingsUiStyle
@@ -112,10 +99,8 @@ fun ThemeSettingsScreen(
 @Composable
 fun ThemeSettingsContent(
     viewModel: ThemeSettingsViewModel = hiltViewModel(),
-    initialFocusRequester: FocusRequester? = null,
-    onNavigateToSignIn: (() -> Unit)? = null
+    initialFocusRequester: FocusRequester? = null
 ) {
-    val isV2 = com.nuvio.tv.ui.v2.appearance.LocalV2Appearance.current != null
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val appIconState by viewModel.appIconState.collectAsStateWithLifecycle()
     var showFontDialog by remember { mutableStateOf(false) }
@@ -123,10 +108,7 @@ fun ThemeSettingsContent(
     var showAppIconDialog by remember { mutableStateOf(false) }
     var showCustomThemeDialog by remember(uiState.customThemeGradientEnabled) { mutableStateOf(false) }
     var restoreCustomThemeFocus by remember { mutableStateOf(false) }
-    var appIconConfirmation by remember { mutableStateOf<AppIconChoice?>(null) }
-    var appIconLastPicked by remember { mutableStateOf<AppIconChoice?>(null) }
-    var showSupportDialog by remember { mutableStateOf(false) }
-    var refocusThemes by remember { mutableStateOf(false) }
+    var appIconConfirmation by remember { mutableStateOf<AppIconOption?>(null) }
     var pendingLanguageRestart by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
@@ -184,14 +166,11 @@ fun ThemeSettingsContent(
 
     val themeScrollState = rememberScrollState()
     val themeRowState = rememberLazyListState()
-    val displayedThemes = remember(uiState.availableThemes) {
-        uiState.availableThemes.sortedBy { if (it == AppTheme.GLASS) 0 else 1 }
-    }
     var initialTheme by remember { mutableStateOf<AppTheme?>(null) }
     LaunchedEffect(uiState.themesLoaded) {
         if (!uiState.themesLoaded || initialTheme != null) return@LaunchedEffect
         initialTheme = uiState.selectedTheme
-        val selectedIndex = displayedThemes.indexOf(initialTheme)
+        val selectedIndex = uiState.availableThemes.indexOf(initialTheme)
         if (selectedIndex < 0) return@LaunchedEffect
         themeRowState.scrollToItem(selectedIndex)
         initialFocusRequester?.requestFocusAfterFrames()
@@ -208,8 +187,6 @@ fun ThemeSettingsContent(
                 subtitle = stringResource(R.string.appearance_subtitle)
             )
 
-            V2PreferenceControls(if (isV2) initialFocusRequester else null)
-
             SettingsGroupCard(
                 modifier = Modifier.fillMaxWidth(),
                 title = stringResource(R.string.appearance_color_theme),
@@ -225,7 +202,7 @@ fun ThemeSettingsContent(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         itemsIndexed(
-                            items = displayedThemes,
+                            items = uiState.availableThemes,
                             key = { _, theme -> theme.name }
                         ) { themeIndex, theme ->
                             ThemeSwatchChip(
@@ -241,7 +218,7 @@ fun ThemeSettingsContent(
                                     }
                                 },
                                 modifier = if (
-                                    !isV2 && uiState.themesLoaded &&
+                                    uiState.themesLoaded &&
                                     theme == initialTheme &&
                                     initialFocusRequester != null
                                 ) {
@@ -260,149 +237,57 @@ fun ThemeSettingsContent(
                                 )
                             )
                         }
-                        items(
-                            items = uiState.lockedThemes,
-                            key = { theme -> "locked_${theme.name}" }
-                        ) { theme ->
-                            ThemeSwatchChip(
-                                theme = theme,
-                                customColors = uiState.customThemeColors,
-                                isSelected = false,
-                                locked = true,
-                                onClick = { showSupportDialog = true }
-                            )
-                        }
                     }
                     SettingsHorizontalScrollIndicators(state = themeRowState)
                 }
-                if (LocalV2Appearance.current == null) {
+                SettingsToggleRow(
+                    title = stringResource(R.string.appearance_amoled_mode),
+                    subtitle = stringResource(R.string.appearance_amoled_mode_subtitle),
+                    checked = uiState.amoledMode,
+                    onToggle = {
+                        viewModel.onEvent(ThemeSettingsEvent.ToggleAmoledMode(!uiState.amoledMode))
+                    }
+                )
+                if (uiState.amoledMode) {
                     SettingsToggleRow(
-                        title = stringResource(R.string.appearance_amoled_mode),
-                        subtitle = stringResource(R.string.appearance_amoled_mode_subtitle),
-                        checked = uiState.amoledMode,
+                        title = stringResource(R.string.appearance_amoled_surfaces_mode),
+                        subtitle = stringResource(R.string.appearance_amoled_surfaces_mode_subtitle),
+                        checked = uiState.amoledSurfacesMode,
                         onToggle = {
-                            viewModel.onEvent(ThemeSettingsEvent.ToggleAmoledMode(!uiState.amoledMode))
+                            viewModel.onEvent(
+                                ThemeSettingsEvent.ToggleAmoledSurfacesMode(!uiState.amoledSurfacesMode)
+                            )
                         }
                     )
-                    if (uiState.amoledMode) {
-                        SettingsToggleRow(
-                            title = stringResource(R.string.appearance_amoled_surfaces_mode),
-                            subtitle = stringResource(R.string.appearance_amoled_surfaces_mode_subtitle),
-                            checked = uiState.amoledSurfacesMode,
-                            onToggle = {
-                                viewModel.onEvent(
-                                    ThemeSettingsEvent.ToggleAmoledSurfacesMode(!uiState.amoledSurfacesMode)
-                                )
-                            }
-                        )
-                    }
                 }
             }
 
             SettingsGroupCard(
                 modifier = Modifier.fillMaxWidth(),
-                title = stringResource(R.string.appearance_screensaver_group_title),
-                subtitle = stringResource(R.string.appearance_screensaver_group_subtitle)
+                title = stringResource(R.string.appearance_settings_style),
+                subtitle = stringResource(R.string.appearance_settings_style_subtitle)
             ) {
-                val ambientViewModel: AmbientModeSettingsViewModel = hiltViewModel()
-                val ambientEnabled = ambientViewModel.uiState.collectAsStateWithLifecycle().value.settings.enabled
-                val dimRuns = !(ambientEnabled && AMBIENT_BEFORE_OLED_DIM)
-                AmbientModeSettingsRows(ambientViewModel)
-                var showScreensaverTimeoutDialog by remember { mutableStateOf(false) }
-                var showScreensaverDimDialog by remember { mutableStateOf(false) }
-                SettingsToggleRow(
-                    title = stringResource(R.string.appearance_screensaver_enabled),
-                    subtitle = stringResource(R.string.appearance_screensaver_enabled_subtitle),
-                    checked = uiState.screensaverEnabled,
-                    enabled = dimRuns,
-                    onToggle = {
-                        viewModel.onEvent(ThemeSettingsEvent.ToggleScreensaver(!uiState.screensaverEnabled))
-                    }
-                )
-                if (uiState.screensaverEnabled && dimRuns) {
-                    SettingsActionRow(
-                        title = stringResource(R.string.appearance_screensaver_timeout),
-                        subtitle = stringResource(R.string.appearance_screensaver_timeout_subtitle),
-                        value = stringResource(R.string.appearance_screensaver_timeout_option, uiState.screensaverTimeoutMinutes),
-                        onClick = { showScreensaverTimeoutDialog = true }
-                    )
-                    SettingsActionRow(
-                        title = stringResource(R.string.appearance_screensaver_dim),
-                        subtitle = stringResource(R.string.appearance_screensaver_dim_subtitle),
-                        value = stringResource(R.string.appearance_screensaver_dim_option, uiState.screensaverDimPercent),
-                        onClick = { showScreensaverDimDialog = true }
-                    )
-                }
-                if (showScreensaverTimeoutDialog) {
-                    SettingsSingleChoiceDialog(
-                        title = stringResource(R.string.appearance_screensaver_timeout),
-                        options = listOf(2, 5, 10).map { minutes ->
-                            SettingsPickerOption(
-                                minutes,
-                                stringResource(R.string.appearance_screensaver_timeout_option, minutes)
-                            )
-                        },
-                        selectedValue = uiState.screensaverTimeoutMinutes,
-                        onOptionSelected = { minutes ->
-                            viewModel.onEvent(ThemeSettingsEvent.SelectScreensaverTimeout(minutes))
-                            showScreensaverTimeoutDialog = false
-                        },
-                        onDismiss = { showScreensaverTimeoutDialog = false }
-                    )
-                }
-                if (showScreensaverDimDialog) {
-                    SettingsSingleChoiceDialog(
-                        title = stringResource(R.string.appearance_screensaver_dim),
-                        options = listOf(
-                            SettingsPickerOption(
-                                50,
-                                stringResource(R.string.appearance_screensaver_dim_option, 50),
-                                stringResource(R.string.appearance_screensaver_dim_gentle)
-                            ),
-                            SettingsPickerOption(
-                                70,
-                                stringResource(R.string.appearance_screensaver_dim_option, 70),
-                                stringResource(R.string.appearance_screensaver_dim_balanced)
-                            ),
-                            SettingsPickerOption(
-                                85,
-                                stringResource(R.string.appearance_screensaver_dim_option, 85),
-                                stringResource(R.string.appearance_screensaver_dim_strong)
-                            )
-                        ),
-                        selectedValue = uiState.screensaverDimPercent,
-                        onOptionSelected = { percent ->
-                            viewModel.onEvent(ThemeSettingsEvent.SelectScreensaverDim(percent))
-                            showScreensaverDimDialog = false
-                        },
-                        onDismiss = { showScreensaverDimDialog = false }
-                    )
-                }
-            }
-
-            if (LocalV2Appearance.current == null) {
-                SettingsGroupCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    title = stringResource(R.string.ui_scale_title),
-                    subtitle = stringResource(R.string.ui_scale_group_subtitle)
+                val firstAvailableStyle = uiState.availableSettingsUiStyles.firstOrNull()
+                    ?: SettingsUiStyle.entries.first()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min)
+                        .padding(horizontal = NuvioTheme.spacing.xs, vertical = NuvioTheme.spacing.xs)
+                        .settingsOptionRow(styleFocusRequesters.getValue(firstAvailableStyle)),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    val uiScaleContext = LocalContext.current
-                    val uiScaleScope = rememberCoroutineScope()
-                    val uiScalePercent by com.nuvio.tv.data.local.UiScalePreference.flow(uiScaleContext).collectAsState(initial = 100)
-                    SliderSettingsItem(
-                        title = stringResource(R.string.ui_scale_title),
-                        value = uiScalePercent,
-                        valueText = "$uiScalePercent%",
-                        minValue = 85,
-                        maxValue = 115,
-                        step = 5,
-                        onValueChange = { percent ->
-                            uiScaleScope.launch {
-                                com.nuvio.tv.data.local.UiScalePreference.set(uiScaleContext, percent)
-                            }
-                        },
-                        onFocused = {}
-                    )
+                    uiState.availableSettingsUiStyles.forEach { style ->
+                        SettingsStyleOptionCard(
+                            style = style,
+                            isSelected = style == uiState.settingsUiStyle,
+                            onClick = { viewModel.onEvent(ThemeSettingsEvent.SelectSettingsUiStyle(style)) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .focusRequester(styleFocusRequesters.getValue(style))
+                        )
+                    }
                 }
             }
 
@@ -422,6 +307,8 @@ fun ThemeSettingsContent(
                     }
                 )
             }
+
+            AmbientModeSettingsCard()
 
             SettingsGroupCard(
                 modifier = Modifier.fillMaxWidth(),
@@ -443,26 +330,6 @@ fun ThemeSettingsContent(
             }
         }
         SettingsVerticalScrollIndicators(state = themeScrollState)
-    }
-
-    if (showSupportDialog) {
-        SupportNuvioDialog(
-            onDismiss = { showSupportDialog = false },
-            onSignIn = onNavigateToSignIn?.let { navigate ->
-                {
-                    showSupportDialog = false
-                    navigate()
-                }
-            },
-            onSuggestionsHidden = { refocusThemes = true }
-        )
-    }
-
-    LaunchedEffect(refocusThemes) {
-        if (refocusThemes) {
-            firstThemeFocusRequester.requestFocusAfterFrames()
-            refocusThemes = false
-        }
     }
 
     if (showCustomThemeDialog && AppTheme.CUSTOM in uiState.availableThemes) {
@@ -522,17 +389,14 @@ fun ThemeSettingsContent(
     if (showAppIconDialog && appIconConfirmation == null) {
         AppIconPickerDialog(
             state = appIconState,
-            initial = appIconLastPicked ?: appIconState.selected,
             onSelected = { option ->
                 viewModel.onEvent(ThemeSettingsEvent.DismissAppIconFailure)
-                appIconLastPicked = option
                 if (option != appIconState.selected) {
                     appIconConfirmation = option
                 }
             },
             onDismiss = {
                 viewModel.onEvent(ThemeSettingsEvent.DismissAppIconFailure)
-                appIconLastPicked = null
                 showAppIconDialog = false
             }
         )
@@ -540,18 +404,12 @@ fun ThemeSettingsContent(
 
     appIconConfirmation?.let { option ->
         AppIconChangeConfirmationDialog(
-            choice = option,
+            option = option,
             onConfirm = {
                 appIconConfirmation = null
                 if (viewModel.selectAppIcon(option)) {
-                    // Reopen through the new launcher entry; home screens can take a few seconds to drop the old one.
-                    val restart = context.packageManager.getLaunchIntentForPackage(context.packageName)
-                        ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                    val reopened = restart != null && runCatching { context.startActivity(restart) }.isSuccess
                     context.findActivity()?.finishAffinity()
-                    if (!reopened) Process.killProcess(Process.myPid())
-                } else {
-                    appIconLastPicked = null
+                    Process.killProcess(Process.myPid())
                 }
             },
             onDismiss = { appIconConfirmation = null }
@@ -571,20 +429,17 @@ private fun ThemeSwatchChip(
     customColors: CustomThemeColors,
     isSelected: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    locked: Boolean = false
+    modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val palette = remember(theme, customColors) { ThemeColors.getColorPalette(theme, customColors) }
-    val chipShape = RoundedCornerShape(if (isV2Settings()) 12.dp else 18.dp)
-    val lockedLabel = stringResource(R.string.support_nuvio_theme_locked)
-    val label = if (locked) "${theme.localizedName()}, $lockedLabel" else theme.localizedName()
+    val chipShape = RoundedCornerShape(18.dp)
+    val label = theme.localizedName()
 
     Card(
         onClick = onClick,
         modifier = modifier
             .width(96.dp)
-            .settingsItemFocus(isFocused)
             .onFocusChanged { state ->
                 val nowFocused = state.isFocused
                 if (isFocused != nowFocused) {
@@ -592,12 +447,12 @@ private fun ThemeSwatchChip(
                 }
             },
         colors = CardDefaults.colors(
-            containerColor = settingsItemColor(NuvioTheme.colors.Background),
-            focusedContainerColor = if (isV2Settings()) settingsFocusFillColor() else NuvioTheme.colors.Background
+            containerColor = NuvioTheme.colors.Background,
+            focusedContainerColor = NuvioTheme.colors.Background
         ),
         border = CardDefaults.border(
             border = Border.None,
-            focusedBorder = if (isV2Settings()) Border.None else Border(
+            focusedBorder = Border(
                 border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
                 shape = chipShape
             )
@@ -620,31 +475,14 @@ private fun ThemeSwatchChip(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .then(if (theme == AppTheme.GLASS && isV2Settings()) Modifier
-                        .background(Brush.linearGradient(listOf(Color.White.copy(alpha = .12f), Color.Transparent, Color.Black.copy(alpha = .10f))))
-                        .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = .65f), Color.White.copy(alpha = .10f), Color.White.copy(alpha = .35f))), CircleShape)
-                    else Modifier.background(palette.accentBrush())),
+                    .background(palette.accentBrush()),
                 contentAlignment = Alignment.Center
             ) {
-                if (locked) {
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .background(Color.Black.copy(alpha = 0.35f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                } else if (isSelected) {
+                if (isSelected) {
                     Icon(
                         imageVector = Icons.Default.Check,
                         contentDescription = stringResource(R.string.cd_selected),
-                        tint = if (theme == AppTheme.GLASS && isV2Settings()) Color.White else palette.onSecondary,
+                        tint = palette.onSecondary,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -658,14 +496,6 @@ private fun ThemeSwatchChip(
                 color = if (isFocused || isSelected) NuvioTheme.colors.TextPrimary else NuvioTheme.colors.TextSecondary,
                 maxLines = 1
             )
-            if (locked) {
-                Text(
-                    text = lockedLabel,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isFocused) NuvioTheme.colors.TextPrimary else NuvioTheme.colors.TextTertiary,
-                    maxLines = 1
-                )
-            }
         }
     }
 }
@@ -727,7 +557,7 @@ private fun SettingsStyleOptionCard(
                     Icon(
                         imageVector = Icons.Default.Check,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = NuvioTheme.colors.Secondary,
                         modifier = Modifier
                             .size(16.dp)
                             .align(Alignment.CenterEnd)
@@ -762,7 +592,7 @@ private fun SettingsUiStyle.localizedDescription(): String = when (this) {
 }
 
 @Composable
-internal fun AppTheme.localizedName(): String = when (this) {
+private fun AppTheme.localizedName(): String = when (this) {
     AppTheme.CUSTOM -> stringResource(R.string.theme_color_custom)
     AppTheme.GOLD -> stringResource(R.string.theme_color_gold)
     AppTheme.JADE -> stringResource(R.string.theme_color_jade)
@@ -774,8 +604,6 @@ internal fun AppTheme.localizedName(): String = when (this) {
     AppTheme.VIOLET -> stringResource(R.string.theme_color_violet)
     AppTheme.EMERALD -> stringResource(R.string.theme_color_emerald)
     AppTheme.AMBER -> stringResource(R.string.theme_color_amber)
-    AppTheme.COPPER -> stringResource(R.string.theme_color_copper)
     AppTheme.ROSE -> stringResource(R.string.theme_color_rose)
     AppTheme.WHITE -> stringResource(R.string.theme_color_white)
-    AppTheme.GLASS -> stringResource(R.string.theme_color_glass)
 }

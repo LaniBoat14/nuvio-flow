@@ -129,9 +129,7 @@ class TrailerServiceCancellationTest {
                 tmdbApi = tmdbApi,
                 inAppYouTubeExtractor = extractor,
                 tmdbSettingsDataStore = tmdbSettingsDataStore,
-                tmdbService = tmdbService,
-                imdbTrailerResolver = mockk(relaxed = true),
-                trailerSettingsDataStore = mockk(relaxed = true)
+                tmdbService = tmdbService
             ),
             tmdbApi = tmdbApi,
             extractor = extractor

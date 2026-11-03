@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import com.nuvio.tv.core.network.NetworkResult
 import com.nuvio.tv.core.network.safeApiCall
-import com.nuvio.tv.core.logging.redactLinksForLog
 import com.nuvio.tv.data.local.AddonPreferences
 import com.nuvio.tv.data.mediaserver.ServerItemRef
 import com.nuvio.tv.data.remote.api.AddonApi
@@ -12,9 +11,6 @@ import com.nuvio.tv.domain.model.Addon
 import com.nuvio.tv.domain.model.Subtitle
 import com.nuvio.tv.domain.model.enabledAddons
 import com.nuvio.tv.domain.repository.SubtitleRepository
-import com.nuvio.tv.core.health.AddonHealthStore
-import com.nuvio.tv.core.health.HealthOutcome
-import com.nuvio.tv.core.util.canonicalizeAddonUrl
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -23,9 +19,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
@@ -33,10 +26,8 @@ import javax.inject.Inject
 class SubtitleRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val api: AddonApi,
-    private val addonRepository: AddonRepositoryImpl,
-    private val healthStore: AddonHealthStore
+    private val addonRepository: AddonRepositoryImpl
 ) : SubtitleRepository {
-    private val healthScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     companion object {
         private const val TAG = "SubtitleRepository"
@@ -195,13 +186,11 @@ class SubtitleRepositoryImpl @Inject constructor(
             "$basePath/subtitles/$encodedType/$encodedActualId.json$baseQuery"
         }
         
-        Log.d(TAG, "Fetching subtitles from ${addon.name}: ${subtitleUrl.redactLinksForLog()}")
+        Log.d(TAG, "Fetching subtitles from ${addon.name}: $subtitleUrl")
         
-        val healthT0 = android.os.SystemClock.elapsedRealtime()
         return try {
             when (val result = safeApiCall(context) { api.getSubtitles(subtitleUrl) }) {
                 is NetworkResult.Success -> {
-                    recordAddonHealth(addon.baseUrl, HealthOutcome.SUCCESS, android.os.SystemClock.elapsedRealtime() - healthT0)
                     val subtitles = result.data.subtitles?.mapNotNull { dto ->
                         val url = dto.url?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                         val lang = dto.lang?.takeIf { it.isNotBlank() } ?: dto.language?.takeIf { it.isNotBlank() } ?: "und"
@@ -220,25 +209,17 @@ class SubtitleRepositoryImpl @Inject constructor(
                     subtitles
                 }
                 is NetworkResult.Error -> {
-                    recordAddonHealth(addon.baseUrl, HealthOutcome.FAILURE, android.os.SystemClock.elapsedRealtime() - healthT0)
                     Log.e(TAG, "Failed to fetch subtitles from ${addon.name}: code=${result.code} message=${result.message}")
                     emptyList()
                 }
                 NetworkResult.Loading -> emptyList()
             }
         } catch (e: Exception) {
-            recordAddonHealth(addon.baseUrl, HealthOutcome.FAILURE, android.os.SystemClock.elapsedRealtime() - healthT0)
             Log.e(TAG, "Exception fetching subtitles from ${addon.name}", e)
             emptyList()
         }
     }
     
-    private fun recordAddonHealth(baseUrl: String, outcome: HealthOutcome, latencyMs: Long) {
-        healthScope.launch {
-            healthStore.record(AddonHealthStore.addonKey(canonicalizeAddonUrl(baseUrl)), outcome, latencyMs)
-        }
-    }
-
     private fun buildExtraParams(
         videoHash: String?,
         videoSize: Long?,

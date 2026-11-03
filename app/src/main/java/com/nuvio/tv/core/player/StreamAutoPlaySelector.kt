@@ -4,7 +4,6 @@ import com.nuvio.tv.core.build.AppFeaturePolicy
 import com.nuvio.tv.data.local.StreamAutoPlayMode
 import com.nuvio.tv.data.local.StreamAutoPlaySource
 import com.nuvio.tv.domain.model.AddonStreams
-import com.nuvio.tv.domain.model.DebridStreamPreferences
 import com.nuvio.tv.domain.model.Stream
 import com.nuvio.tv.domain.model.StreamDebridCacheState
 
@@ -15,10 +14,9 @@ object StreamAutoPlaySelector {
         preferredNames: Set<String> = emptySet()
     ): List<AddonStreams> {
         if (streams.isEmpty()) return streams
-        val (servers, rest) = streams.partition { it.addonName in preferredNames || it.isServerGroup() }
-        if (servers.isNotEmpty()) {
-            val (preferred, others) = servers.partition { it.addonName in preferredNames }
-            return preferred + others + orderAddonStreams(rest, installedOrder)
+        if (preferredNames.isNotEmpty()) {
+            val (preferred, rest) = streams.partition { it.addonName in preferredNames }
+            return preferred + orderAddonStreams(rest, installedOrder)
         }
 
         val addonRankByName = HashMap<String, Int>(installedOrder.size)
@@ -37,12 +35,12 @@ object StreamAutoPlaySelector {
         return directDebridEntries + orderedAddons + pluginEntries
     }
 
-    private fun AddonStreams.isServerGroup(): Boolean = streams.any { it.serverTarget != null }
-
     private fun isPlayable(stream: Stream): Boolean {
         // External URL streams (e.g. error pages, web links) are not playable.
         if (stream.isExternal()) return false
         if (stream.serverTarget != null) return true
+        // Streams with a direct URL are always playable regardless of debrid cache status.
+        if (stream.getStreamUrl() != null) return true
         when (stream.debridCacheStatus?.state) {
             StreamDebridCacheState.CHECKING,
             StreamDebridCacheState.NOT_CACHED,
@@ -50,32 +48,11 @@ object StreamAutoPlaySelector {
             StreamDebridCacheState.CACHED,
             null -> Unit
         }
-        return stream.getStreamUrl() != null ||
-            stream.isTorrent() ||
+        return stream.isTorrent() ||
             stream.isDirectDebrid() ||
             // A YouTube id is resolved to a playable URL on the device when the stream is played.
             // Builds without in-app YouTube playback open the watch page instead, an external link.
             (AppFeaturePolicy.inAppTrailerPlaybackEnabled && stream.youTubeIdToResolve() != null)
-    }
-
-    /**
-     * The best playable stream of the release [nextFilename] names, from any add-on, and only
-     * from [bingeGroup] when one is given. Several add-ons can list the same file, so the matches
-     * are ranked rather than taken in list order.
-     */
-    fun selectByFilename(
-        streams: List<Stream>,
-        nextFilename: String,
-        bingeGroup: String? = null,
-        debridStreamPreferences: DebridStreamPreferences? = null
-    ): Stream? {
-        val matches = streams.filter { stream ->
-            !stream.isExternal() &&
-                (bingeGroup == null || stream.behaviorHints?.bingeGroup == bingeGroup) &&
-                FilenameEpisodeMatcher.matches(stream.behaviorHints?.filename, nextFilename) &&
-                isPlayable(stream)
-        }
-        return StreamQualityRank.rank(matches, debridStreamPreferences).firstOrNull()
     }
 
 
@@ -90,8 +67,7 @@ object StreamAutoPlaySelector {
         selectedPlugins: Set<String>,
         preferredBingeGroup: String? = null,
         preferBingeGroupInSelection: Boolean = false,
-        bingeGroupOnly: Boolean = false,
-        debridStreamPreferences: DebridStreamPreferences? = null
+        bingeGroupOnly: Boolean = false
     ): Stream? {
         if (streams.isEmpty()) return null
 
@@ -124,15 +100,10 @@ object StreamAutoPlaySelector {
         // not be limited by autoplay source/addon selection filters.
         val targetBingeGroup = preferredBingeGroup?.trim().orEmpty()
         if (preferBingeGroupInSelection && targetBingeGroup.isNotEmpty()) {
-            val bingeGroupMatches = streams.filter { stream ->
+            val bingeGroupMatch = streams.firstOrNull { stream ->
                 !stream.isExternal() &&
                     stream.behaviorHints?.bingeGroup == targetBingeGroup &&
                     isPlayable(stream)
-            }
-            val bingeGroupMatch = if (mode == StreamAutoPlayMode.QUALITY_RANK && bingeGroupMatches.size > 1) {
-                StreamQualityRank.rank(bingeGroupMatches, debridStreamPreferences).firstOrNull()
-            } else {
-                bingeGroupMatches.firstOrNull()
             }
             if (bingeGroupMatch != null) return bingeGroupMatch
             // When bingeGroupOnly is set (MANUAL mode with only binge-group
@@ -145,20 +116,9 @@ object StreamAutoPlaySelector {
 
         if (mode == StreamAutoPlayMode.MANUAL) return null
 
-        return selectByMode(candidateStreams, mode, regexPattern, debridStreamPreferences)
-    }
-
-    private fun selectByMode(
-        candidateStreams: List<Stream>,
-        mode: StreamAutoPlayMode,
-        regexPattern: String,
-        debridStreamPreferences: DebridStreamPreferences?
-    ): Stream? {
         return when (mode) {
             StreamAutoPlayMode.MANUAL -> null
             StreamAutoPlayMode.FIRST_STREAM -> candidateStreams.firstOrNull { isPlayable(it) }
-            StreamAutoPlayMode.QUALITY_RANK ->
-                StreamQualityRank.rank(candidateStreams.filter { isPlayable(it) }, debridStreamPreferences).firstOrNull()
             StreamAutoPlayMode.REGEX_MATCH -> {
                 val pattern = regexPattern.trim()
  
@@ -190,7 +150,6 @@ object StreamAutoPlaySelector {
                         append(stream.description.orEmpty()).append(' ')
                         append(stream.getStreamUrl().orEmpty())
                         if (stream.isTorrent()) append(' ').append(stream.infoHash.orEmpty())
-                        if (stream.serverTarget != null) append(' ').append(stream.behaviorHints?.filename.orEmpty())
                     }
 
                     // Must match include pattern

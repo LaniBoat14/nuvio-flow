@@ -3,7 +3,6 @@ package com.nuvio.tv.core.sync
 import android.os.SystemClock
 import android.util.Log
 import com.nuvio.tv.core.auth.AuthManager
-import com.nuvio.tv.core.player.PlayerSessionTracker
 import com.nuvio.tv.core.plugin.PluginManager
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.data.local.StartupSyncPreferences
@@ -192,7 +191,7 @@ class StartupSyncService @Inject constructor(
 
             addonRepository.isSyncingFromRemote = true
             try {
-                val remoteAddonUrls = addonSyncService.fetchAndApplyRemoteAddonUrls().getOrElse { throw it }
+                val remoteAddonUrls = addonSyncService.getRemoteAddonUrls().getOrElse { throw it }
 
                 addonRepository.reconcileWithRemoteAddonUrls(
                     remoteUrls = remoteAddonUrls,
@@ -301,8 +300,6 @@ class StartupSyncService @Inject constructor(
 
         activityPullJob = scope.launch {
             if (delayMs > 0L) delay(delayMs)
-            // A pull due in the first minute of playback waits for it to settle in.
-            PlayerSessionTracker.settled.first { it }
             val currentState = authManager.authState.value as? AuthState.FullAccount ?: return@launch
             if (pullKey(currentState.userId) != key || startupPullJob?.isActive == true) return@launch
             val profileId = profileManager.activeProfileId.value
@@ -596,7 +593,7 @@ class StartupSyncService @Inject constructor(
             val addonJob = async {
                 addonRepository.isSyncingFromRemote = true
                 try {
-                    val remoteAddonUrls = addonSyncService.fetchAndApplyRemoteAddonUrls().getOrElse { throw it }
+                    val remoteAddonUrls = addonSyncService.getRemoteAddonUrls().getOrElse { throw it }
                     addonRepository.reconcileWithRemoteAddonUrls(
                         remoteUrls = remoteAddonUrls,
                         removeMissingLocal = true
@@ -719,7 +716,7 @@ class StartupSyncService @Inject constructor(
     private suspend fun pullRealtimeAddons(profileId: Int) {
         addonRepository.isSyncingFromRemote = true
         try {
-            val remoteAddonUrls = addonSyncService.fetchAndApplyRemoteAddonUrls().getOrElse { throw it }
+            val remoteAddonUrls = addonSyncService.getRemoteAddonUrls().getOrElse { throw it }
             addonRepository.reconcileWithRemoteAddonUrls(
                 remoteUrls = remoteAddonUrls,
                 removeMissingLocal = true

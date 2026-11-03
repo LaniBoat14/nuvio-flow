@@ -1,14 +1,5 @@
 package com.nuvio.tv
 
-import androidx.compose.runtime.SideEffect
-import com.nuvio.tv.data.local.DeviceUiPreferenceStore
-import com.nuvio.tv.data.local.V2AppearancePreferenceStore
-import com.nuvio.tv.ui.v2.appearance.ResolvedAppearance
-import com.nuvio.tv.ui.v2.appearance.rememberStableUiScale
-import com.nuvio.tv.ui.v2.appearance.rememberUiCanvasSnapshot
-import com.nuvio.tv.ui.v2.scale.isPlayerUiVisible
-import com.nuvio.tv.ui.v2.profile.startPicture
-import com.nuvio.tv.ui.v2.profile.startPictureOr
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -58,14 +49,11 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
@@ -78,7 +66,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -117,10 +104,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import com.nuvio.tv.ui.screens.ambient.AMBIENT_BEFORE_OLED_DIM
 import com.nuvio.tv.ui.screens.ambient.AmbientIdleController
 import com.nuvio.tv.ui.screens.ambient.AmbientModeHost
 import com.nuvio.tv.ui.screens.ambient.LocalAmbientIdleController
+import com.nuvio.tv.ui.components.LocalStartupLoadingState
+import com.nuvio.tv.ui.components.LocalStartupSplashEnabled
+import com.nuvio.tv.ui.components.StartupLoadingState
+import com.nuvio.tv.ui.components.StartupDestination
+import com.nuvio.tv.ui.components.shouldShowStartupSplash
+import com.nuvio.tv.ui.components.startupDestinationForRoute
 import com.nuvio.tv.core.runtime.PluginRuntimeHooks
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
@@ -129,10 +121,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.os.ConfigurationCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
-import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.metrics.performance.JankStats
 import androidx.metrics.performance.PerformanceMetricsState
 import androidx.navigation.NavHostController
@@ -155,6 +144,7 @@ import com.nuvio.tv.core.auth.DeviceSessionRegistration
 import com.nuvio.tv.core.deeplink.DeepLinkHandler
 import com.nuvio.tv.core.deeplink.DeepLinkParser
 import com.nuvio.tv.core.player.PlayerWindowBackdrop
+import com.nuvio.tv.core.party.PartyRepository
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.sync.ProfileSyncService
 import com.nuvio.tv.core.sync.StartupSyncService
@@ -169,32 +159,32 @@ import com.nuvio.tv.data.local.ThemeDataStore
 import com.nuvio.tv.data.repository.MemberAccessRepository
 import com.nuvio.tv.data.remote.supabase.AvatarRepository
 import com.nuvio.tv.domain.model.AppFont
-import com.nuvio.tv.domain.model.CustomThemeColors
-import com.nuvio.tv.domain.model.resolveCustomThemeColors
 import com.nuvio.tv.domain.model.AppTheme
+import com.nuvio.tv.domain.model.CustomThemeColors
 import com.nuvio.tv.domain.model.AuthState
 import com.nuvio.tv.domain.model.CardDepthStyle
 import com.nuvio.tv.domain.model.CosmeticEntitlement
 import com.nuvio.tv.domain.model.DiscoverLocation
 import com.nuvio.tv.domain.model.ExperienceMode
 import com.nuvio.tv.domain.model.MemberAccess
+import com.nuvio.tv.domain.model.ProfileBackgroundSelection
+import com.nuvio.tv.domain.model.resolveProfileBackgroundSelection
 import com.nuvio.tv.domain.model.SettingsUiStyle
 import com.nuvio.tv.domain.model.resolveAppTheme
+import com.nuvio.tv.domain.model.resolveCustomThemeColors
 import com.nuvio.tv.domain.deeplink.AppDeepLink
 import com.nuvio.tv.domain.repository.AddonRepository
 import com.nuvio.tv.ui.components.NuvioScrollDefaults
 import com.nuvio.tv.ui.components.BrandWordmark
-import com.nuvio.tv.ui.components.ScreensaverOverlay
 import com.nuvio.tv.ui.components.LocalCardDepthStyle
 import com.nuvio.tv.ui.components.LocalLandscapePosterMode
 import com.nuvio.tv.ui.components.LocalAlwaysBackdropWithLogo
-import com.nuvio.tv.ui.components.LocalLogoOverCardTrailer
 import com.nuvio.tv.ui.components.ProfileAvatarCircle
 import com.nuvio.tv.ui.navigation.LocalNavViewModelStoreOwner
 import com.nuvio.tv.ui.navigation.NuvioNavHost
 import com.nuvio.tv.ui.navigation.Screen
 import com.nuvio.tv.ui.navigation.rememberNavSessionViewModelStoreOwner
-import com.nuvio.tv.ui.screens.calendar.openCalendarWatchTarget
+import com.nuvio.tv.ui.screens.party.PartyEffects
 import com.nuvio.tv.ui.membership.LocalMemberAccess
 import com.nuvio.tv.ui.screens.account.AuthQrSignInScreen
 import com.nuvio.tv.ui.screens.addon.EssentialAddonSetupScreen
@@ -208,6 +198,7 @@ import com.nuvio.tv.ui.theme.NuvioStrokes
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.theme.ThemeColors
 import com.nuvio.tv.ui.theme.accentBrush
+import com.nuvio.tv.ui.theme.brandWordmarkResource
 import com.nuvio.tv.ui.util.LocalFastHorizontalNavigationEnabled
 import com.nuvio.tv.ui.util.LocalRecompositionHighlighterEnabled
 import com.nuvio.tv.ui.util.rememberDrawerItemFocusRequesters
@@ -218,21 +209,26 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeInputScale
 import dev.chrisbanes.haze.hazeEffect
-import com.nuvio.tv.ui.v2.components.GlassRole
-import com.nuvio.tv.ui.v2.components.nuvioGlass
 import dev.chrisbanes.haze.hazeSource
 import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 val LocalSidebarExpanded = compositionLocalOf { false }
 val LocalContentFocusRequester = compositionLocalOf { FocusRequester.Default }
+
+data class SplashBackground(
+    val profileColorHex: String? = null,
+    val backgroundUrl: String? = null,
+    val backgroundCacheKey: String? = null,
+    val skipGradient: Boolean = false,
+    val brandWordmarkRes: Int? = null
+)
+val LocalSplashBackground = compositionLocalOf { SplashBackground() }
 
 private const val SIDEBAR_AUTO_COLLAPSE_DELAY_MS = 3_000L
 
@@ -246,8 +242,8 @@ data class DrawerItem(
 )
 
 private data class MainUiPrefs(
-    val theme: AppTheme = AppTheme.GLASS,
-    val customThemeColors: CustomThemeColors = CustomThemeColors.solid(CustomThemeColors.Default.second),
+    val theme: AppTheme = AppTheme.WHITE,
+    val customThemeColors: CustomThemeColors = CustomThemeColors.Default,
     val memberAccess: MemberAccess = MemberAccess.None,
     val font: AppFont = AppFont.INTER,
     val amoledMode: Boolean = false,
@@ -266,8 +262,7 @@ private data class MainUiPrefs(
     val settingsUiStyle: SettingsUiStyle = SettingsUiStyle.CLASSIC,
     val cardDepthStyle: CardDepthStyle = CardDepthStyle(),
     val landscapePosterMode: Boolean = false,
-    val alwaysBackdropWithLogo: Boolean = false,
-    val logoOverCardTrailer: Boolean = true
+    val alwaysBackdropWithLogo: Boolean = false
 )
 
 @AndroidEntryPoint
@@ -319,43 +314,24 @@ open class MainActivity : ComponentActivity() {
     lateinit var avatarRepository: AvatarRepository
 
     @Inject
+    lateinit var profileBackgroundRepository: com.nuvio.tv.data.remote.supabase.ProfileBackgroundRepository
+
+    @Inject
     lateinit var trailerPlayerPool: com.nuvio.tv.core.player.TrailerPlayerPool
 
     @Inject
     lateinit var externalPlaybackTracker: com.nuvio.tv.core.player.ExternalPlaybackTracker
 
     @Inject
-    lateinit var partyRuntime: com.nuvio.tv.core.party.PartyRuntime
-
-    @Inject
-    lateinit var localProfileAvatars: com.nuvio.tv.core.profile.LocalProfileAvatars
-
-    @Inject
     lateinit var deepLinkHandler: DeepLinkHandler
 
     @Inject
-    lateinit var screensaverController: com.nuvio.tv.core.player.ScreensaverController
-
-    @Inject
-    lateinit var ambientModeDataStore: com.nuvio.tv.data.local.AmbientModeDataStore
-
-    @Inject
-    lateinit var calendarSettingsDataStore: com.nuvio.tv.core.calendar.CalendarSettingsDataStore
-
-    @Inject
-    lateinit var calendarReminders: com.nuvio.tv.core.calendar.CalendarReminderCenter
-
-    @Inject
-    lateinit var calendarAppVisibility: com.nuvio.tv.core.calendar.CalendarAppVisibility
-
-    @Inject
-    lateinit var calendarEpisodeResolver: dagger.Lazy<com.nuvio.tv.core.calendar.CalendarEpisodeResolver>
+    lateinit var partyRepository: PartyRepository
 
     private val pendingDeepLinkUrl = MutableStateFlow<String?>(null)
     private val pendingLaunchIntent = MutableStateFlow<Intent?>(null)
 
     private lateinit var jankStats: JankStats
-    private val qualityGovernor = com.nuvio.tv.ui.v2.quality.AutomaticQualityGovernor()
 
     /** Activity-level launcher for external video players. Survives all navigation changes. */
     private val externalPlayerLauncher = registerForActivityResult(
@@ -367,13 +343,6 @@ open class MainActivity : ComponentActivity() {
 
     /** True until the first onResume after onCreate completes. */
     private var isFirstResumeAfterCreate = false
-
-    /** True after an idle-overlay wake until the waking press's ACTION_UP has been swallowed. */
-    private var swallowKeysUntilUp = false
-    private val ambientIdleController by lazy { AmbientIdleController(screensaverController) }
-    private var calendarMenuKeyDown = false
-    @Volatile private var searchKeyOpensSearch = false
-    private val searchKeyPresses = mutableIntStateOf(0)
 
     @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
     override fun attachBaseContext(newBase: Context) {
@@ -395,50 +364,15 @@ open class MainActivity : ComponentActivity() {
 
     @OptIn(ExperimentalFoundationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
-        com.nuvio.tv.core.util.StartupLatencyTrace.coldOnce("activity_create")
         installSplashScreen()
         super.onCreate(savedInstanceState)
-        window?.decorView?.let { com.nuvio.tv.core.util.StartupLatencyTrace.coldOnFirstDraw(it, "first_frame") }
-        com.nuvio.tv.core.performance.DetailEntryTrace.attach(window)
         isFirstResumeAfterCreate = true
-        val startPicture = com.nuvio.tv.ui.v2.profile.StartPicture(
-            window?.decorView?.background?.constantState?.newDrawable(resources)?.takeIf {
-                savedInstanceState == null && com.nuvio.tv.ui.brand.ArcStartHandoff.windowCarriesMark(android.os.Build.VERSION.SDK_INT)
-            }
-        ) { window?.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT)) }
-        if (!startPicture.showing) window?.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
+        window?.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
 
         // Wire the Activity-level launcher to the tracker
         externalPlaybackTracker.activityLauncher = externalPlayerLauncher
 
         PluginRuntimeHooks.onActivityCreate(this)
-
-        // OLED screensaver: 1 Hz idle ticker while STARTED. collectLatest restarts the
-        // loop (and the idle clock) whenever the enable/timeout settings change, and the
-        // clock also restarts every time the activity returns to STARTED. The dimmer
-        // yields to Ambient Mode when both are on (AMBIENT_BEFORE_OLED_DIM).
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                combine(
-                    themeDataStore.screensaverEnabled,
-                    themeDataStore.screensaverTimeoutMinutes,
-                    ambientModeDataStore.settings.map { it.enabled }
-                ) { enabled, minutes, ambientEnabled ->
-                    (enabled && !(ambientEnabled && AMBIENT_BEFORE_OLED_DIM)) to minutes
-                }
-                    .collectLatest { (enabled, minutes) ->
-                        if (!enabled) {
-                            screensaverController.notifyWake()
-                            return@collectLatest
-                        }
-                        screensaverController.notifyInteraction()
-                        while (true) {
-                            delay(1_000)
-                            screensaverController.maybeEngage(minutes * 60_000L)
-                        }
-                    }
-            }
-        }
 
         window?.decorView?.post {
             val snapshot = com.nuvio.tv.core.player.DisplayCapabilities.detect(this)
@@ -461,7 +395,15 @@ open class MainActivity : ComponentActivity() {
 
         setContent {
             var hasSelectedProfileThisSession by rememberSaveable { mutableStateOf(false) }
-            var v2ProfilePickerRequested by rememberSaveable { mutableStateOf(false) }
+            var startupSession by remember { mutableIntStateOf(0) }
+            // Triggered immediately on profile click (before system confirms selection).
+            var splashTriggered by remember { mutableStateOf(false) }
+            // Overrides splash background with the currently focused profile
+            // so the splash matches the profile selection background.
+            var focusedSplashColor by remember { mutableStateOf<String?>(null) }
+            var focusedSplashBgUrl by remember { mutableStateOf<String?>(null) }
+            var focusedSplashCacheKey by remember { mutableStateOf<String?>(null) }
+            var focusedSplashTheme by remember { mutableStateOf<AppTheme?>(null) }
             var onboardingCompletedThisSession by remember { mutableStateOf(false) }
             var onboardingProfileSyncInProgress by remember { mutableStateOf(false) }
             val hasSeenAuthQrFlow = remember(appOnboardingDataStore) {
@@ -484,6 +426,8 @@ open class MainActivity : ComponentActivity() {
                 }
             }
 
+            PartyEffects(partyRepository)
+
             LaunchedEffect(hasSeenAuthQrOnFirstLaunch, authState) {
                 if (hasSeenAuthQrOnFirstLaunch == false && authState is AuthState.FullAccount) {
                     appOnboardingDataStore.setHasSeenAuthQrOnFirstLaunch(true)
@@ -492,6 +436,8 @@ open class MainActivity : ComponentActivity() {
             }
 
             val activeProfileId by profileManager.activeProfileId.collectAsState()
+            val startupSplashEnabled by profileManager.startupSplashEnabled.collectAsState()
+            val startupLoadingState = remember(activeProfileId, startupSession) { StartupLoadingState() }
             val profiles by profileManager.profiles.collectAsState()
             val hasEverSelectedProfile by profileManager.hasEverSelectedProfile.collectAsState()
             val rememberLastProfileEnabled by profileManager.rememberLastProfileEnabled.collectAsState()
@@ -514,11 +460,22 @@ open class MainActivity : ComponentActivity() {
                 profilePinStates[activeProfileId] == true
             }
 
-            LaunchedEffect(hasEverSelectedProfile, activeProfileHasPin, rememberLastProfileEnabled) {
-                if (rememberLastProfileEnabled && hasEverSelectedProfile && !activeProfileHasPin && !hasSelectedProfileThisSession && !v2ProfilePickerRequested) {
-                    hasSelectedProfileThisSession = true
+            var profileSwitchedManually by remember { mutableStateOf(false) }
+            val shouldAutoSelectProfile = rememberLastProfileEnabled &&
+                hasEverSelectedProfile && !activeProfileHasPin &&
+                !hasSelectedProfileThisSession && !profileSwitchedManually
+            if (shouldAutoSelectProfile && !splashTriggered) {
+                splashTriggered = true
+                hasSelectedProfileThisSession = true
+            }
+            LaunchedEffect(shouldAutoSelectProfile) {
+                if (shouldAutoSelectProfile) {
                     if (authManager.authState.value is AuthState.FullAccount) {
                         startupSyncService.requestSyncNow()
+                    }
+                    // Preload profile background catalog so the splash can show it
+                    activeProfile?.profileBackgroundId?.let {
+                        profileBackgroundRepository.loadSelectedAndPreload(it)
                     }
                 }
             }
@@ -535,15 +492,14 @@ open class MainActivity : ComponentActivity() {
                     .getOrDefault(emptyList())
             }
 
-            val localAvatars by localProfileAvatars.avatars.collectAsState()
-            val activeProfileAvatarImageUrl = remember(activeProfile, avatarCatalog, localAvatars) {
-                activeProfile?.let { localAvatars[it.id] }?.let(com.nuvio.tv.core.party.PartyAvatars::imageUri)
-                    ?: activeProfile?.avatarUrl?.takeIf { it.isNotBlank() }
+            val activeProfileAvatarImageUrl = remember(activeProfile, avatarCatalog) {
+                activeProfile?.avatarUrl?.takeIf { it.isNotBlank() }
                     ?: activeProfile?.avatarId?.let { avatarRepository.getAvatarImageUrl(it, avatarCatalog) }
             }
 
             val mainUiPrefsFlow = remember(
                 activeProfileId,
+                startupSession,
                 themeDataStore,
                 layoutPreferenceDataStore,
                 experienceModeDataStore,
@@ -569,7 +525,7 @@ open class MainActivity : ComponentActivity() {
                     experienceModeDataStore.mode,
                 ) { themeAndAccess, font, amoledMode, amoledSurfacesMode, experienceMode ->
                     MainUiPrefs(
-                        theme = themeAndAccess.first.theme ?: AppTheme.GLASS,
+                        theme = themeAndAccess.first.theme ?: AppTheme.WHITE,
                         customThemeColors = themeAndAccess.first.customColors,
                         memberAccess = themeAndAccess.second,
                         font = font,
@@ -610,12 +566,9 @@ open class MainActivity : ComponentActivity() {
                     )
                 }
                 val landscapePrefsFlow = combine(
-                    layoutPreferenceDataStore.landscapePosterScope,
-                    layoutPreferenceDataStore.alwaysShowLandscapeClearlogo,
-                    layoutPreferenceDataStore.focusedPosterBackdropTrailerLogoEnabled
-                ) { scope, backdropWithLogo, logoOverTrailer ->
-                    Triple(scope.onAllScreens, backdropWithLogo, logoOverTrailer)
-                }
+                    layoutPreferenceDataStore.modernLandscapePostersEnabled,
+                    layoutPreferenceDataStore.alwaysShowLandscapeClearlogo
+                ) { landscape, backdropWithLogo -> landscape to backdropWithLogo }
 
                 combine(
                     themeAndExperienceFlow,
@@ -623,7 +576,7 @@ open class MainActivity : ComponentActivity() {
                     extraFeaturesFlow,
                     layoutPreferenceDataStore.cardDepthStyle,
                     landscapePrefsFlow
-                ) { themePrefs, layoutPrefs, extraPrefs, cardDepthStyle, (landscapePosterMode, alwaysBackdropWithLogo, logoOverCardTrailer) ->
+                ) { themePrefs, layoutPrefs, extraPrefs, cardDepthStyle, (landscapePosterMode, alwaysBackdropWithLogo) ->
                     themePrefs.copy(
                         hasChosenLayout = layoutPrefs.hasChosenLayout,
                         sidebarCollapsed = layoutPrefs.sidebarCollapsed,
@@ -637,56 +590,28 @@ open class MainActivity : ComponentActivity() {
                         settingsUiStyle = extraPrefs.settingsUiStyle,
                         cardDepthStyle = cardDepthStyle,
                         landscapePosterMode = landscapePosterMode,
-                        alwaysBackdropWithLogo = alwaysBackdropWithLogo,
-                        logoOverCardTrailer = logoOverCardTrailer
+                        alwaysBackdropWithLogo = alwaysBackdropWithLogo
                     )
                 }
             }
-            val mainUiPrefs by key(activeProfileId) {
+            val mainUiPrefs by key(activeProfileId, startupSession) {
                 mainUiPrefsFlow.collectAsState(initial = MainUiPrefs(hasChosenLayout = null))
             }
-            val installedAddons by remember(addonRepository) {
-                addonRepository.getInstalledAddons()
-            }.collectAsState(initial = null)
+            val installedAddons by key(activeProfileId, startupSession) {
+                remember(addonRepository) {
+                    addonRepository.getInstalledAddons()
+                }.collectAsState(initial = null)
+            }
             val discoverLocation = mainUiPrefs.discoverLocation
 
-            val uiScalePercent by remember {
-                com.nuvio.tv.data.local.UiScalePreference.flow(applicationContext)
-            }.collectAsState(initial = null)
-            val devicePreferences by remember { DeviceUiPreferenceStore.flow(applicationContext) }
-                .collectAsState(initial = null)
-            val appearancePreferences by remember { V2AppearancePreferenceStore.flow(applicationContext) }
-                .collectAsState(initial = null)
-            val device = devicePreferences
-            val appearance = appearancePreferences
-            val originalScale = uiScalePercent
-            // Resolve the device snapshot before profile selection's first themed frame.
-            if (device == null || appearance == null || originalScale == null) {
-                Box(Modifier.fillMaxSize().then(if (startPicture.showing) Modifier else Modifier.background(Color.Black)))
-                return@setContent
-            }
-            SideEffect { com.nuvio.tv.core.util.StartupLatencyTrace.coldOnce("prefs_ready") }
-            var playbackUiActive by remember { mutableStateOf(false) }
-            val profileEntry = remember { com.nuvio.tv.ui.v2.profile.ProfileEntryState() }
-            var entryConsumedKey by remember { mutableStateOf<Int?>(null) }
-            val canvas = rememberUiCanvasSnapshot()
-            val scaleDecision = rememberStableUiScale(canvas, device, originalScale, playbackUiActive)
-            val qualityDecision = com.nuvio.tv.ui.v2.quality.rememberDeviceVisualQuality(canvas, device, qualityGovernor)
             NuvioTheme(
                 appTheme = mainUiPrefs.theme,
                 customThemeColors = mainUiPrefs.customThemeColors,
                 appFont = mainUiPrefs.font,
                 amoledMode = mainUiPrefs.amoledMode,
                 amoledSurfacesMode = mainUiPrefs.amoledSurfacesMode,
-                settingsUiStyle = mainUiPrefs.settingsUiStyle,
-                uiScalePercent = scaleDecision.percent,
-                presentation = ResolvedAppearance(device, appearance, scaleDecision, qualityDecision, playbackUiActive)
+                settingsUiStyle = mainUiPrefs.settingsUiStyle
             ) {
-                SideEffect {
-                    com.nuvio.tv.ui.util.RecompositionHighlighterFlag.enabled =
-                        BuildConfig.IS_DEBUG_BUILD && mainUiPrefs.composeHighlighterEnabled
-                }
-                val artworkAccent = com.nuvio.tv.ui.v2.appearance.rememberArtworkAccent()
                 val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
                 val bringIntoViewSpec = if (mainUiPrefs.smoothBringIntoViewEnabled) {
                     NuvioScrollDefaults.smoothScrollSpec
@@ -700,45 +625,101 @@ open class MainActivity : ComponentActivity() {
                         fontScale = systemDensity.fontScale.coerceAtMost(MAX_SUPPORTED_FONT_SCALE)
                     )
                 }
+                val highlighterEnabled = BuildConfig.IS_DEBUG_BUILD && mainUiPrefs.composeHighlighterEnabled
+                com.nuvio.tv.ui.util.RecompositionHighlighterFlag.enabled = highlighterEnabled
+                val profileBgSelection = resolveProfileBackgroundSelection(
+                    profile = activeProfile,
+                    entitlements = mainUiPrefs.memberAccess.entitlements
+                )
+                val profileBgCatalog by profileBackgroundRepository.catalog.collectAsState()
+                // Cache splash background in SharedPreferences so the splash
+                // can show the correct background on cold start when
+                // "remember last profile" skips the profile selection screen.
+                val splashPrefs = remember {
+                    context.getSharedPreferences("startup_splash", android.content.Context.MODE_PRIVATE)
+                }
+                val splashPreferencesReady = mainUiPrefs.hasChosenLayout != null && mainUiPrefs.experienceModeLoaded
+                val splashBackground = remember(
+                    profileBgSelection, profileBgCatalog, activeProfile, activeProfileId,
+                    focusedSplashColor, focusedSplashBgUrl, focusedSplashCacheKey,
+                    focusedSplashTheme, splashPreferencesReady, mainUiPrefs.theme
+                ) {
+                    val bgUrl = when (profileBgSelection) {
+                        is ProfileBackgroundSelection.Custom -> profileBgSelection.url
+                        is ProfileBackgroundSelection.Catalog -> {
+                            profileBgCatalog.firstOrNull { it.id == profileBgSelection.id }
+                                ?.imageFile?.toURI()?.toString()
+                        }
+                        else -> null
+                    }
+                    val colorHex = activeProfile?.avatarColorHex
+                    // Only overwrite bg_url when we have a real value or when
+                    // we know the profile has no background at all.
+                    if (splashPreferencesReady && colorHex != null) {
+                        splashPrefs.edit().putString("color_$activeProfileId", colorHex).apply()
+                    }
+                    if (splashPreferencesReady && bgUrl != null) {
+                        splashPrefs.edit()
+                            .putString("bg_url_$activeProfileId", bgUrl)
+                            .apply()
+                    } else if (splashPreferencesReady && profileBgSelection == null && activeProfile != null) {
+                        splashPrefs.edit()
+                            .remove("bg_url_$activeProfileId")
+                            .apply()
+                    }
+                    val activeTheme = mainUiPrefs.theme
+                    if (splashPreferencesReady && activeTheme != AppTheme.WHITE) {
+                        splashPrefs.edit().putString("theme_$activeProfileId", activeTheme.name).apply()
+                    } else if (splashPreferencesReady) {
+                        splashPrefs.edit().remove("theme_$activeProfileId").apply()
+                    }
+                    // Fall back to cached values only on cold start (no focused override)
+                    val hasFocusedOverride = focusedSplashColor != null
+                    val fallbackColor = if (colorHex == null && !hasFocusedOverride) splashPrefs.getString("color_$activeProfileId", null) else null
+                    val fallbackBg = if (
+                        bgUrl == null && !hasFocusedOverride && (!splashPreferencesReady || profileBgSelection != null)
+                    ) splashPrefs.getString("bg_url_$activeProfileId", null) else null
+                    val resolvedBgUrl = if (hasFocusedOverride) focusedSplashBgUrl else (bgUrl ?: fallbackBg)
+                    val skipGradient = !hasFocusedOverride && resolvedBgUrl == null &&
+                        profileBgSelection is ProfileBackgroundSelection.Catalog
+                    // Resolve branded logo: focused theme (profile screen) > active theme > cached theme > default
+                    val resolvedTheme = focusedSplashTheme
+                        ?: activeTheme.takeIf { splashPreferencesReady }
+                        ?: splashPrefs.getString("theme_$activeProfileId", null)
+                            ?.let { name -> AppTheme.entries.firstOrNull { it.name == name } }
+                        ?: AppTheme.WHITE
+                    SplashBackground(
+                        profileColorHex = if (hasFocusedOverride) focusedSplashColor else (colorHex ?: fallbackColor),
+                        backgroundUrl = resolvedBgUrl,
+                        backgroundCacheKey = if (hasFocusedOverride) focusedSplashCacheKey else when (profileBgSelection) {
+                            is ProfileBackgroundSelection.Catalog -> profileBgCatalog
+                                .firstOrNull { it.id == profileBgSelection.id }
+                                ?.let { "profile-background-${it.id}-v${it.assetVersion}" }
+                            is ProfileBackgroundSelection.Custom -> "custom-profile-background-${profileBgSelection.url}"
+                            null -> null
+                        },
+                        skipGradient = skipGradient,
+                        brandWordmarkRes = resolvedTheme.brandWordmarkResource
+                    )
+                }
                 CompositionLocalProvider(
-                    com.nuvio.tv.ui.v2.appearance.LocalArtworkAccent provides artworkAccent,
-                    com.nuvio.tv.ui.v2.profile.LocalProfileEntryState provides profileEntry,
                     LocalDensity provides clampedFontScaleDensity,
                     LocalBringIntoViewSpec provides bringIntoViewSpec,
                     LocalFastHorizontalNavigationEnabled provides mainUiPrefs.fastHorizontalNavigationEnabled,
-                    LocalRecompositionHighlighterEnabled provides (BuildConfig.IS_DEBUG_BUILD && mainUiPrefs.composeHighlighterEnabled),
+                    LocalRecompositionHighlighterEnabled provides highlighterEnabled,
                     LocalCardDepthStyle provides mainUiPrefs.cardDepthStyle,
                     LocalLandscapePosterMode provides mainUiPrefs.landscapePosterMode,
                     LocalAlwaysBackdropWithLogo provides mainUiPrefs.alwaysBackdropWithLogo,
-                    LocalLogoOverCardTrailer provides mainUiPrefs.logoOverCardTrailer,
                     LocalMemberAccess provides mainUiPrefs.memberAccess,
                     LocalAmbientIdleController provides ambientIdleController,
-                    com.nuvio.tv.core.player.LocalTrailerPlayerPool provides trailerPlayerPool
+                    com.nuvio.tv.core.player.LocalTrailerPlayerPool provides trailerPlayerPool,
+                    LocalSplashBackground provides splashBackground,
+                    LocalStartupLoadingState provides startupLoadingState,
+                    LocalStartupSplashEnabled provides startupSplashEnabled
                 ) {
                 val transparentPlayerBackdrop = PlayerWindowBackdrop.isTransparentRequested
                 Surface(
-                    modifier = Modifier.fillMaxSize().onPreviewKeyEvent { event ->
-                        if (event.nativeKeyEvent.keyCode == entryConsumedKey) {
-                            if (event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_UP) entryConsumedKey = null
-                            true
-                        } else if (!profileEntry.pending || playbackUiActive) false
-                        else when (event.nativeKeyEvent.keyCode) {
-                            android.view.KeyEvent.KEYCODE_DPAD_UP,
-                            android.view.KeyEvent.KEYCODE_DPAD_DOWN,
-                            android.view.KeyEvent.KEYCODE_DPAD_LEFT,
-                            android.view.KeyEvent.KEYCODE_DPAD_RIGHT,
-                            android.view.KeyEvent.KEYCODE_DPAD_CENTER,
-                            android.view.KeyEvent.KEYCODE_NUMPAD_ENTER,
-                            android.view.KeyEvent.KEYCODE_ENTER -> {
-                                if (event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
-                                    entryConsumedKey = event.nativeKeyEvent.keyCode
-                                    profileEntry.requestReveal()
-                                }
-                                true
-                            }
-                            else -> false
-                        }
-                    },
+                    modifier = Modifier.fillMaxSize(),
                     shape = RectangleShape,
                     colors = SurfaceDefaults.colors(
                         containerColor = if (transparentPlayerBackdrop) {
@@ -749,39 +730,22 @@ open class MainActivity : ComponentActivity() {
                         contentColor = contentColorFor(NuvioTheme.colors.Background)
                     )
                 ) {
-                    val screensaverVisible by screensaverController.overlayVisible.collectAsState()
-                    val screensaverDimPercent by themeDataStore.screensaverDimPercent.collectAsState(
-                        initial = ThemeDataStore.DEFAULT_SCREENSAVER_DIM_PERCENT
-                    )
-                    ScreensaverOverlay(
-                        visible = screensaverVisible,
-                        dimPercent = screensaverDimPercent
-                    )
+                    // Wrap everything in a Box. This prevents any black flash between
+                    // profile selection and the home content
+                    Box(modifier = Modifier.fillMaxSize()) {
 
-                    if (hasSeenAuthQrOnFirstLaunch == null) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .startPictureOr(startPicture, NuvioTheme.colors.Background)
-                        )
-                        return@Surface
-                    }
+                    var startupDestination = StartupDestination.Loading
+                    val surfaceContentReady = hasSeenAuthQrOnFirstLaunch != null &&
+                        authState !is AuthState.Loading
 
-                    if (authState is AuthState.Loading) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .startPictureOr(startPicture, NuvioTheme.colors.Background)
-                        )
-                        return@Surface
-                    }
-
-                    if (
+                    if (!surfaceContentReady) {
+                        // Still loading auth state; nothing to show yet.
+                    } else if (
                         hasSeenAuthQrOnFirstLaunch == false &&
                         authState !is AuthState.FullAccount &&
                         !onboardingCompletedThisSession
                     ) {
-                        SideEffect { startPicture.end() }
+                        startupDestination = StartupDestination.Setup
                         AuthQrSignInScreen(
                             onBackPress = { finish() },
                             onContinue = {
@@ -820,50 +784,47 @@ open class MainActivity : ComponentActivity() {
                                 }
                             }
                         )
-                        return@Surface
-                    }
+                    } else {
 
                     val shouldShowProfileSelection =
-                        !hasSelectedProfileThisSession && (profiles.size > 1 || activeProfileHasPin || v2ProfilePickerRequested)
+                        !hasSelectedProfileThisSession && (profiles.size > 1 || activeProfileHasPin)
 
                     if (shouldShowProfileSelection) {
-                        SideEffect { startPicture.end() }
+                        startupDestination = if (splashTriggered) StartupDestination.Loading else StartupDestination.ProfileSelection
                         ProfileSelectionScreen(
-                            onProfileSelected = {
-                                v2ProfilePickerRequested = false
-                                if (device.interfaceExperience == com.nuvio.tv.domain.model.InterfaceExperience.NUVIO_V2) {
-                                    profileEntry.start(appearance.introAnimationEnabled)
+                            onProfileClicked = {
+                                splashTriggered = true
+                            },
+                            onProfileSelectionFailed = {
+                                splashTriggered = false
+                            },
+                            onProfileFocusChanged = { colorHex, bgUrl, cacheKey ->
+                                if (!splashTriggered) {
+                                    focusedSplashColor = colorHex
+                                    focusedSplashBgUrl = bgUrl
+                                    focusedSplashCacheKey = cacheKey
                                 }
+                            },
+                            onProfileThemeFocused = { theme ->
+                                if (!splashTriggered) {
+                                    focusedSplashTheme = theme
+                                }
+                            },
+                            onProfileSelected = {
                                 hasSelectedProfileThisSession = true
                                 if (authManager.authState.value is AuthState.FullAccount) {
                                     startupSyncService.requestSyncNow()
                                 }
                             }
                         )
-                        return@Surface
-                    }
+                    } else {
 
-                    // Past sign-in and the profile page, the intro is what comes next: get its art ready while Home loads.
-                    val introPalette = NuvioTheme.arcPalette
-                    val rootView = LocalView.current
-                    LaunchedEffect(introPalette, mainUiPrefs.experienceModeLoaded, device.interfaceExperience, appearance.introAnimationEnabled) {
-                        if (mainUiPrefs.experienceModeLoaded && appearance.introAnimationEnabled && !profileEntry.hasRunThisSession &&
-                            device.interfaceExperience == com.nuvio.tv.domain.model.InterfaceExperience.NUVIO_V2) {
-                            com.nuvio.tv.ui.brand.ArcIntroPrep.warm(context, introPalette, rootView.width, rootView.height)
-                        }
-                    }
                     val layoutChosen = mainUiPrefs.hasChosenLayout
-                    if (layoutChosen == null || !mainUiPrefs.experienceModeLoaded || installedAddons == null) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .startPictureOr(startPicture, NuvioTheme.colors.Background)
-                        )
-                        return@Surface
-                    }
-                    val effectiveExperienceMode = resolveStartExperienceMode(mainUiPrefs.experienceMode, layoutChosen)
+                    val prefsLoading = layoutChosen == null || !mainUiPrefs.experienceModeLoaded || installedAddons == null
+                    if (!prefsLoading) {
+                    val effectiveExperienceMode = mainUiPrefs.experienceMode
+                        ?: if (layoutChosen) ExperienceMode.ADVANCED else null
                     val needsExperienceSelection = effectiveExperienceMode == null
-                    val followsLaunchTargets = launchTargetsReady(mainUiPrefs.experienceMode, layoutChosen)
                     val needsEssentialAddonSetup =
                         effectiveExperienceMode == ExperienceMode.ESSENTIAL &&
                             installedAddons.orEmpty().isEmpty() &&
@@ -873,7 +834,7 @@ open class MainActivity : ComponentActivity() {
                     LaunchedEffect(pendingDeepLink) {
                         val url = pendingDeepLink ?: return@LaunchedEffect
                         val deepLink = DeepLinkParser.parse(url)
-                        if (deepLink is AppDeepLink.AddonInstall && (needsEssentialAddonSetup || !followsLaunchTargets)) {
+                        if (deepLink is AppDeepLink.AddonInstall && (needsEssentialAddonSetup || !layoutChosen)) {
                             Toast.makeText(context, context.getString(R.string.addon_installing), Toast.LENGTH_SHORT).show()
                             val installResult = deepLinkHandler.installAddon(deepLink.manifestUrl)
                             if (pendingDeepLinkUrl.value == url) {
@@ -884,7 +845,7 @@ open class MainActivity : ComponentActivity() {
                     }
 
                     if (needsEssentialAddonSetup) {
-                        SideEffect { startPicture.end() }
+                        startupDestination = StartupDestination.Setup
                         EssentialAddonSetupScreen(
                             onSkip = {
                                 lifecycleScope.launch {
@@ -892,71 +853,29 @@ open class MainActivity : ComponentActivity() {
                                 }
                             }
                         )
-                        return@Surface
-                    }
-                    // A remembered profile still receives one branded cold-entry handoff.
-                    // Explicit profile selection starts it above; ordinary navigation never replays it.
-                    // A handoff that loses Home (profiles arriving after the first sign-in) must not keep holding the keys.
-                    DisposableEffect(profileEntry) { onDispose { profileEntry.finish() } }
-                    LaunchedEffect(device.interfaceExperience) {
-                        if (device.interfaceExperience == com.nuvio.tv.domain.model.InterfaceExperience.NUVIO_V2 &&
-                            profileEntry.shouldStartOnEntry() && !playbackUiActive) profileEntry.start(appearance.introAnimationEnabled)
-                    }
-                    val v2Appearance = com.nuvio.tv.ui.v2.appearance.LocalV2Appearance.current
-                    val sidebarCollapsed = v2Appearance?.navigationStyle == com.nuvio.tv.domain.model.NavigationStyle.MINIMAL || mainUiPrefs.sidebarCollapsed
-                    val modernSidebarEnabled = v2Appearance != null || mainUiPrefs.modernSidebarEnabled
-                    val modernSidebarBlurEnabled = if (com.nuvio.tv.ui.v2.appearance.LocalV2Appearance.current != null) {
-                        v2Appearance?.visualStyle == com.nuvio.tv.domain.model.VisualStyle.CINEMATIC_GLASS &&
-                            com.nuvio.tv.ui.v2.quality.LocalGlassTokens.current.liveBlur
-                    } else mainUiPrefs.modernSidebarBlurPref && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+                    } else {
+                    val sidebarCollapsed = mainUiPrefs.sidebarCollapsed
+                    val modernSidebarEnabled = mainUiPrefs.modernSidebarEnabled
+                    val modernSidebarBlurEnabled =
+                        mainUiPrefs.modernSidebarBlurPref && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
                     val hideBuiltInHeadersForFloatingPill = modernSidebarEnabled && !sidebarCollapsed
 
                     val startDestination = when {
                         needsExperienceSelection -> Screen.ExperienceModeSelection.route
                         layoutChosen -> Screen.Home.route
-                        // The fork has one layout, so the layout picker is bypassed.
-                        else -> Screen.Home.route
+                        else -> Screen.LayoutSelection.route
                     }
                     val navController = rememberNavController()
-                    // Back stack ViewModels live in a store of their own that ends with this
-                    // navigation subtree, so a profile switch does not leave old screens running.
                     val navViewModelStoreOwner = rememberNavSessionViewModelStoreOwner(navController)
-                    val navigationContent = remember(navController, navViewModelStoreOwner, startDestination) {
-                        movableContentOf<Boolean> { hideHeaders ->
-                            CompositionLocalProvider(
-                                LocalViewModelStoreOwner provides navViewModelStoreOwner,
-                                LocalNavViewModelStoreOwner provides navViewModelStoreOwner,
-                                com.nuvio.tv.ui.screens.calendar.LocalCalendarReminderCenter provides calendarReminders
-                            ) {
-                                NuvioNavHost(navController, startDestination, hideBuiltInHeaders = hideHeaders)
-                            }
-                        }
-                    }
                     var optimisticRoute by remember { mutableStateOf<String?>(null) }
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val actualRoute = navBackStackEntry?.destination?.route
                     val currentRoute = optimisticRoute ?: actualRoute
-                    val visibleEntries by navController.visibleEntries.collectAsState()
-                    SideEffect {
-                        playbackUiActive = isPlayerUiVisible(
-                            actualRoute, visibleEntries.map { it.destination.route }
-                        )
-                        searchKeyOpensSearch = searchButtonOpensSearch(actualRoute, playbackUiActive)
-                    }
-                    val searchPresses = searchKeyPresses.intValue
-                    LaunchedEffect(searchPresses) {
-                        if (searchPresses > 0) navigateToDrawerRoute(navController, currentRoute, Screen.Search.route)
-                    }
-                    DisposableEffect(Unit) {
-                        onDispose {
-                            playbackUiActive = false
-                            qualityGovernor.context(System.nanoTime(), false, null, false, qualityDecision.tier)
-                        }
-                    }
+                    startupDestination = startupDestinationForRoute(actualRoute ?: startDestination)
 
                     LaunchedEffect(actualRoute) {
                         optimisticRoute = null
-                        screensaverController.notifyInteraction()
+                        ambientIdleController.onInteraction()
                     }
 
                     // Auto-play next episode for EXTERNAL players: the tracker resolves the
@@ -999,38 +918,9 @@ open class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // A watch party guest is taken to the title the host is playing.
-                    LaunchedEffect(navController) {
-                        partyRuntime.session.mediaRequest.collect { media ->
-                            if (media == null) return@collect
-                            partyRuntime.session.consumeMediaRequest()
-                            // A player that opened from the stream screen has already replaced it; close that player
-                            // instead of stacking a second one on top.
-                            val inPlayer = runCatching { navController.getBackStackEntry(Screen.Player.route) }.isSuccess
-                            navController.navigate(
-                                Screen.Stream.createRoute(
-                                    videoId = media.videoId ?: media.contentId,
-                                    contentType = media.contentType,
-                                    title = media.title,
-                                    poster = media.poster,
-                                    backdrop = media.backdrop,
-                                    logo = media.logo,
-                                    season = media.season,
-                                    episode = media.episode,
-                                    episodeName = media.episodeTitle,
-                                    contentId = media.contentId,
-                                    contentName = media.title
-                                )
-                            ) {
-                                popUpTo(if (inPlayer) Screen.Player.route else Screen.Stream.route) { inclusive = true }
-                                launchSingleTop = true
-                            }
-                        }
-                    }
-
                     // Navigate to content when launched from the Continue Watching channel row.
                     LaunchedEffect(navController) {
-                        if (launchContentId != null && launchContentType != null && followsLaunchTargets) {
+                        if (launchContentId != null && launchContentType != null && layoutChosen) {
                             if (launchMode == "stream" && launchVideoId != null && launchName != null) {
                                 navController.navigate(
                                     Screen.Stream.createRoute(
@@ -1061,9 +951,9 @@ open class MainActivity : ComponentActivity() {
                     }
 
                     val pendingLaunch by pendingLaunchIntent.collectAsState()
-                    LaunchedEffect(navController, followsLaunchTargets, pendingLaunch) {
+                    LaunchedEffect(navController, layoutChosen, pendingLaunch) {
                         val intent = pendingLaunch ?: return@LaunchedEffect
-                        if (!followsLaunchTargets) return@LaunchedEffect
+                        if (!layoutChosen) return@LaunchedEffect
                         pendingLaunchIntent.value = null
                         val contentId = intent.getStringExtra("contentId") ?: return@LaunchedEffect
                         val contentType = intent.getStringExtra("contentType") ?: return@LaunchedEffect
@@ -1097,9 +987,9 @@ open class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    LaunchedEffect(navController, followsLaunchTargets, pendingDeepLink) {
+                    LaunchedEffect(navController, layoutChosen, pendingDeepLink) {
                         val url = pendingDeepLink ?: return@LaunchedEffect
-                        if (!followsLaunchTargets) return@LaunchedEffect
+                        if (!layoutChosen) return@LaunchedEffect
                         when (val deepLink = DeepLinkParser.parse(url)) {
                             is AppDeepLink.Meta -> {
                                 pendingDeepLinkUrl.value = null
@@ -1109,6 +999,12 @@ open class MainActivity : ComponentActivity() {
                                         itemType = deepLink.type
                                     )
                                 ) {
+                                    launchSingleTop = true
+                                }
+                            }
+                            is AppDeepLink.Party -> {
+                                pendingDeepLinkUrl.value = null
+                                navController.navigate(Screen.WatchParty.createRoute(deepLink.code)) {
                                     launchSingleTop = true
                                 }
                             }
@@ -1149,30 +1045,16 @@ open class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    val calendarInMenuFlow = remember {
-                        calendarSettingsDataStore.settings
-                            .map { com.nuvio.tv.ui.screens.calendar.calendarMenuVisible(it) }
-                            .distinctUntilChanged()
-                    }
-                    val calendarInMenu by calendarInMenuFlow.collectAsState(
-                        initial = com.nuvio.tv.ui.screens.calendar.calendarMenuVisible(calendarSettingsDataStore.settings.value)
-                    )
-                    val rootRoutes = remember(discoverLocation, calendarInMenu) {
-                        appRootRoutes(discoverInSidebar = discoverLocation == DiscoverLocation.IN_SIDEBAR, calendarInMenu = calendarInMenu)
-                    }
-
-                    SideEffect {
-                        qualityGovernor.context(
-                            now = System.nanoTime(),
-                            allowed = device.interfaceExperience == com.nuvio.tv.domain.model.InterfaceExperience.NUVIO_V2 &&
-                                device.visualQualityMode == com.nuvio.tv.domain.model.VisualQualityMode.AUTOMATIC &&
-                                actualRoute in rootRoutes &&
-                                !isPlayerUiVisible(actualRoute, visibleEntries.map { it.destination.route }) &&
-                                canvas.refreshRateHz?.let { it in 58f..62f } == true,
-                            destination = actualRoute,
-                            stableUtility = actualRoute == Screen.Settings.route,
-                            currentTier = qualityDecision.tier
-                        )
+                    val rootRoutes = remember(discoverLocation) {
+                        buildSet {
+                            add(Screen.Home.route)
+                            add(Screen.Search.route)
+                            add(Screen.Library.route)
+                            add(Screen.Settings.route)
+                            if (discoverLocation == DiscoverLocation.IN_SIDEBAR) {
+                                add(Screen.Discover.route)
+                            }
+                        }
                     }
 
                     val strNavHome = stringResource(R.string.nav_home)
@@ -1180,16 +1062,13 @@ open class MainActivity : ComponentActivity() {
                     val strNavSearch = stringResource(R.string.nav_search)
                     val strNavLibrary = stringResource(R.string.nav_library)
                     val strNavSettings = stringResource(R.string.nav_settings)
-                    val strNavCalendar = stringResource(R.string.nav_calendar)
                     val drawerItems = remember(
                         strNavHome,
                         strNavDiscover,
                         strNavSearch,
                         strNavLibrary,
                         strNavSettings,
-                        strNavCalendar,
-                        discoverLocation,
-                        calendarInMenu
+                        discoverLocation
                     ) {
                         buildList {
                             add(
@@ -1222,15 +1101,6 @@ open class MainActivity : ComponentActivity() {
                                     iconRes = R.raw.sidebar_library
                                 )
                             )
-                            if (calendarInMenu) {
-                                add(
-                                    DrawerItem(
-                                        route = Screen.Calendar.route,
-                                        label = strNavCalendar,
-                                        icon = Icons.Default.CalendarMonth
-                                    )
-                                )
-                            }
                             add(
                                 DrawerItem(
                                     route = Screen.Settings.route,
@@ -1268,6 +1138,13 @@ open class MainActivity : ComponentActivity() {
                     }
 
                     val updateViewModel: UpdateViewModel = hiltViewModel(this@MainActivity)
+                    androidx.compose.runtime.DisposableEffect(updateViewModel) {
+                        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) updateViewModel.onAppForeground()
+                        }
+                        lifecycle.addObserver(observer)
+                        onDispose { lifecycle.removeObserver(observer) }
+                    }
                     val updateState by updateViewModel.uiState.collectAsState()
                     val updateBannerState = updateState.copy(
                         showBanner = updateState.showBanner && currentRoute?.startsWith("player/") != true
@@ -1282,82 +1159,61 @@ open class MainActivity : ComponentActivity() {
                         onOpenUnknownSources = updateViewModel::openUnknownSourcesSettings,
                         onFeedbackShown = updateViewModel::consumeFeedbackMessage
                     ) {
+                        val handleSwitchProfile = {
+                            startupSession++
+                            splashTriggered = false
+                            profileSwitchedManually = true
+                            focusedSplashColor = null
+                            focusedSplashBgUrl = null
+                            focusedSplashCacheKey = null
+                            focusedSplashTheme = null
+                            hasSelectedProfileThisSession = false
+                        }
                         Box(modifier = Modifier.fillMaxSize()) {
-                            // Home can compose and warm images without drawing underneath
-                            // the opaque ident. Reveal its layer only when the fade begins.
-                            Box(Modifier.fillMaxSize().graphicsLayer {
-                                alpha = if (profileEntry.pending && !profileEntry.revealing) 0f else 1f
-                            }) {
-                            if (v2Appearance?.navigationStyle == com.nuvio.tv.domain.model.NavigationStyle.TOP_NAVIGATION) {
-                                com.nuvio.tv.ui.v2.navigation.V2TopNavigation(
-                                    navigationContent = navigationContent,
-                                    currentRoute = currentRoute, rootRoutes = rootRoutes, items = drawerItems,
-                                    selectedRoute = selectedDrawerRoute,
-                                    profile = activeProfile?.let {
-                                        com.nuvio.tv.ui.v2.components.AvatarModel(it.id.toString(), it.name, it.avatarColorHex, activeProfileAvatarImageUrl)
-                                    },
-                                    onNavigate = { route ->
-                                        optimisticRoute = route
-                                        navigateToDrawerRoute(navController, currentRoute, route)
-                                    },
-                                    onSwitchProfile = {
-                                        v2ProfilePickerRequested = device.interfaceExperience == com.nuvio.tv.domain.model.InterfaceExperience.NUVIO_V2
-                                        hasSelectedProfileThisSession = false
-                                    },
-                                    onExit = handleExitApp
-                                )
-                            } else if (modernSidebarEnabled) {
-                                ModernSidebarScaffold(
-                                    longPressBackHeld = longPressBackHeld,
-                                    navController = navController,
-                                    navigationContent = navigationContent,
-                                    currentRoute = currentRoute,
-                                    detailPageLeaving = com.nuvio.tv.ui.navigation.isDetailPageLeaving(
-                                        actualRoute, visibleEntries.map { it.destination.route }
-                                    ),
-                                    rootRoutes = rootRoutes,
-                                    drawerItems = drawerItems,
-                                    selectedDrawerRoute = selectedDrawerRoute,
-                                    selectedDrawerItem = selectedDrawerItem,
-                                    sidebarCollapsed = sidebarCollapsed,
-                                    modernSidebarBlurEnabled = modernSidebarBlurEnabled,
-                                    hideBuiltInHeaders = hideBuiltInHeadersForFloatingPill,
-                                    activeProfileName = activeProfile?.name ?: "",
-                                    activeProfileColorHex = activeProfile?.avatarColorHex ?: "#1E88E5",
-                                    activeProfileAvatarImageUrl = activeProfileAvatarImageUrl,
-                                    showProfileSelector = activeProfile != null,
-                                    onSwitchProfile = {
-                                        v2ProfilePickerRequested = device.interfaceExperience == com.nuvio.tv.domain.model.InterfaceExperience.NUVIO_V2
-                                        hasSelectedProfileThisSession = false
-                                    },
-                                    onNavigate = { optimisticRoute = it },
-                                    onExitApp = handleExitApp
-                                )
-                            } else {
-                                LegacySidebarScaffold(
-                                    longPressBackHeld = longPressBackHeld,
-                                    navController = navController,
-                                    navigationContent = navigationContent,
-                                    currentRoute = currentRoute,
-                                    rootRoutes = rootRoutes,
-                                    drawerItems = drawerItems,
-                                    selectedDrawerRoute = selectedDrawerRoute,
-                                    sidebarCollapsed = sidebarCollapsed,
-                                    hideBuiltInHeaders = false,
-                                    activeProfileName = activeProfile?.name ?: "",
-                                    activeProfileColorHex = activeProfile?.avatarColorHex ?: "#1E88E5",
-                                    activeProfileAvatarImageUrl = activeProfileAvatarImageUrl,
-                                    showProfileSelector = activeProfile != null,
-                                    onSwitchProfile = {
-                                        v2ProfilePickerRequested = device.interfaceExperience == com.nuvio.tv.domain.model.InterfaceExperience.NUVIO_V2
-                                        hasSelectedProfileThisSession = false
-                                    },
-                                    onNavigate = { optimisticRoute = it },
-                                    onExitApp = handleExitApp
-                                )
+                            CompositionLocalProvider(LocalNavViewModelStoreOwner provides navViewModelStoreOwner) {
+                                if (modernSidebarEnabled) {
+                                    ModernSidebarScaffold(
+                                        longPressBackHeld = longPressBackHeld,
+                                        navController = navController,
+                                        startDestination = startDestination,
+                                        currentRoute = currentRoute,
+                                        rootRoutes = rootRoutes,
+                                        drawerItems = drawerItems,
+                                        selectedDrawerRoute = selectedDrawerRoute,
+                                        selectedDrawerItem = selectedDrawerItem,
+                                        sidebarCollapsed = sidebarCollapsed,
+                                        modernSidebarBlurEnabled = modernSidebarBlurEnabled,
+                                        hideBuiltInHeaders = hideBuiltInHeadersForFloatingPill,
+                                        activeProfileName = activeProfile?.name ?: "",
+                                        activeProfileColorHex = activeProfile?.avatarColorHex ?: "#1E88E5",
+                                        activeProfileAvatarImageUrl = activeProfileAvatarImageUrl,
+                                        showProfileSelector = profiles.size > 1,
+                                        onSwitchProfile = handleSwitchProfile,
+                                        onNavigate = { optimisticRoute = it },
+                                        onExitApp = handleExitApp
+                                    )
+                                } else {
+                                    LegacySidebarScaffold(
+                                        longPressBackHeld = longPressBackHeld,
+                                        navController = navController,
+                                        startDestination = startDestination,
+                                        currentRoute = currentRoute,
+                                        rootRoutes = rootRoutes,
+                                        drawerItems = drawerItems,
+                                        selectedDrawerRoute = selectedDrawerRoute,
+                                        sidebarCollapsed = sidebarCollapsed,
+                                        hideBuiltInHeaders = false,
+                                        activeProfileName = activeProfile?.name ?: "",
+                                        activeProfileColorHex = activeProfile?.avatarColorHex ?: "#1E88E5",
+                                        activeProfileAvatarImageUrl = activeProfileAvatarImageUrl,
+                                        showProfileSelector = profiles.size > 1,
+                                        onSwitchProfile = handleSwitchProfile,
+                                        onNavigate = { optimisticRoute = it },
+                                        onExitApp = handleExitApp
+                                    )
+                                }
                             }
 
-                            }
                             val autoNextOverlay by externalPlaybackTracker.autoNextOverlay.collectAsState()
                             autoNextOverlay?.let { ov ->
                                 com.nuvio.tv.ui.screens.player.LoadingOverlay(
@@ -1370,94 +1226,66 @@ open class MainActivity : ComponentActivity() {
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }
-                            if (!profileEntry.pending) {
-                                com.nuvio.tv.ui.screens.party.PartyFriendOverlays(partyRuntime, onShown = screensaverController::notifyWake)
-                            }
-                            com.nuvio.tv.ui.screens.calendar.CalendarReminderHost(
-                                center = calendarReminders,
-                                covered = profileEntry.pending || screensaverVisible,
-                                playerVisible = playbackUiActive,
-                                currentRoute = actualRoute,
-                                resolveWatch = { reminder -> calendarEpisodeResolver.get().resolve(reminder) },
-                                onWatchTarget = { target -> navController.openCalendarWatchTarget(target) },
-                                onOpenTitle = { reminder ->
-                                    val ids = com.nuvio.tv.core.calendar.calendarContentIds(reminder.title)
-                                    ids.firstOrNull()?.let { id ->
-                                        val film = reminder.title.type == com.nuvio.tv.core.calendar.CalendarTitleType.MOVIE
-                                        navController.navigate(Screen.Detail.createRoute(id, if (film) "movie" else "series"))
-                                    }
-                                },
-                                onSeeAll = {
-                                    calendarReminders.requestCalendarAtJustAired()
-                                    optimisticRoute = Screen.Calendar.route
-                                    navigateToDrawerRoute(navController, currentRoute, Screen.Calendar.route)
-                                }
-                            )
-                            LaunchedEffect(currentRoute, profileEntry.pending) {
-                                if (currentRoute != null && currentRoute != Screen.Home.route) profileEntry.finish()
-                            }
-                            if (profileEntry.pending && !playbackUiActive) {
-                                com.nuvio.tv.ui.v2.profile.ProfileEntryIdent(
-                                    profileEntry,
-                                    soundEnabled = appearance.introSoundEnabled,
-                                    startPicture = startPicture
-                                ) {
-                                    v2ProfilePickerRequested = true
-                                    hasSelectedProfileThisSession = false
-                                }
-                            } else if (
-                                startPicture.showing && com.nuvio.tv.ui.v2.profile.EntryIdentPolicy.introComing(
-                                    pending = profileEntry.pending,
-                                    nuvioV2 = device.interfaceExperience == com.nuvio.tv.domain.model.InterfaceExperience.NUVIO_V2,
-                                    introEnabled = appearance.introAnimationEnabled,
-                                    startsOnEntry = profileEntry.shouldStartOnEntry(),
-                                    playbackUiActive = playbackUiActive
-                                )
-                            ) {
-                                // The ident starts with the next frame: keep the start window's mark over Home until then.
-                                Box(Modifier.fillMaxSize().startPicture(startPicture))
-                            } else {
-                                SideEffect { startPicture.end() }
-                            }
 
                             val isTrailerPlaying by trailerPlayerPool.isTrailerPlaying.collectAsState()
-                            val playbackActive by screensaverController.playbackActive.collectAsState()
-                            val ambientShowing by ambientIdleController.isShowing.collectAsState()
-                            val dimWhenIdle by themeDataStore.screensaverEnabled.collectAsState(initial = true)
                             LaunchedEffect(isTrailerPlaying) {
-                                if (!isTrailerPlaying) screensaverController.notifyInteraction()
-                            }
-                            LaunchedEffect(ambientShowing) {
-                                if (!ambientShowing && !screensaverController.overlayVisible.value) {
-                                    trailerPlayerPool.setScreensaverSuppressed(false)
-                                }
+                                if (!isTrailerPlaying) ambientIdleController.onInteraction()
                             }
                             AmbientModeHost(
                                 controller = ambientIdleController,
-                                allowed = !playbackUiActive &&
-                                    !playbackActive &&
+                                allowed = currentRoute?.startsWith("player/") != true &&
                                     autoNextOverlay == null &&
-                                    !isTrailerPlaying &&
-                                    !profileEntry.pending &&
-                                    (AMBIENT_BEFORE_OLED_DIM || !dimWhenIdle),
-                                onShown = {
-                                    trailerPlayerPool.setScreensaverSuppressed(true)
-                                    trailerPlayerPool.stop()
-                                }
+                                    !isTrailerPlaying,
+                                onShown = { trailerPlayerPool.stop() }
                             )
                         }
                     }
+                } 
+            } 
+        } 
+    }
+
+                    LaunchedEffect(startupDestination, startupLoadingState) {
+                        if (startupDestination == StartupDestination.Content) {
+                            startupLoadingState.complete = true
+                        }
+                    }
+                    val showSplash = shouldShowStartupSplash(
+                        enabled = startupSplashEnabled,
+                        complete = startupLoadingState.complete,
+                        destination = startupDestination
+                    )
+                    val animatedSplashAlpha by animateFloatAsState(
+                        targetValue = if (showSplash) 1f else 0f,
+                        animationSpec = tween(if (showSplash) 0 else 400),
+                        label = "startupSplashAlpha"
+                    )
+                    val splashAlpha = if (showSplash) 1f else animatedSplashAlpha
+                    LaunchedEffect(splashAlpha, startupDestination) {
+                        if (splashAlpha == 0f && startupDestination != StartupDestination.ProfileSelection) {
+                            focusedSplashColor = null
+                            focusedSplashBgUrl = null
+                            focusedSplashCacheKey = null
+                            focusedSplashTheme = null
+                        }
+                    }
+                    if (splashAlpha > 0f) {
+                        com.nuvio.tv.ui.components.StartupSplashScreen(
+                            profileColorHex = splashBackground.profileColorHex,
+                            profileBackgroundUrl = splashBackground.backgroundUrl,
+                            backgroundCacheKey = splashBackground.backgroundCacheKey,
+                            skipGradient = splashBackground.skipGradient,
+                            brandWordmarkRes = splashBackground.brandWordmarkRes,
+                            modifier = Modifier.graphicsLayer { alpha = splashAlpha }
+                        )
+                    }
+                    }
                 }
-            }
+                }
             }
         }
 
-        com.nuvio.tv.ui.v2.diagnostics.UiFrameDiagnostics.frames.clear()
         jankStats = JankStats.createAndTrack(window) { frameData ->
-            qualityGovernor.frame(System.nanoTime(), frameData.isJank)
-            com.nuvio.tv.ui.v2.diagnostics.UiFrameDiagnostics.frames.record(
-                System.nanoTime(), frameData.frameDurationUiNanos, frameData.isJank
-            )
             if (frameData.isJank) {
                 Log.w(
                     "JankStats",
@@ -1470,7 +1298,6 @@ open class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         ambientIdleController.dismiss()
-        qualityGovernor.resume(System.nanoTime())
         if (::jankStats.isInitialized) jankStats.isTrackingEnabled = true
         memberAccessRepository.refreshIfStale()
         lifecycleScope.launch {
@@ -1509,7 +1336,6 @@ open class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        qualityGovernor.pause(System.nanoTime())
         if (::jankStats.isInitialized) jankStats.isTrackingEnabled = false
     }
 
@@ -1522,48 +1348,15 @@ open class MainActivity : ComponentActivity() {
     // and then immediately exiting the app).
     val longPressBackHeld = mutableStateOf(false)
 
+    private val ambientIdleController = AmbientIdleController()
+
     override fun onUserInteraction() {
         super.onUserInteraction()
-        screensaverController.notifyInteraction()
+        ambientIdleController.onInteraction()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_DOWN || event.action == KeyEvent.ACTION_UP) {
-            qualityGovernor.input(System.nanoTime(), event.keyCode, event.action == KeyEvent.ACTION_DOWN)
-        }
-        // Idle overlays (OLED dimmer, Ambient Mode): while one is visible, the first key
-        // press wakes it and the whole press (down, repeats, and the matching up) is
-        // swallowed so waking never also navigates. Stray key-ups after wake are swallowed
-        // too, so ACTION_UP handlers below never see an up without its down.
-        if (screensaverController.overlayVisible.value || ambientIdleController.isShowing.value) {
-            if (event.action == KeyEvent.ACTION_DOWN) {
-                screensaverController.notifyWake()
-                ambientIdleController.dismiss()
-                swallowKeysUntilUp = true
-            }
-            return true
-        }
-        if (swallowKeysUntilUp) {
-            if (event.action == KeyEvent.ACTION_UP) {
-                swallowKeysUntilUp = false
-            }
-            return true
-        }
-        screensaverController.notifyInteraction()
-        if (event.keyCode == KeyEvent.KEYCODE_MENU) {
-            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && calendarReminders.onMenuKey()) {
-                calendarMenuKeyDown = true
-                return true
-            }
-            if (calendarMenuKeyDown) {
-                if (event.action == KeyEvent.ACTION_UP) calendarMenuKeyDown = false
-                return true
-            }
-        }
-        if (event.keyCode == KeyEvent.KEYCODE_SEARCH && searchKeyOpensSearch) {
-            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) searchKeyPresses.intValue++
-            return true
-        }
+        if (ambientIdleController.consumeKeyEvent(event)) return true
         if (event.keyCode == KeyEvent.KEYCODE_BACK) {
             if (longPressBackHeld.value) {
                 if (event.action == KeyEvent.ACTION_UP) longPressBackHeld.value = false
@@ -1582,15 +1375,6 @@ open class MainActivity : ComponentActivity() {
         return super.dispatchKeyEvent(event)
     }
 
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        // Compose Dialogs are separate platform windows: their keys never reach this
-        // Activity, so idle detection is blind while one is focused. Pause screensaver
-        // eligibility while this window lacks focus; refocus restarts the idle clock.
-        screensaverController.setWindowFocused(hasFocus)
-        if (!hasFocus) calendarMenuKeyDown = false
-    }
-
     override fun onStart() {
         // Returning from an external player: raise the auto-next loader before the player's
         // result is dispatched and before the window repaints, so the transition shows the
@@ -1600,20 +1384,15 @@ open class MainActivity : ComponentActivity() {
         super.onStart()
         startupSyncService.startPeriodicSurfacePulls()
         androidTvChannelSyncService.onForegroundChanged(true)
-        partyRuntime.setAppVisible(true)
-        calendarReminders.setAppVisible(true)
-        calendarAppVisibility.visible.value = true
     }
 
     override fun onStop() {
         externalPlaybackTracker.onExternalPlayerCoveredApp()
         super.onStop()
         startupSyncService.stopPeriodicSurfacePulls()
+        // App going to background (e.g. user returning to the launcher): reconcile the
+        // Continue Watching channel once so Projectivy repaints it with fresh progress.
         androidTvChannelSyncService.onForegroundChanged(false)
-        partyRuntime.setAppVisible(false)
-        calendarReminders.setAppVisible(false)
-        calendarAppVisibility.visible.value = false
-        calendarMenuKeyDown = false
     }
 
     override fun onDestroy() {
@@ -1648,7 +1427,7 @@ private fun SidebarFocusRecoveryEffect(
 private fun LegacySidebarScaffold(
     longPressBackHeld: MutableState<Boolean>,
     navController: NavHostController,
-    navigationContent: @Composable (Boolean) -> Unit,
+    startDestination: String,
     currentRoute: String?,
     rootRoutes: Set<String>,
     drawerItems: List<DrawerItem>,
@@ -1929,7 +1708,11 @@ private fun LegacySidebarScaffold(
                 LocalSidebarExpanded provides (drawerState.currentValue == DrawerValue.Open),
                 LocalContentFocusRequester provides contentFocusRequester
             ) {
-                navigationContent(hideBuiltInHeaders)
+                NuvioNavHost(
+                    navController = navController,
+                    startDestination = startDestination,
+                    hideBuiltInHeaders = hideBuiltInHeaders
+                )
             }
         }
     }
@@ -2046,9 +1829,8 @@ private fun LegacySidebarButton(
 private fun ModernSidebarScaffold(
     longPressBackHeld: MutableState<Boolean>,
     navController: NavHostController,
-    navigationContent: @Composable (Boolean) -> Unit,
+    startDestination: String,
     currentRoute: String?,
-    detailPageLeaving: Boolean,
     rootRoutes: Set<String>,
     drawerItems: List<DrawerItem>,
     selectedDrawerRoute: String?,
@@ -2066,7 +1848,6 @@ private fun ModernSidebarScaffold(
 ) {
     val showSidebar = currentRoute in rootRoutes
     val sidebarTokens = NuvioComponents.tokens.sidebar
-    val isV2Sidebar = com.nuvio.tv.ui.v2.appearance.LocalV2Appearance.current != null
     val collapsedSidebarWidth = if (sidebarCollapsed) NuvioTheme.spacing.none else sidebarTokens.collapsedWidth
     val openSidebarWidth = sidebarTokens.expandedWidth
 
@@ -2081,18 +1862,6 @@ private fun ModernSidebarScaffold(
     var pendingContentFocusTransfer by remember { mutableStateOf(false) }
     var pendingSidebarFocusRequest by remember { mutableStateOf(false) }
     var focusedDrawerIndex by remember { mutableStateOf(-1) }
-    var pendingDrawerDestination by remember { mutableStateOf<String?>(null) }
-    var cancellingDrawerDestination by remember { mutableStateOf(false) }
-    val drawerCloseDuration = NuvioMotion.tokens.durations.sidebarPanelOut
-    LaunchedEffect(pendingDrawerDestination) {
-        val target = pendingDrawerDestination ?: return@LaunchedEffect
-        // Let the existing screen settle before composing the next destination.
-        // In particular Settings must not load while Home and its blur are sliding.
-        delay(drawerCloseDuration.toLong() + 32L)
-        onNavigate(target)
-        navigateToDrawerRoute(navController, currentRoute, target)
-        pendingDrawerDestination = null
-    }
     var isFloatingPillIconOnly by remember { mutableStateOf(false) }
     var pillExpandRequestCount by remember { mutableIntStateOf(0) }
     val keepFloatingPillExpanded = false
@@ -2172,16 +1941,9 @@ private fun ModernSidebarScaffold(
     }
 
     val sidebarVisible = showSidebar && (isSidebarExpanded || !sidebarCollapsed)
-    val fallbackSidebarHazeState = remember { HazeState() }
-    val sharedSidebarHazeState = com.nuvio.tv.ui.v2.components.LocalGlassBackdrop.current
-    val v2Appearance = com.nuvio.tv.ui.v2.appearance.LocalV2Appearance.current
-    // V2 rows sit straight on the page with an adaptive shade; Pure Liquid Dark keeps its solid panel.
-    val menuOnPicture = isV2Sidebar &&
-        v2Appearance?.visualStyle != com.nuvio.tv.domain.model.VisualStyle.PURE_LIQUID_DARK
-    val useHomeSidebarBackdrop = isV2Sidebar && !menuOnPicture && currentRoute == Screen.Home.route
-    val sidebarHazeState = if (isV2Sidebar && !useHomeSidebarBackdrop) sharedSidebarHazeState ?: fallbackSidebarHazeState else fallbackSidebarHazeState
+    val sidebarHazeState = remember { HazeState() }
     // Panel is always laid out at full expanded width; open/close is
-    // purely a graphicsLayer transform (slide + alpha in V2) so Compose never
+    // purely a graphicsLayer transform (scale + alpha) so Compose never
     // re-layouts and haze doesn't re-render blur every frame.
     val sidebarWidth = if (sidebarVisible) openSidebarWidth else collapsedSidebarWidth
     val animationDuration = if (sidebarVisible) 400 else 300
@@ -2193,6 +1955,7 @@ private fun ModernSidebarScaffold(
         animationSpec = tween(durationMillis = if (isSidebarExpanded) 280 else 200, easing = animationEasing),
         label = "sidebarSurfaceAlpha"
     )
+    val shouldApplySidebarHaze = showSidebar && modernSidebarBlurEnabled
     val sidebarTransition = updateTransition(
         targetState = isSidebarExpanded,
         label = "sidebarTransition"
@@ -2200,7 +1963,7 @@ private fun ModernSidebarScaffold(
     // Labels and icons are always at full size — the panel is rendered
     // complete and the open/close animation is purely graphicsLayer.
     val sidebarLabelAlpha = 1f
-    val sidebarExpandProgressState = sidebarTransition.animateFloat(
+    val sidebarExpandProgress by sidebarTransition.animateFloat(
         transitionSpec = {
             if (targetState) {
                 tween(durationMillis = NuvioMotion.tokens.durations.sidebarPanelIn, easing = FastOutSlowInEasing)
@@ -2212,67 +1975,11 @@ private fun ModernSidebarScaffold(
     ) { expanded ->
         if (expanded) 1f else 0f
     }
-    val sidebarExpandProgress by sidebarExpandProgressState
-    // This is a static CompositionLocal: a fresh instance invalidates the whole
-    // destination subtree, even when only the focused sidebar item has changed.
-    val sidebarPageLayout = remember(isV2Sidebar, showSidebar, sidebarCollapsed, openSidebarWidth, sidebarExpandProgressState) {
-        if (isV2Sidebar && showSidebar) com.nuvio.tv.ui.v2.components.SidebarPageLayout(
-            if (sidebarCollapsed) 0.dp else 62.dp, openSidebarWidth, { sidebarExpandProgressState.value }
-        ) else null
-    }
 
     // derivedStateOf prevents per-frame recomposition — only triggers when the boolean crosses the threshold
     val sidebarBlocksContentKeys by remember { derivedStateOf { sidebarExpandProgress > 0.2f } }
     val sidebarShowExpandedPanel by remember { derivedStateOf { sidebarExpandProgress > 0.01f } }
     val sidebarShowCollapsedPill by remember { derivedStateOf { sidebarExpandProgress < 0.98f } }
-    // The small V2 pill uses static glass so browsing does not capture the full
-    // content layer for blur. Keep the source through the panel's closing fade.
-    val shouldApplySidebarHaze = showSidebar && modernSidebarBlurEnabled &&
-        (!isV2Sidebar || (!menuOnPicture && (isSidebarExpanded || sidebarShowExpandedPanel)))
-    val mainMenuBackdrop = remember { com.nuvio.tv.ui.v2.components.MainMenuBackdrop() }
-    val menuLuminance = remember {
-        androidx.compose.animation.core.Animatable(com.nuvio.tv.ui.v2.components.MAIN_MENU_UNKNOWN_PICTURE_LUMINANCE)
-    }
-    val menuLuminanceCache = remember { HashMap<String, Float>() }
-    val menuTransparency = v2Appearance?.glassTransparencyPercent ?: 60
-    val menuContext = androidx.compose.ui.platform.LocalContext.current
-    val menuDensity = androidx.compose.ui.platform.LocalDensity.current
-    val onHome = currentRoute == Screen.Home.route
-    LaunchedEffect(menuOnPicture, onHome, isSidebarExpanded) {
-        if (!menuOnPicture) return@LaunchedEffect
-        if (!onHome) {
-            menuLuminance.snapTo(com.nuvio.tv.ui.v2.components.MAIN_MENU_DEFAULT_LUMINANCE)
-            return@LaunchedEffect
-        }
-        if (!isSidebarExpanded) return@LaunchedEffect
-        snapshotFlow { mainMenuBackdrop.artworkUrl }.collectLatest { url ->
-            if (url == null) {
-                menuLuminance.animateTo(com.nuvio.tv.ui.v2.components.MAIN_MENU_DEFAULT_LUMINANCE, tween(220))
-                return@collectLatest
-            }
-            val metrics = menuContext.resources.displayMetrics
-            val menuFraction = with(menuDensity) { openSidebarWidth.toPx() } / metrics.widthPixels.coerceAtLeast(1)
-            val cacheKey = "$url|$menuFraction|$isRtl"
-            val cached = menuLuminanceCache[cacheKey]
-            if (cached != null) {
-                menuLuminance.snapTo(cached)
-                return@collectLatest
-            }
-            // Until the new picture is measured, err on the readable side.
-            menuLuminance.snapTo(maxOf(menuLuminance.value, com.nuvio.tv.ui.v2.components.MAIN_MENU_UNKNOWN_PICTURE_LUMINANCE))
-            val sampled = com.nuvio.tv.ui.v2.components.sampleMainMenuBackdrop(
-                menuContext, url, metrics.widthPixels.toFloat(), metrics.heightPixels.toFloat(), menuFraction, isRtl
-            )
-            if (sampled != null) {
-                if (menuLuminanceCache.size >= 64) menuLuminanceCache.clear()
-                menuLuminanceCache[cacheKey] = sampled
-            }
-            menuLuminance.animateTo(sampled ?: com.nuvio.tv.ui.v2.components.MAIN_MENU_UNKNOWN_PICTURE_LUMINANCE, tween(220))
-        }
-    }
-    val menuShadeAlpha = { com.nuvio.tv.ui.v2.components.mainMenuShadeAlpha(menuLuminance.value, menuTransparency) }
-    val profileFocusRequester = remember { FocusRequester() }
-    val collapsedPillBlurEnabled = modernSidebarBlurEnabled && !isV2Sidebar
 
     val sidebarIconScale = 1f
     val sidebarBloomScale = 1f
@@ -2316,14 +2023,6 @@ private fun ModernSidebarScaffold(
         modifier = Modifier
             .fillMaxSize()
             .onPreviewKeyEvent { keyEvent ->
-                if ((pendingDrawerDestination != null || cancellingDrawerDestination) && keyEvent.key == Key.Back) {
-                    pendingDrawerDestination = null
-                    cancellingDrawerDestination = keyEvent.type != KeyEventType.KeyUp
-                    return@onPreviewKeyEvent true
-                }
-                if (pendingDrawerDestination != null && isBlockedContentKey(keyEvent.key)) {
-                    return@onPreviewKeyEvent true
-                }
                 // Consume all Back key events after long-press until released,
                 // preventing the exit-app BackHandler from firing during the hold.
                 if (longPressBackHeld.value && keyEvent.key == Key.Back) {
@@ -2337,7 +2036,7 @@ private fun ModernSidebarScaffold(
             modifier = Modifier
                 .fillMaxSize()
                 .then(
-                    if (shouldApplySidebarHaze && !isV2Sidebar) Modifier.hazeSource(state = sidebarHazeState)
+                    if (shouldApplySidebarHaze) Modifier.hazeSource(state = sidebarHazeState)
                     else Modifier
                 )
                 .onPreviewKeyEvent { keyEvent ->
@@ -2368,10 +2067,7 @@ private fun ModernSidebarScaffold(
                     if (
                         isSidebarExpanded &&
                         !sidebarCollapsePending &&
-                        // V2 owns input as soon as opening begins. Letting a rapid
-                        // Down reach Home during the animation can detach its focused
-                        // card while the sidebar is requesting focus.
-                        (isV2Sidebar || sidebarBlocksContentKeys) &&
+                        sidebarBlocksContentKeys &&
                         keyEvent.type == KeyEventType.KeyDown &&
                         isBlockedContentKey(keyEvent.key)
                     ) {
@@ -2411,40 +2107,32 @@ private fun ModernSidebarScaffold(
                 }
         ) {
             CompositionLocalProvider(
-                com.nuvio.tv.ui.v2.components.LocalSidebarBackdropSource provides
-                    sidebarHazeState.takeIf { useHomeSidebarBackdrop && shouldApplySidebarHaze },
-                com.nuvio.tv.ui.v2.components.LocalSidebarPageLayout provides
-                    sidebarPageLayout,
                 LocalSidebarExpanded provides isSidebarExpanded,
-                LocalContentFocusRequester provides contentFocusRequester,
-                com.nuvio.tv.ui.v2.components.LocalMainMenuBackdrop provides mainMenuBackdrop.takeIf { menuOnPicture }
+                LocalContentFocusRequester provides contentFocusRequester
             ) {
-                navigationContent(hideBuiltInHeaders)
+                NuvioNavHost(
+                    navController = navController,
+                    startDestination = startDestination,
+                    hideBuiltInHeaders = hideBuiltInHeaders
+                )
             }
         }
 
-        if (showSidebar && !detailPageLeaving && (sidebarVisible || sidebarShowExpandedPanel)) {
-            val panelShape = RoundedCornerShape(if (isV2Sidebar) 0.dp else sidebarTokens.panelRadius)
+        if (showSidebar && (sidebarVisible || sidebarShowExpandedPanel)) {
+            val panelShape = RoundedCornerShape(sidebarTokens.panelRadius)
             val showExpandedPanel = isSidebarExpanded || sidebarShowExpandedPanel
-            if (menuOnPicture && showExpandedPanel) {
-                V2MainMenuShade(
-                    alpha = { menuShadeAlpha() * sidebarExpandProgress },
-                    modifier = Modifier.align(Alignment.TopStart).width(openSidebarWidth)
-                )
-            }
 
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .width(openSidebarWidth)
-                    .then(if (isV2Sidebar) Modifier else Modifier.padding(start = NuvioTheme.spacing.lg - NuvioTheme.spacing.xxs, top = NuvioTheme.spacing.lg, bottom = NuvioTheme.spacing.md, end = NuvioTheme.spacing.sm))
+                    .padding(start = NuvioTheme.spacing.lg - NuvioTheme.spacing.xxs, top = NuvioTheme.spacing.lg, bottom = NuvioTheme.spacing.md, end = NuvioTheme.spacing.sm)
                     .graphicsLayer {
                         val progress = sidebarExpandProgress
                         alpha = sidebarSurfaceAlpha
-                        val s = if (isV2Sidebar) 1f else 0.92f + 0.08f * progress
+                        val s = 0.92f + 0.08f * progress
                         scaleX = s
                         scaleY = s
-                        if (isV2Sidebar) translationX = (if (isRtl) 1f else -1f) * size.width * (1f - progress)
                         transformOrigin = TransformOrigin(0f, 0f)
                     }
                     .selectableGroup()
@@ -2456,18 +2144,10 @@ private fun ModernSidebarScaffold(
                             Key.DirectionUp -> {
                                 if (focusedDrawerIndex == sidebarTopBoundaryIndex) {
                                     true
-                                } else if (isV2Sidebar && focusedDrawerIndex == 0 && hasSidebarProfileItem) {
-                                    // The profile sits across the gap above the centred group.
-                                    runCatching { profileFocusRequester.requestFocus() }
-                                    true
                                 } else {
                                     // Move focus within the sidebar; consume unconditionally
                                     // so focus never escapes into the content behind.
-                                    if (focusedDrawerIndex > 0 && focusedDrawerIndex < drawerItems.size) {
-                                        drawerItemFocusRequesters[drawerItems[focusedDrawerIndex - 1].route]?.requestFocus()
-                                    } else {
-                                        focusManager.moveFocus(FocusDirection.Up)
-                                    }
+                                    focusManager.moveFocus(FocusDirection.Up)
                                     true
                                 }
                             }
@@ -2485,9 +2165,7 @@ private fun ModernSidebarScaffold(
                                     }
                                     true
                                 } else {
-                                    drawerItems.getOrNull(focusedDrawerIndex + 1)?.route?.let { route ->
-                                        drawerItemFocusRequesters[route]?.requestFocus()
-                                    }
+                                    focusManager.moveFocus(FocusDirection.Down)
                                     true
                                 }
                             }
@@ -2507,59 +2185,29 @@ private fun ModernSidebarScaffold(
                         }
                     }
             ) {
-                if (showExpandedPanel && isV2Sidebar) {
-                    V2MainMenuPanel(
-                        drawerItems = drawerItems,
-                        selectedDrawerRoute = selectedDrawerRoute,
-                        focusEnabled = keepSidebarFocusDuringCollapse,
-                        sidebarExpandProgress = { sidebarExpandProgress },
-                        onPicture = menuOnPicture,
-                        drawerItemFocusRequesters = drawerItemFocusRequesters,
-                        profileFocusRequester = profileFocusRequester,
-                        onDrawerItemFocused = { focusedDrawerIndex = it },
-                        onDrawerItemClick = { targetRoute ->
-                            keyboardController?.hide()
-                            if (currentRoute != targetRoute) {
-                                pendingDrawerDestination = targetRoute
-                            } else {
-                                onNavigate(targetRoute)
-                                navigateToDrawerRoute(navController, currentRoute, targetRoute)
-                            }
-                            pendingSidebarFocusRequest = false
-                            isSidebarExpanded = false
-                            sidebarCollapsePending = false
-                            pendingContentFocusTransfer = currentRoute == targetRoute
-                        },
-                        activeProfileName = activeProfileName,
-                        activeProfileColorHex = activeProfileColorHex,
-                        activeProfileAvatarImageUrl = activeProfileAvatarImageUrl,
-                        showProfileSelector = showProfileSelector,
-                        onSwitchProfile = onSwitchProfile
-                    )
-                } else if (showExpandedPanel) {
+                if (showExpandedPanel) {
                     ModernSidebarBlurPanel(
                         drawerItems = drawerItems,
                         selectedDrawerRoute = selectedDrawerRoute,
                         keepSidebarFocusDuringCollapse = keepSidebarFocusDuringCollapse,
                         sidebarLabelAlpha = sidebarLabelAlpha,
                         sidebarIconScale = sidebarIconScale,
-                        sidebarExpandProgress = { sidebarExpandProgress },
+                        sidebarExpandProgress = sidebarExpandProgress,
                         isSidebarExpanded = isSidebarExpanded,
                         sidebarCollapsePending = sidebarCollapsePending,
                         blurEnabled = modernSidebarBlurEnabled,
-                        sidebarHazeState = if (useHomeSidebarBackdrop && sidebarHazeState.areas.isEmpty())
-                            sharedSidebarHazeState ?: sidebarHazeState else sidebarHazeState,
+                        sidebarHazeState = sidebarHazeState,
                         panelShape = panelShape,
                         drawerItemFocusRequesters = drawerItemFocusRequesters,
                         onDrawerItemFocused = { focusedDrawerIndex = it },
                         onDrawerItemClick = { targetRoute ->
                             keyboardController?.hide()
-                            if (isV2Sidebar && currentRoute != targetRoute) {
-                                pendingDrawerDestination = targetRoute
-                            } else {
-                                onNavigate(targetRoute)
-                                navigateToDrawerRoute(navController, currentRoute, targetRoute)
-                            }
+                            onNavigate(targetRoute)
+                            navigateToDrawerRoute(
+                                navController = navController,
+                                currentRoute = currentRoute,
+                                targetRoute = targetRoute
+                            )
                             pendingSidebarFocusRequest = false
                             isSidebarExpanded = false
                             sidebarCollapsePending = false
@@ -2579,37 +2227,13 @@ private fun ModernSidebarScaffold(
                 sidebarShowCollapsedPill &&
                 selectedDrawerRoute != Screen.Search.route
             ) {
-                if (isV2Sidebar) {
-                    if (menuOnPicture) {
-                        V2MainMenuShade(
-                            alpha = { 0.5f * com.nuvio.tv.ui.v2.components.mainMenuShadeAlpha(
-                                com.nuvio.tv.ui.v2.components.MAIN_MENU_DEFAULT_LUMINANCE, menuTransparency
-                            ) * (1f - sidebarExpandProgress) },
-                            modifier = Modifier.align(Alignment.TopStart).width(70.dp)
-                        )
-                    }
-                    V2MainMenuRail(
-                        items = drawerItems,
-                        selectedRoute = selectedDrawerRoute,
-                        showProfile = showProfileSelector,
-                        profileName = activeProfileName,
-                        profileColorHex = activeProfileColorHex,
-                        profileAvatarImageUrl = activeProfileAvatarImageUrl,
-                        modifier = Modifier.align(Alignment.TopStart)
-                            .graphicsLayer { alpha = 1f - sidebarExpandProgress },
-                        onExpand = {
-                            isSidebarExpanded = true
-                            sidebarCollapsePending = false
-                            pendingSidebarFocusRequest = true
-                        }
-                    )
-                } else CollapsedSidebarPill(
+                CollapsedSidebarPill(
                     label = selectedDrawerItem.label,
                     iconRes = selectedDrawerItem.iconRes,
                     icon = selectedDrawerItem.icon,
                     iconOnly = isFloatingPillIconOnly && !keepFloatingPillExpanded,
-                    blurEnabled = collapsedPillBlurEnabled,
-                    hazeState = if (collapsedPillBlurEnabled) sidebarHazeState else null,
+                    blurEnabled = modernSidebarBlurEnabled,
+                    hazeState = if (modernSidebarBlurEnabled) sidebarHazeState else null,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .offset {
@@ -2649,16 +2273,13 @@ private fun CollapsedSidebarPill(
     onExpand: () -> Unit
 ) {
     val pillShape = RoundedCornerShape(NuvioRadii.tokens.full)
-    val v2Glass = com.nuvio.tv.ui.v2.quality.LocalGlassTokens.current.takeIf {
-        com.nuvio.tv.ui.v2.appearance.LocalV2Appearance.current != null
-    }
     val colors = NuvioTheme.colors
     val bgElevated = colors.BackgroundElevated
     val bgCard = colors.BackgroundCard
     val borderBase = colors.Border
     val mediaColors = colors.media
-    val pillBackgroundBrush = remember(blurEnabled, v2Glass) {
-        val alpha = v2Glass?.surfaceAlpha ?: if (blurEnabled) 0.65f else 0.96f
+    val pillBackgroundBrush = remember(blurEnabled) {
+        val alpha = if (blurEnabled) 0.65f else 0.96f
         Brush.verticalGradient(listOf(
             Color(0xFF1C1C1E).copy(alpha = alpha),
             Color(0xFF1C1C1E).copy(alpha = alpha)
@@ -2679,21 +2300,18 @@ private fun CollapsedSidebarPill(
         Box(
             modifier = Modifier
                 .height(NuvioTheme.sizes.player.control)
+                .clip(pillShape)
                 .then(
-                    if (v2Glass != null) {
-                        Modifier.nuvioGlass(GlassRole.NAVIGATION, shape = pillShape,
-                            hazeState = hazeState.takeIf { blurEnabled })
+                    if (blurEnabled && hazeState != null) {
+                        Modifier.hazeEffect(state = hazeState) {
+                            blurRadius = 24.dp
+                            inputScale = HazeInputScale.Fixed(0.66f)
+                        }
                     } else {
-                        Modifier.clip(pillShape).then(
-                            if (blurEnabled && hazeState != null) {
-                                Modifier.hazeEffect(state = hazeState) {
-                                    blurRadius = 24.dp
-                                    inputScale = HazeInputScale.Fixed(0.66f)
-                                }
-                            } else Modifier
-                        ).background(brush = pillBackgroundBrush, shape = pillShape)
+                        Modifier
                     }
                 )
+                .background(brush = pillBackgroundBrush, shape = pillShape)
         ) {
             Row(
                 modifier = Modifier
@@ -2747,33 +2365,6 @@ private fun CollapsedSidebarPill(
     }
 }
 
-private val SEARCH_KEY_IGNORED_ROUTES = setOf(
-    Screen.ProfileSelection.route, Screen.AuthSignIn.route, Screen.AuthQrSignIn.route,
-    Screen.SyncCodeGenerate.route, Screen.SyncCodeClaim.route, Screen.ExperienceModeSelection.route,
-    Screen.LayoutSelection.route
-)
-
-/** The remote's Search button opens the app's search, except in the player (a Remote buttons job there) and before sign-in. */
-internal fun searchButtonOpensSearch(route: String?, playbackUiActive: Boolean): Boolean =
-    route != null && !playbackUiActive && route != Screen.Player.route && route !in SEARCH_KEY_IGNORED_ROUTES
-
-internal fun resolveStartExperienceMode(storedMode: ExperienceMode?, hasChosenLayout: Boolean): ExperienceMode? =
-    storedMode ?: if (hasChosenLayout) ExperienceMode.ADVANCED else null
-
-/** Launch extras, launcher rows and links open their title once the first-run choice is known, chosen layout or not. */
-internal fun launchTargetsReady(storedMode: ExperienceMode?, hasChosenLayout: Boolean): Boolean =
-    resolveStartExperienceMode(storedMode, hasChosenLayout) != null
-
-/** Pages with a menu entry; a page without one, such as a hidden Calendar opened from a reminder, goes Back to Home. */
-internal fun appRootRoutes(discoverInSidebar: Boolean, calendarInMenu: Boolean): Set<String> = buildSet {
-    add(Screen.Home.route)
-    add(Screen.Search.route)
-    add(Screen.Library.route)
-    if (calendarInMenu) add(Screen.Calendar.route)
-    add(Screen.Settings.route)
-    if (discoverInSidebar) add(Screen.Discover.route)
-}
-
 private fun navigateToDrawerRoute(
     navController: NavHostController,
     currentRoute: String?,
@@ -2790,14 +2381,6 @@ private fun navigateToDrawerRoute(
             }
             val homeViewModel = androidx.lifecycle.ViewModelProvider(homeEntry)[com.nuvio.tv.ui.screens.home.HomeViewModel::class.java]
             homeViewModel.requestScrollToTop()
-        }
-        if (targetRoute == Screen.Calendar.route) {
-            runCatching {
-                val calendarEntry = navController.getBackStackEntry(Screen.Calendar.route)
-                androidx.lifecycle.ViewModelProvider(calendarEntry)[
-                    com.nuvio.tv.ui.screens.calendar.CalendarViewModel::class.java
-                ].showToday()
-            }
         }
         return
     }
@@ -2824,7 +2407,7 @@ private fun isBlockedContentKey(key: Key): Boolean {
 }
 
 @Composable
-internal fun DrawerItemIcon(
+private fun DrawerItemIcon(
     iconRes: Int?,
     icon: ImageVector?,
     modifier: Modifier = Modifier,

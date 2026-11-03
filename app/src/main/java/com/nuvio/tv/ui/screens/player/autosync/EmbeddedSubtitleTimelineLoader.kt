@@ -43,8 +43,7 @@ import kotlin.math.max
  */
 @OptIn(UnstableApi::class)
 internal object EmbeddedSubtitleTimelineLoader {
-    private const val TOTAL_TIMEOUT_MS = 15_000L
-    private const val REQUEST_TIMEOUT_MS = 10_000L
+    private const val TOTAL_TIMEOUT_MS = 7_000L
     private const val INITIAL_PROBE_BYTES = 512 * 1024
     private const val HEADER_PROBE_BYTES = 64
     private const val TAIL_PROBE_BYTES = 4 * 1024 * 1024
@@ -110,9 +109,9 @@ internal object EmbeddedSubtitleTimelineLoader {
 
     private val httpClient = OkHttpClient.Builder()
         .socketFactory(NoDelaySocketFactory)
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
-        .callTimeout(REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        .connectTimeout(3, TimeUnit.SECONDS)
+        .readTimeout(4, TimeUnit.SECONDS)
+        .callTimeout(5, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
@@ -202,8 +201,6 @@ internal object EmbeddedSubtitleTimelineLoader {
             } catch (_: TimeoutCancellationException) {
                 // A transient deadline is not evidence that the container is unsupported.
                 // Do not publish a negative cache entry for timed-out work.
-                return null
-            } catch (_: IndexRequestTimedOut) {
                 return null
             }
 
@@ -330,21 +327,21 @@ internal object EmbeddedSubtitleTimelineLoader {
 
         val tracksPosition = resolvedPositions[ID_TRACKS] ?: directPositions[ID_TRACKS]
             ?: return null
-        val tracksElement = extractElementFromInitialProbe(
-            initialBytes = initialMetadata.initialBytes,
-            absolutePosition = tracksPosition,
-            expectedId = ID_TRACKS,
-            maxElementBytes = MAX_TRACKS_BYTES,
-        ) ?: fetchElementAt(
-            sourceUrl = sourceUrl,
-            sourceHeaders = sourceHeaders,
-            absolutePosition = tracksPosition,
-            expectedId = ID_TRACKS,
-            maxElementBytes = MAX_TRACKS_BYTES,
-            stats = stats,
-        )
-        // An unread track list says nothing about the file, so only a parsed one can mean "no subtitles".
-        val subtitleTracks = tracksElement?.let(::parseSubtitleTracks) ?: return null
+        val subtitleTracks = (
+            extractElementFromInitialProbe(
+                initialBytes = initialMetadata.initialBytes,
+                absolutePosition = tracksPosition,
+                expectedId = ID_TRACKS,
+                maxElementBytes = MAX_TRACKS_BYTES,
+            ) ?: fetchElementAt(
+                sourceUrl = sourceUrl,
+                sourceHeaders = sourceHeaders,
+                absolutePosition = tracksPosition,
+                expectedId = ID_TRACKS,
+                maxElementBytes = MAX_TRACKS_BYTES,
+                stats = stats,
+            )
+            )?.let(::parseSubtitleTracks).orEmpty()
         if (subtitleTracks.isEmpty()) {
             return IndexedEmbeddedTimeline(
                 tracks = emptyList(),
@@ -1022,17 +1019,15 @@ internal object EmbeddedSubtitleTimelineLoader {
         return scale
     }
 
-    private fun parseSubtitleTracks(tracksElement: ByteArray): List<MatroskaSubtitleTrack>? {
-        val root = readElement(tracksElement, 0, tracksElement.size) ?: return null
-        if (root.id != ID_TRACKS) return null
-        val rootEnd = root.endWithin(tracksElement.size) ?: return null
+    private fun parseSubtitleTracks(tracksElement: ByteArray): List<MatroskaSubtitleTrack> {
+        val root = readElement(tracksElement, 0, tracksElement.size) ?: return emptyList()
+        if (root.id != ID_TRACKS) return emptyList()
+        val rootEnd = root.endWithin(tracksElement.size) ?: return emptyList()
         val result = mutableListOf<MatroskaSubtitleTrack>()
-        var trackEntries = 0
 
         forEachChild(tracksElement, root.dataStart, rootEnd) { entry ->
             if (entry.id != ID_TRACK_ENTRY) return@forEachChild
             val entryEnd = entry.endWithin(rootEnd) ?: return@forEachChild
-            trackEntries++
 
             var number: Int? = null
             var type: Long? = null
@@ -1081,7 +1076,6 @@ internal object EmbeddedSubtitleTimelineLoader {
                 )
             }
         }
-        if (trackEntries == 0) return null
         return result
     }
 
@@ -1411,7 +1405,7 @@ internal object EmbeddedSubtitleTimelineLoader {
         stats.requests++
         val call = httpClient.newCall(requestBuilder.build())
         call.timeout().timeout(
-            minOf(remainingBudgetMs.coerceAtLeast(1L), REQUEST_TIMEOUT_MS),
+            minOf(remainingBudgetMs.coerceAtLeast(1L), 5_000L),
             TimeUnit.MILLISECONDS,
         )
 
@@ -1426,9 +1420,17 @@ internal object EmbeddedSubtitleTimelineLoader {
                 object : Callback {
                     override fun onFailure(call: Call, error: java.io.IOException) {
                         if (!continuation.isActive) return
-                        continuation.resumeWith(
-                            Result.failure(if (call.isCanceled()) IndexRequestTimedOut(error) else error),
-                        )
+                        if (call.isCanceled()) {
+                            continuation.resumeWith(
+                                Result.failure(
+                                    CancellationException(
+                                        "Cancelled embedded index HTTP request",
+                                    ).also { it.initCause(error) },
+                                ),
+                            )
+                        } else {
+                            continuation.resumeWith(Result.failure(error))
+                        }
                     }
 
                     override fun onResponse(call: Call, response: Response) {
@@ -1497,24 +1499,23 @@ internal object EmbeddedSubtitleTimelineLoader {
                             }
                         } catch (error: Throwable) {
                             if (!continuation.isActive) return
-                            continuation.resumeWith(
-                                Result.failure(
-                                    if (call.isCanceled() && error !is CancellationException) {
-                                        IndexRequestTimedOut(error)
-                                    } else {
-                                        error
-                                    },
-                                ),
-                            )
+                            if (call.isCanceled() && error !is CancellationException) {
+                                continuation.resumeWith(
+                                    Result.failure(
+                                        CancellationException(
+                                            "Cancelled embedded index HTTP request",
+                                        ).also { it.initCause(error) },
+                                    ),
+                                )
+                            } else {
+                                continuation.resumeWith(Result.failure(error))
+                            }
                         }
                     }
                 },
             )
         }
     }
-
-    /** OkHttp ends a request that runs past its time limit by cancelling it; the caller is still waiting. */
-    private class IndexRequestTimedOut(cause: Throwable) : java.io.IOException("Embedded index request timed out", cause)
 
     private fun parseContentRange(value: String?): ContentRange? {
         if (value.isNullOrBlank()) return null

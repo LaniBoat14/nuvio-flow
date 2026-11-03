@@ -44,14 +44,6 @@ class SubtitleSdhFilterTest {
     }
 
     @Test
-    fun aNameLabelOnItsOwnLineGoesWhenTheSpeechIsOnTheNextLine() {
-        assertEquals("Get down!", filter("Man:\nGet down!"))
-        assertEquals("Once upon a time.", filter("- Narrator:\nOnce upon a time."))
-        assertEquals("He said:\nGet down!", filter("He said:\nGet down!"))
-        assertEquals("Look at this:", filter("Look at this:"))
-    }
-
-    @Test
     fun dialogueDashesKeepTheirDash() {
         assertEquals("- Where are you?\n- Outside.", filter("- JOHN: Where are you?\n- Mary: Outside."))
     }

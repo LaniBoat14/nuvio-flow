@@ -52,12 +52,6 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.R
 
-/**
- * Height of the artwork box rendered above the loading text. The box is centred,
- * so on the 540dp Android TV canvas it occupies 180..360dp.
- */
-private val LOADING_ARTWORK_BOX_HEIGHT = 180.dp
-
 @Composable
 fun LoadingOverlay(
     visible: Boolean,
@@ -65,8 +59,6 @@ fun LoadingOverlay(
     logoUrl: String?,
     title: String? = null,
     message: String? = null,
-    sourceLine: String? = null,
-    filename: String? = null,
     progress: Float? = null,
     modifier: Modifier = Modifier
 ) {
@@ -167,7 +159,7 @@ fun LoadingOverlay(
                         Box(
                             modifier = Modifier
                                 .width(320.dp)
-                                .height(LOADING_ARTWORK_BOX_HEIGHT)
+                                .height(180.dp)
                         ) {
                             // Base layer: semi-transparent logo (always visible).
                             // When the fill effect is active we hold a steady low
@@ -231,51 +223,21 @@ fun LoadingOverlay(
                             LoadingIndicator()
                         }
                     }
+
                 }
 
-                // Option A: the source/filename/message lane is pinned to the
-                // bottom of the screen as a sibling of the centred artwork, so the
-                // artwork stays at true centre and never shifts when the lane
-                // appears or grows.
+                // The horizontal progress bar is suppressed when the show logo
+                // is acting as the fill indicator. The text message stays visible.
                 val showHorizontalBar = progress != null && !showLogo
-                if (!sourceLine.isNullOrBlank() || !filename.isNullOrBlank() || !message.isNullOrBlank() || showHorizontalBar) {
+                if (!message.isNullOrBlank() || showHorizontalBar) {
+                    val messageOffset = if (showLogo || !title.isNullOrBlank()) 120.dp else 86.dp
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(horizontal = NuvioTheme.spacing.lg, vertical = NuvioTheme.spacing.xxl)
+                            .align(Alignment.Center)
+                            .offset(y = messageOffset)
+                            .padding(horizontal = NuvioTheme.spacing.xl)
                     ) {
-                        val sourceShadow = androidx.compose.ui.graphics.Shadow(
-                            color = Color.Black.copy(alpha = 0.85f),
-                            offset = androidx.compose.ui.geometry.Offset(0f, 2f),
-                            blurRadius = 6f
-                        )
-                        if (!sourceLine.isNullOrBlank()) {
-                            Text(
-                                text = sourceLine,
-                                style = MaterialTheme.typography.labelMedium.copy(shadow = sourceShadow),
-                                color = Color.White.copy(alpha = 0.72f),
-                                textAlign = TextAlign.Center,
-                                maxLines = 1,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                        if (!filename.isNullOrBlank()) {
-                            Text(
-                                text = filename,
-                                style = MaterialTheme.typography.labelMedium.copy(shadow = sourceShadow),
-                                color = Color.White.copy(alpha = 0.62f),
-                                textAlign = TextAlign.Center,
-                                maxLines = 2,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 2.dp)
-                            )
-                        }
-                        if (!sourceLine.isNullOrBlank() || !filename.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                        }
                         Crossfade(
                             targetState = message?.takeIf { it.isNotBlank() },
                             animationSpec = tween(durationMillis = 260),
@@ -291,7 +253,7 @@ fun LoadingOverlay(
                                 if (loadingMessage != null) {
                                     Text(
                                         text = loadingMessage,
-                                        style = MaterialTheme.typography.labelMedium.copy(shadow = sourceShadow),
+                                        style = MaterialTheme.typography.labelMedium,
                                         color = Color.White.copy(alpha = 0.72f),
                                         textAlign = TextAlign.Center,
                                         maxLines = 2,

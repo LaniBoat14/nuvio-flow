@@ -3,7 +3,9 @@ package com.nuvio.tv.core.logging
 fun String?.rawForLog(): String =
     this ?: "(null)"
 
-fun String?.urlForLog(): String = redactedUrlForLog()
+fun String?.urlForLog(): String {
+    return this ?: "(null)"
+}
 
 fun String?.bodySnippetForLog(maxLength: Int = Int.MAX_VALUE): String {
     val value = this ?: return "(null)"

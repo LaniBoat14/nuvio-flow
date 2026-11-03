@@ -33,7 +33,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,42 +87,12 @@ import com.nuvio.tv.ui.screens.addon.QrCodeOverlay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
-private const val DEBRID_FILTERS_SECTION_KEY = "debrid_filters_section"
-private const val QUALITY_RULES_FOCUS_FRAMES = 30
-
-/** The rules StreamQualityRank applies to every source: its exclusions and the preferred orders it sorts by. */
-private val QUALITY_RANK_PICKERS = listOf(
-    DebridStreamPicker.PREFERRED_RESOLUTIONS,
-    DebridStreamPicker.EXCLUDED_RESOLUTIONS,
-    DebridStreamPicker.PREFERRED_QUALITIES,
-    DebridStreamPicker.EXCLUDED_QUALITIES,
-    DebridStreamPicker.PREFERRED_VISUAL_TAGS,
-    DebridStreamPicker.EXCLUDED_VISUAL_TAGS,
-    DebridStreamPicker.PREFERRED_AUDIO_TAGS,
-    DebridStreamPicker.EXCLUDED_AUDIO_TAGS,
-    DebridStreamPicker.PREFERRED_AUDIO_CHANNELS,
-    DebridStreamPicker.EXCLUDED_AUDIO_CHANNELS,
-    DebridStreamPicker.PREFERRED_ENCODES,
-    DebridStreamPicker.EXCLUDED_ENCODES,
-    DebridStreamPicker.EXCLUDED_LANGUAGES,
-    DebridStreamPicker.PREFERRED_RELEASE_GROUPS,
-    DebridStreamPicker.EXCLUDED_RELEASE_GROUPS,
-)
-
 @Composable
 fun DebridSettingsContent(
     viewModel: DebridSettingsViewModel = hiltViewModel(),
-    initialFocusRequester: FocusRequester? = null,
-    qualityRulesPage: Boolean = false
+    initialFocusRequester: FocusRequester? = null
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    // The Quality rules page is the filter rows alone. Without links resolved here it shows only the rules
-    // Best quality applies to every source.
-    val allFilters = uiState.canResolvePlayableLinks
-    val showFilters = allFilters || qualityRulesPage
-    val qualityRulesFocusRequester = initialFocusRequester.takeIf { qualityRulesPage }
-    val firstRuleRow = QUALITY_RANK_PICKERS.first()
-    val entryFocusRequester = initialFocusRequester.takeIf { !qualityRulesPage }
     // The first two rows are gated on a connected provider and cannot take focus without one,
     // so the entry requester goes to the first row that can accept it. Left on a gated row the
     // request is declined, focus stays on the category rail, and the next press walks the rail
@@ -156,8 +125,8 @@ fun DebridSettingsContent(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         SettingsDetailHeader(
-            title = stringResource(if (qualityRulesPage) R.string.autoplay_quality_rules_title else R.string.debrid_title),
-            subtitle = stringResource(if (qualityRulesPage) R.string.debrid_section_filters else R.string.debrid_subtitle)
+            title = stringResource(R.string.debrid_title),
+            subtitle = stringResource(R.string.debrid_subtitle)
         )
 
         Box(
@@ -167,19 +136,6 @@ fun DebridSettingsContent(
         ) {
             SettingsGroupCard(modifier = Modifier.fillMaxSize()) {
                 val state = rememberLazyListState()
-                var qualityRulesShown by remember { mutableStateOf(false) }
-                // Keyed on the row set too: with links resolved here, the debrid rows only appear once the saved
-                // settings have loaded, and the first row is then Max results.
-                LaunchedEffect(qualityRulesFocusRequester, allFilters) {
-                    val requester = qualityRulesFocusRequester ?: return@LaunchedEffect
-                    // Coming back in from the menu starts at the first row again.
-                    if (qualityRulesShown) state.scrollToItem(0)
-                    qualityRulesShown = true
-                    repeat(QUALITY_RULES_FOCUS_FRAMES) {
-                        if (runCatching { requester.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
-                        withFrameNanos { }
-                    }
-                }
                 Box(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
                         state = state,
@@ -187,267 +143,217 @@ fun DebridSettingsContent(
                         contentPadding = PaddingValues(bottom = NuvioTheme.spacing.sm),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        if (!qualityRulesPage) {
-                            item(key = "debrid_notice") {
-                                DebridInfoText(text = stringResource(R.string.debrid_experimental_notice))
-                            }
+                        item(key = "debrid_notice") {
+                            DebridInfoText(text = stringResource(R.string.debrid_experimental_notice))
+                        }
 
-                            item(key = "debrid_cloud_library") {
-                                SettingsToggleRow(
-                                    title = stringResource(R.string.debrid_cloud_library),
-                                    subtitle = stringResource(R.string.debrid_cloud_library_description),
-                                    checked = uiState.canUseCloudLibrary,
-                                    onToggle = { viewModel.setCloudLibraryEnabled(!uiState.cloudLibraryEnabled) },
-                                    modifier = Modifier
-                                        .padding(top = NuvioTheme.spacing.xxs)
-                                        .then(
-                                            if (entryFocusRequester != null && entryOnCloudLibrary) {
-                                                Modifier.focusRequester(entryFocusRequester)
-                                            } else {
-                                                Modifier
-                                            }
-                                        ),
-                                    enabled = uiState.hasCloudLibraryProvider
-                                )
-                            }
-
-                            item(key = "debrid_enabled") {
-                                SettingsToggleRow(
-                                    title = stringResource(R.string.debrid_enable_title),
-                                    subtitle = stringResource(R.string.debrid_enable_subtitle),
-                                    checked = uiState.canResolvePlayableLinks,
-                                    onToggle = { viewModel.onEvent(DebridSettingsEvent.ToggleEnabled(!uiState.enabled)) },
-                                    modifier = if (entryFocusRequester != null && entryOnDebridToggle) {
-                                        Modifier.focusRequester(entryFocusRequester)
-                                    } else {
-                                        Modifier
-                                    },
-                                    enabled = uiState.hasResolverProvider
-                                )
-                            }
-
-                            if (uiState.canResolvePlayableLinks && uiState.resolverProviders.size > 1 && activeResolverProvider != null) {
-                                item(key = "debrid_resolve_with") {
-                                    SettingsActionRow(
-                                        title = stringResource(R.string.debrid_resolve_with),
-                                        subtitle = stringResource(R.string.debrid_resolve_with_description),
-                                        value = activeResolverProvider.displayName,
-                                        onClick = { showResolverPicker = true },
-                                        enabled = true
-                                    )
-                                }
-                            }
-
-                            if (!uiState.hasResolverProvider) {
-                                item(key = "debrid_add_key_first") {
-                                    DebridInfoText(text = stringResource(R.string.debrid_add_key_first))
-                                }
-                            }
-
-                            item(key = "debrid_account_section") {
-                                SettingsSectionLabel(text = stringResource(R.string.debrid_section_account))
-                            }
-
-                            DebridProviders.visible().forEachIndexed { providerIndex, provider ->
-                                item(key = "debrid_${provider.id}_api_key") {
-                                    SettingsActionRow(
-                                        title = provider.displayName,
-                                        subtitle = if (provider.authMethod == DebridProviderAuthMethod.DeviceCode) {
-                                            stringResource(R.string.debrid_provider_device_description, provider.displayName)
-                                        } else {
-                                            stringResource(R.string.debrid_provider_description, provider.displayName)
-                                        },
-                                        value = providerCredentialStatus(
-                                            provider = provider,
-                                            credential = uiState.apiKeyFor(provider.id),
-                                            notSetLabel = stringResource(R.string.debrid_not_set),
-                                            connectedLabel = stringResource(R.string.debrid_connected)
-                                        ),
-                                        onClick = {
-                                            when (provider.authMethod) {
-                                                DebridProviderAuthMethod.DeviceCode -> activeDeviceAuthDialog = provider.id
-                                                DebridProviderAuthMethod.ApiKey -> activeApiKeyDialog = provider.id
-                                            }
-                                        },
-                                        modifier = if (
-                                            entryFocusRequester != null &&
-                                            entryOnFirstAccount &&
-                                            providerIndex == 0
-                                        ) {
-                                            Modifier.focusRequester(entryFocusRequester)
+                        item(key = "debrid_cloud_library") {
+                            SettingsToggleRow(
+                                title = stringResource(R.string.debrid_cloud_library),
+                                subtitle = stringResource(R.string.debrid_cloud_library_description),
+                                checked = uiState.canUseCloudLibrary,
+                                onToggle = { viewModel.setCloudLibraryEnabled(!uiState.cloudLibraryEnabled) },
+                                modifier = Modifier
+                                    .padding(top = NuvioTheme.spacing.xxs)
+                                    .then(
+                                        if (initialFocusRequester != null && entryOnCloudLibrary) {
+                                            Modifier.focusRequester(initialFocusRequester)
                                         } else {
                                             Modifier
-                                        },
-                                        enabled = true
-                                    )
-                                }
-                            }
+                                        }
+                                    ),
+                                enabled = uiState.hasCloudLibraryProvider
+                            )
+                        }
 
-                            if (uiState.canResolvePlayableLinks) {
-                                item(key = "debrid_instant_section") {
-                                    SettingsSectionLabel(text = stringResource(R.string.debrid_cached_playback_links))
-                                }
+                        item(key = "debrid_enabled") {
+                            SettingsToggleRow(
+                                title = stringResource(R.string.debrid_enable_title),
+                                subtitle = stringResource(R.string.debrid_enable_subtitle),
+                                checked = uiState.canResolvePlayableLinks,
+                                onToggle = { viewModel.onEvent(DebridSettingsEvent.ToggleEnabled(!uiState.enabled)) },
+                                modifier = if (initialFocusRequester != null && entryOnDebridToggle) {
+                                    Modifier.focusRequester(initialFocusRequester)
+                                } else {
+                                    Modifier
+                                },
+                                enabled = uiState.hasResolverProvider
+                            )
+                        }
 
-                                item(key = "debrid_prepare_links") {
-                                    val prepareEnabled = uiState.instantPlaybackPreparationLimit > 0
-                                    SettingsToggleRow(
-                                        title = stringResource(R.string.debrid_cached_playback_links),
-                                        subtitle = stringResource(R.string.debrid_cached_playback_links_description),
-                                        checked = prepareEnabled,
-                                        onToggle = { viewModel.setInstantPlaybackPreparationEnabled(!prepareEnabled) },
-                                        enabled = true
-                                    )
-                                }
-
-                                if (uiState.instantPlaybackPreparationLimit > 0) {
-                                    item(key = "debrid_prepare_count") {
-                                        SettingsActionRow(
-                                            title = stringResource(R.string.debrid_prepare_stream_count),
-                                            subtitle = null,
-                                            value = prepareCountLabel(uiState.instantPlaybackPreparationLimit),
-                                            onClick = { showPrepareCountDialog = true },
-                                            enabled = true
-                                        )
-                                    }
-                                }
-                            }
-
-                            item(key = "debrid_formatting_section") {
-                                SettingsSectionLabel(text = stringResource(R.string.debrid_section_formatting))
-                            }
-
-                            item(key = "debrid_formatter") {
+                        if (uiState.canResolvePlayableLinks && uiState.resolverProviders.size > 1 && activeResolverProvider != null) {
+                            item(key = "debrid_resolve_with") {
                                 SettingsActionRow(
-                                    title = stringResource(R.string.debrid_formatter_title),
-                                    subtitle = stringResource(R.string.debrid_formatter_subtitle),
-                                    value = stringResource(R.string.debrid_formatter_configure),
-                                    onClick = { viewModel.startFormatterQrMode() },
-                                    modifier = Modifier.focusRequester(formatterFocusRequester),
-                                    enabled = uiState.enabled
-                                )
-                            }
-
-                            item(key = "debrid_formatter_reset") {
-                                SettingsActionRow(
-                                    title = stringResource(R.string.debrid_formatter_reset_title),
-                                    subtitle = stringResource(R.string.debrid_formatter_reset_subtitle),
-                                    value = stringResource(R.string.layout_reset_default),
-                                    onClick = { viewModel.resetFormatterTemplates() },
-                                    enabled = uiState.enabled
+                                    title = stringResource(R.string.debrid_resolve_with),
+                                    subtitle = stringResource(R.string.debrid_resolve_with_description),
+                                    value = activeResolverProvider.displayName,
+                                    onClick = { showResolverPicker = true },
+                                    enabled = true
                                 )
                             }
                         }
 
-                        if (showFilters) {
-                            if (!qualityRulesPage) {
-                                item(key = DEBRID_FILTERS_SECTION_KEY) {
-                                    SettingsSectionLabel(text = stringResource(R.string.debrid_section_filters))
-                                }
+                        if (!uiState.hasResolverProvider) {
+                            item(key = "debrid_add_key_first") {
+                                DebridInfoText(text = stringResource(R.string.debrid_add_key_first))
+                            }
+                        }
+
+                        item(key = "debrid_account_section") {
+                            SettingsSectionLabel(text = stringResource(R.string.debrid_section_account))
+                        }
+
+                        DebridProviders.visible().forEachIndexed { providerIndex, provider ->
+                            item(key = "debrid_${provider.id}_api_key") {
+                                SettingsActionRow(
+                                    title = provider.displayName,
+                                    subtitle = if (provider.authMethod == DebridProviderAuthMethod.DeviceCode) {
+                                        stringResource(R.string.debrid_provider_device_description, provider.displayName)
+                                    } else {
+                                        stringResource(R.string.debrid_provider_description, provider.displayName)
+                                    },
+                                    value = providerCredentialStatus(
+                                        provider = provider,
+                                        credential = uiState.apiKeyFor(provider.id),
+                                        notSetLabel = stringResource(R.string.debrid_not_set),
+                                        connectedLabel = stringResource(R.string.debrid_connected)
+                                    ),
+                                    onClick = {
+                                        when (provider.authMethod) {
+                                            DebridProviderAuthMethod.DeviceCode -> activeDeviceAuthDialog = provider.id
+                                            DebridProviderAuthMethod.ApiKey -> activeApiKeyDialog = provider.id
+                                        }
+                                    },
+                                    modifier = if (
+                                        initialFocusRequester != null &&
+                                        entryOnFirstAccount &&
+                                        providerIndex == 0
+                                    ) {
+                                        Modifier.focusRequester(initialFocusRequester)
+                                    } else {
+                                        Modifier
+                                    },
+                                    enabled = true
+                                )
+                            }
+                        }
+
+                        if (uiState.canResolvePlayableLinks) {
+                            item(key = "debrid_instant_section") {
+                                SettingsSectionLabel(text = stringResource(R.string.debrid_section_instant_playback))
                             }
 
-                            if (allFilters) {
-                                item(key = "debrid_max_results") {
-                                    SettingsActionRow(
-                                        title = stringResource(R.string.debrid_stream_max_results_title),
-                                        subtitle = stringResource(R.string.debrid_stream_max_results_subtitle),
-                                        value = streamMaxResultsLabel(uiState.streamPreferences.maxResults),
-                                        onClick = { activeStreamPicker = DebridStreamPicker.MAX_RESULTS },
-                                        modifier = if (qualityRulesFocusRequester != null) {
-                                            Modifier.focusRequester(qualityRulesFocusRequester)
-                                        } else {
-                                            Modifier
-                                        },
-                                        enabled = true
-                                    )
-                                }
+                            item(key = "debrid_prepare_links") {
+                                val prepareEnabled = uiState.instantPlaybackPreparationLimit > 0
+                                SettingsToggleRow(
+                                    title = stringResource(R.string.debrid_prepare_instant_playback),
+                                    subtitle = stringResource(R.string.debrid_prepare_instant_playback_description),
+                                    checked = prepareEnabled,
+                                    onToggle = { viewModel.setInstantPlaybackPreparationEnabled(!prepareEnabled) },
+                                    enabled = true
+                                )
+                            }
 
-                                item(key = "debrid_sort_mode") {
+                            if (uiState.instantPlaybackPreparationLimit > 0) {
+                                item(key = "debrid_prepare_count") {
                                     SettingsActionRow(
-                                        title = stringResource(R.string.debrid_stream_sort_title),
-                                        subtitle = stringResource(R.string.debrid_stream_sort_subtitle),
-                                        value = sortProfileLabel(uiState.streamPreferences.sortCriteria),
-                                        onClick = { activeStreamPicker = DebridStreamPicker.SORT_MODE },
+                                        title = stringResource(R.string.debrid_prepare_stream_count),
+                                        subtitle = null,
+                                        value = prepareCountLabel(uiState.instantPlaybackPreparationLimit),
+                                        onClick = { showPrepareCountDialog = true },
                                         enabled = true
                                     )
                                 }
+                            }
+                        }
 
-                                item(key = "debrid_per_resolution_limit") {
-                                    SettingsActionRow(
-                                        title = stringResource(R.string.debrid_stream_per_resolution_limit_title),
-                                        subtitle = stringResource(R.string.debrid_stream_per_resolution_limit_subtitle),
-                                        value = streamMaxResultsLabel(uiState.streamPreferences.maxPerResolution),
-                                        onClick = { activeStreamPicker = DebridStreamPicker.MAX_PER_RESOLUTION },
-                                        enabled = true
-                                    )
-                                }
+                        item(key = "debrid_formatting_section") {
+                            SettingsSectionLabel(text = stringResource(R.string.debrid_section_formatting))
+                        }
 
-                                item(key = "debrid_per_quality_limit") {
-                                    SettingsActionRow(
-                                        title = stringResource(R.string.debrid_stream_per_quality_limit_title),
-                                        subtitle = stringResource(R.string.debrid_stream_per_quality_limit_subtitle),
-                                        value = streamMaxResultsLabel(uiState.streamPreferences.maxPerQuality),
-                                        onClick = { activeStreamPicker = DebridStreamPicker.MAX_PER_QUALITY },
-                                        enabled = true
-                                    )
-                                }
+                        item(key = "debrid_formatter") {
+                            SettingsActionRow(
+                                title = stringResource(R.string.debrid_formatter_title),
+                                subtitle = stringResource(R.string.debrid_formatter_subtitle),
+                                value = stringResource(R.string.debrid_formatter_configure),
+                                onClick = { viewModel.startFormatterQrMode() },
+                                modifier = Modifier.focusRequester(formatterFocusRequester),
+                                enabled = uiState.enabled
+                            )
+                        }
 
-                                item(key = "debrid_size_range") {
-                                    SettingsActionRow(
-                                        title = stringResource(R.string.debrid_stream_size_range_title),
-                                        subtitle = stringResource(R.string.debrid_stream_size_range_subtitle),
-                                        value = sizeRangeLabel(uiState.streamPreferences, context),
-                                        onClick = { activeStreamPicker = DebridStreamPicker.SIZE_RANGE },
-                                        enabled = true
-                                    )
-                                }
+                        item(key = "debrid_formatter_reset") {
+                            SettingsActionRow(
+                                title = stringResource(R.string.debrid_formatter_reset_title),
+                                subtitle = stringResource(R.string.debrid_formatter_reset_subtitle),
+                                value = stringResource(R.string.layout_reset_default),
+                                onClick = { viewModel.resetFormatterTemplates() },
+                                enabled = uiState.enabled
+                            )
+                        }
+
+                        if (uiState.canResolvePlayableLinks) {
+                            item(key = "debrid_filters_section") {
+                                SettingsSectionLabel(text = stringResource(R.string.debrid_section_filters))
+                            }
+
+                            item(key = "debrid_max_results") {
+                                SettingsActionRow(
+                                    title = stringResource(R.string.debrid_stream_max_results_title),
+                                    subtitle = stringResource(R.string.debrid_stream_max_results_subtitle),
+                                    value = streamMaxResultsLabel(uiState.streamPreferences.maxResults),
+                                    onClick = { activeStreamPicker = DebridStreamPicker.MAX_RESULTS },
+                                    enabled = true
+                                )
+                            }
+
+                            item(key = "debrid_sort_mode") {
+                                SettingsActionRow(
+                                    title = stringResource(R.string.debrid_stream_sort_title),
+                                    subtitle = stringResource(R.string.debrid_stream_sort_subtitle),
+                                    value = sortProfileLabel(uiState.streamPreferences.sortCriteria),
+                                    onClick = { activeStreamPicker = DebridStreamPicker.SORT_MODE },
+                                    enabled = true
+                                )
+                            }
+
+                            item(key = "debrid_per_resolution_limit") {
+                                SettingsActionRow(
+                                    title = stringResource(R.string.debrid_stream_per_resolution_limit_title),
+                                    subtitle = stringResource(R.string.debrid_stream_per_resolution_limit_subtitle),
+                                    value = streamMaxResultsLabel(uiState.streamPreferences.maxPerResolution),
+                                    onClick = { activeStreamPicker = DebridStreamPicker.MAX_PER_RESOLUTION },
+                                    enabled = true
+                                )
+                            }
+
+                            item(key = "debrid_per_quality_limit") {
+                                SettingsActionRow(
+                                    title = stringResource(R.string.debrid_stream_per_quality_limit_title),
+                                    subtitle = stringResource(R.string.debrid_stream_per_quality_limit_subtitle),
+                                    value = streamMaxResultsLabel(uiState.streamPreferences.maxPerQuality),
+                                    onClick = { activeStreamPicker = DebridStreamPicker.MAX_PER_QUALITY },
+                                    enabled = true
+                                )
+                            }
+
+                            item(key = "debrid_size_range") {
+                                SettingsActionRow(
+                                    title = stringResource(R.string.debrid_stream_size_range_title),
+                                    subtitle = stringResource(R.string.debrid_stream_size_range_subtitle),
+                                    value = sizeRangeLabel(uiState.streamPreferences, context),
+                                    onClick = { activeStreamPicker = DebridStreamPicker.SIZE_RANGE },
+                                    enabled = true
+                                )
                             }
 
                             debridRuleRows(uiState.streamPreferences, context) { picker, title, subtitle, value ->
-                                if (!allFilters && picker !in QUALITY_RANK_PICKERS) return@debridRuleRows
                                 item(key = "debrid_rule_${picker.name}") {
                                     SettingsActionRow(
                                         title = title,
                                         subtitle = subtitle,
                                         value = value,
                                         onClick = { activeStreamPicker = picker },
-                                        modifier = if (qualityRulesFocusRequester != null && !allFilters && picker == firstRuleRow) {
-                                            Modifier.focusRequester(qualityRulesFocusRequester)
-                                        } else {
-                                            Modifier
-                                        },
-                                        enabled = true
-                                    )
-                                }
-                            }
-
-                            item(key = "debrid_filters_reset_defaults") {
-                                SettingsActionRow(
-                                    title = stringResource(R.string.debrid_filters_reset_title),
-                                    subtitle = stringResource(R.string.debrid_filters_reset_subtitle),
-                                    value = stringResource(R.string.layout_reset_default),
-                                    onClick = { viewModel.setStreamPreferences(DebridStreamPreferences()) },
-                                    enabled = true
-                                )
-                            }
-
-                            if (allFilters) {
-                                item(key = "debrid_filters_show_everything") {
-                                    SettingsActionRow(
-                                        title = stringResource(R.string.debrid_filters_show_everything_title),
-                                        subtitle = stringResource(R.string.debrid_filters_show_everything_subtitle),
-                                        value = stringResource(R.string.debrid_filters_show_everything_action),
-                                        onClick = {
-                                            viewModel.setStreamPreferences(
-                                                DebridStreamPreferences(
-                                                    maxResults = 0,
-                                                    requiredResolutions = emptyList(),
-                                                    excludedQualities = emptyList(),
-                                                    excludedVisualTags = emptyList(),
-                                                    excludedEncodes = emptyList(),
-                                                    excludedReleaseGroups = emptyList()
-                                                )
-                                            )
-                                        },
                                         enabled = true
                                     )
                                 }
@@ -464,7 +370,7 @@ fun DebridSettingsContent(
                     serverUrl = uiState.formatterServerUrl,
                     instruction = stringResource(R.string.debrid_formatter_qr_instruction),
                     onClose = {
-                        runCatching { formatterFocusRequester.requestFocus() }
+                        formatterFocusRequester.requestFocus()
                         viewModel.stopFormatterQrMode()
                     },
                     modifier = Modifier.clip(settingsGroupShape())
@@ -789,15 +695,6 @@ fun DebridSettingsContent(
             },
             onDismiss = { activeStreamPicker = null }
         )
-        DebridStreamPicker.PREFERRED_RELEASE_GROUPS -> DebridTextListDialog(
-            title = stringResource(R.string.debrid_stream_release_groups_preferred),
-            selectedValues = uiState.streamPreferences.preferredReleaseGroups,
-            onSelected = { value ->
-                viewModel.setStreamPreferences(uiState.streamPreferences.copy(preferredReleaseGroups = value))
-                activeStreamPicker = null
-            },
-            onDismiss = { activeStreamPicker = null }
-        )
         DebridStreamPicker.REQUIRED_RELEASE_GROUPS -> DebridTextListDialog(
             title = stringResource(R.string.debrid_stream_release_groups_required),
             selectedValues = uiState.streamPreferences.requiredReleaseGroups,
@@ -1028,8 +925,8 @@ private fun DebridTextListDialog(
             onClick = { inputFocusRequester.requestFocus() },
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.colors(
-                containerColor = Color.Black.copy(alpha = 0.85f),
-                focusedContainerColor = Color.Black.copy(alpha = 0.85f)
+                containerColor = NuvioTheme.colors.BackgroundElevated,
+                focusedContainerColor = NuvioTheme.colors.BackgroundElevated
             ),
             shape = CardDefaults.shape(RoundedCornerShape(10.dp)),
             scale = CardDefaults.scale(focusedScale = 1f)
@@ -1057,7 +954,7 @@ private fun DebridTextListDialog(
                     keyboardActions = KeyboardActions(onDone = { submit() }),
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = NuvioTheme.colors.TextPrimary,
                                             textDirection = TextDirection.Content),
-                    cursorBrush = SolidColor(Color.White)
+                    cursorBrush = SolidColor(NuvioTheme.colors.Primary)
                 )
             }
         }
@@ -1227,12 +1124,6 @@ private fun LazyListScope.debridRuleRows(
         context.getString(R.string.debrid_picker_excluded_languages_title),
         context.getString(R.string.debrid_picker_excluded_languages_subtitle),
         selectionCountLabel(preferences.excludedLanguages, context)
-    )
-    row(
-        DebridStreamPicker.PREFERRED_RELEASE_GROUPS,
-        context.getString(R.string.debrid_picker_preferred_release_groups_title),
-        context.getString(R.string.debrid_picker_preferred_release_groups_subtitle),
-        selectionCountLabel(preferences.preferredReleaseGroups, context)
     )
     row(
         DebridStreamPicker.REQUIRED_RELEASE_GROUPS,
@@ -1625,8 +1516,8 @@ private fun DebridApiKeyDialog(
                 .fillMaxWidth()
                 .onFocusChanged { isInputFocused = it.isFocused || it.hasFocus },
             colors = CardDefaults.colors(
-                containerColor = Color.Black.copy(alpha = 0.85f),
-                focusedContainerColor = Color.Black.copy(alpha = 0.85f)
+                containerColor = NuvioTheme.colors.BackgroundElevated,
+                focusedContainerColor = NuvioTheme.colors.BackgroundElevated
             ),
             border = CardDefaults.border(
                 border = Border(
@@ -1670,7 +1561,7 @@ private fun DebridApiKeyDialog(
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = NuvioTheme.colors.TextPrimary,
                                             textDirection = TextDirection.Content),
                     cursorBrush = SolidColor(
-                        if (isInputFocused) Color.White else Color.Transparent
+                        if (isInputFocused) NuvioTheme.colors.Primary else Color.Transparent
                     ),
                     decorationBox = { innerTextField ->
                         if (value.isBlank()) {
@@ -1749,7 +1640,6 @@ private enum class DebridStreamPicker {
     PREFERRED_LANGUAGES,
     REQUIRED_LANGUAGES,
     EXCLUDED_LANGUAGES,
-    PREFERRED_RELEASE_GROUPS,
     REQUIRED_RELEASE_GROUPS,
     EXCLUDED_RELEASE_GROUPS
 }

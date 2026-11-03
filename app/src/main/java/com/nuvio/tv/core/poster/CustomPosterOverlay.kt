@@ -18,12 +18,11 @@ import com.nuvio.tv.domain.model.WatchProgress
  * When the pattern contains `{shape}`, the landscape poster is also resolved.
  */
 fun MetaPreview.withCustomPosterUrl(
-    pattern: String,
-    contentIds: ContentIds? = null
+    pattern: String
 ): MetaPreview {
     if (pattern.isBlank()) return this
 
-    val ids = contentIds ?: CustomPosterUrlResolver.extractIds(id, explicitImdbId = imdbId)
+    val ids = CustomPosterUrlResolver.extractIds(id, explicitImdbId = imdbId)
     val type = this.type.toApiString(rawType)
     val supportsShape = CustomPosterUrlResolver.supportsShape(pattern)
 

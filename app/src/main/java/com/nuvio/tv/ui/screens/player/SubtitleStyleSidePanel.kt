@@ -2,15 +2,8 @@
 
 package com.nuvio.tv.ui.screens.player
 
-import com.nuvio.tv.data.local.SubtitleEdgeStyle
-import com.nuvio.tv.ui.screens.settings.SubtitleFontDialog
-import com.nuvio.tv.ui.screens.settings.SubtitleEdgeDialog
-import com.nuvio.tv.ui.screens.settings.subtitleFontName
-import com.nuvio.tv.ui.screens.settings.subtitleEdgeName
 import com.nuvio.tv.ui.theme.NuvioTheme
 
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.border
@@ -80,14 +73,8 @@ internal fun SubtitleStyleSidePanel(
     onEvent: (PlayerEvent) -> Unit,
     modifier: Modifier = Modifier,
     isStyleDisabledByLibass: Boolean = false,
-    bitmapTrack: Boolean = false,
-    bitmapScaleAvailable: Boolean = true,
     isEditingHdrStyle: Boolean = false
 ) {
-    var showFontPicker by remember { mutableStateOf(false) }
-    var showEdgePicker by remember { mutableStateOf(false) }
-    val displayedSize = if (bitmapTrack) subtitleStyle.bitmapSize else subtitleStyle.size
-    fun sizeEvent(size: Int): PlayerEvent = if (bitmapTrack) PlayerEvent.OnSetSubtitleBitmapSize(size) else PlayerEvent.OnSetSubtitleSize(size)
     val firstItemFocusRequester = remember { FocusRequester() }
     val dispatchStyleEvent: (PlayerEvent) -> Unit = { event ->
         if (!isStyleDisabledByLibass) {
@@ -109,7 +96,7 @@ internal fun SubtitleStyleSidePanel(
     Column(
         modifier = modifier
             .width(760.dp)
-            .height(if (isEditingHdrStyle && !bitmapTrack) 440.dp else 330.dp)
+            .height(330.dp)
             .clip(RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
             .background(Color(0xFF101010))
             .then(if (isStyleDisabledByLibass) Modifier.focusProperties { canFocus = false } else Modifier)
@@ -132,10 +119,6 @@ internal fun SubtitleStyleSidePanel(
             }
         }
 
-        if (bitmapTrack) Text(
-            stringResource(if (bitmapScaleAvailable) R.string.subtitle_bitmap_style_note else R.string.subtitle_bitmap_mpv_note),
-            color = Color.White.copy(alpha = .7f)
-        )
         Spacer(modifier = Modifier.height(6.dp))
 
         Row(
@@ -147,7 +130,7 @@ internal fun SubtitleStyleSidePanel(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)) {
                 SubtitleStyleSection(
-                    title = stringResource(if (bitmapTrack) R.string.subtitle_style_image_size else R.string.subtitle_style_font_size),
+                    title = stringResource(R.string.subtitle_style_font_size),
                     modifier = Modifier
                         .width(StyleCardWidth)
                         .height(StyleCardHeight)
@@ -156,117 +139,143 @@ internal fun SubtitleStyleSidePanel(
                         SubtitleStyleStepperButton(
                             icon = Icons.Default.Remove,
                             contentDescription = stringResource(R.string.cd_decrease),
-                            onClick = { if (!bitmapTrack || bitmapScaleAvailable) onEvent(sizeEvent(displayedSize - 5)) },
+                            onClick = { onEvent(PlayerEvent.OnSetSubtitleSize(subtitleStyle.size - 10)) },
                             modifier = Modifier.focusRequester(firstItemFocusRequester)
                         )
-                        SubtitleStyleValueDisplay(text = "${displayedSize}%")
+                        SubtitleStyleValueDisplay(text = "${subtitleStyle.size}%")
                         SubtitleStyleStepperButton(
                             icon = Icons.Default.Add,
                             contentDescription = stringResource(R.string.cd_increase),
-                            onClick = { if (!bitmapTrack || bitmapScaleAvailable) onEvent(sizeEvent(displayedSize + 5)) }
+                            onClick = { onEvent(PlayerEvent.OnSetSubtitleSize(subtitleStyle.size + 10)) }
                         )
                     }
                 }
-                if (!bitmapTrack) {
-                    SubtitleStyleSection(
-                        title = stringResource(R.string.subtitle_font_and_weight),
-                        modifier = Modifier
-                            .width(StyleCardWidth)
-                            .height(StyleCardHeight + 32.dp)
-                    ) {
-                        SubtitleAppearanceButton(subtitleFontName(subtitleStyle.font), { showFontPicker = true })
-                        SubtitleStyleSettingRow(label = stringResource(R.string.subtitle_style_weight)) {
-                            SubtitleStyleToggleButton(
-                                isEnabled = subtitleStyle.bold,
-                                onClick = { onEvent(PlayerEvent.OnSetSubtitleBold(!subtitleStyle.bold)) }
-                            )
-                        }
+                SubtitleStyleSection(
+                    title = stringResource(R.string.subtitle_style_bold),
+                    modifier = Modifier
+                        .width(StyleCardWidth)
+                        .height(StyleCardHeight)
+                ) {
+                    SubtitleStyleSettingRow(label = stringResource(R.string.subtitle_style_weight)) {
+                        SubtitleStyleToggleButton(
+                            isEnabled = subtitleStyle.bold,
+                            onClick = { onEvent(PlayerEvent.OnSetSubtitleBold(!subtitleStyle.bold)) }
+                        )
                     }
                 }
             }
 
-            if (!bitmapTrack) {
-                Column(verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)) {
-                    SubtitleStyleSection(
-                        title = if (isEditingHdrStyle) {
-                            stringResource(R.string.subtitle_style_text_color_hdr)
-                        } else {
-                            stringResource(R.string.subtitle_style_text_color)
-                        },
-                        centerContent = false,
-                        modifier = Modifier
-                            .width(StyleCardWidth)
-                            .height(140.dp)
+            Column(verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)) {
+                SubtitleStyleSection(
+                    title = if (isEditingHdrStyle) {
+                        stringResource(R.string.subtitle_style_text_color_hdr)
+                    } else {
+                        stringResource(R.string.subtitle_style_text_color)
+                    },
+                    centerContent = false,
+                    modifier = Modifier
+                        .width(StyleCardWidth)
+                        .height(140.dp)
+                ) {
+                    val currentAlphaPercent = (Color(subtitleStyle.textColor).alpha * 100f).roundToInt().coerceIn(0, 100)
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
                     ) {
-                        val currentAlphaPercent = (Color(subtitleStyle.textColor).alpha * 100f).roundToInt().coerceIn(0, 100)
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
-                        ) {
-                            LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)) {
-                                items(SubtitleTextColors) { color ->
-                                    SubtitleStyleColorChip(
-                                        color = color,
-                                        isSelected = Color(subtitleStyle.textColor).copy(alpha = 1f).toArgb() == color.copy(alpha = 1f).toArgb(),
-                                        onClick = {
-                                            val currentAlpha = Color(subtitleStyle.textColor).alpha
-                                            onEvent(PlayerEvent.OnSetSubtitleTextColor(color.copy(alpha = currentAlpha).toArgb()))
-                                        }
-                                    )
-                                }
-                            }
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                SubtitleStyleStepperButton(
-                                    icon = Icons.Default.Remove,
-                                    contentDescription = stringResource(R.string.cd_decrease),
+                        Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)) {
+                            SubtitleTextColorPresets.forEach { color ->
+                                SubtitleStyleColorChip(
+                                    color = color,
+                                    isSelected = Color(subtitleStyle.textColor).copy(alpha = 1f).toArgb() == color.copy(alpha = 1f).toArgb(),
                                     onClick = {
-                                        val newAlpha = (currentAlphaPercent - 10).coerceAtLeast(0) / 100f
-                                        onEvent(PlayerEvent.OnSetSubtitleTextColor(Color(subtitleStyle.textColor).copy(alpha = newAlpha).toArgb()))
-                                    }
-                                )
-                                SubtitleStyleValueDisplay(text = "$currentAlphaPercent%")
-                                SubtitleStyleStepperButton(
-                                    icon = Icons.Default.Add,
-                                    contentDescription = stringResource(R.string.cd_increase),
-                                    onClick = {
-                                        val newAlpha = (currentAlphaPercent + 10).coerceAtMost(100) / 100f
-                                        onEvent(PlayerEvent.OnSetSubtitleTextColor(Color(subtitleStyle.textColor).copy(alpha = newAlpha).toArgb()))
+                                        val currentAlpha = Color(subtitleStyle.textColor).alpha
+                                        onEvent(PlayerEvent.OnSetSubtitleTextColor(color.copy(alpha = currentAlpha).toArgb()))
                                     }
                                 )
                             }
                         }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            SubtitleStyleStepperButton(
+                                icon = Icons.Default.Remove,
+                                contentDescription = stringResource(R.string.cd_decrease),
+                                onClick = {
+                                    val newAlpha = (currentAlphaPercent - 10).coerceAtLeast(0) / 100f
+                                    onEvent(PlayerEvent.OnSetSubtitleTextColor(Color(subtitleStyle.textColor).copy(alpha = newAlpha).toArgb()))
+                                }
+                            )
+                            SubtitleStyleValueDisplay(text = "$currentAlphaPercent%")
+                            SubtitleStyleStepperButton(
+                                icon = Icons.Default.Add,
+                                contentDescription = stringResource(R.string.cd_increase),
+                                onClick = {
+                                    val newAlpha = (currentAlphaPercent + 10).coerceAtMost(100) / 100f
+                                    onEvent(PlayerEvent.OnSetSubtitleTextColor(Color(subtitleStyle.textColor).copy(alpha = newAlpha).toArgb()))
+                                }
+                            )
+                        }
                     }
+                }
+                if (isEditingHdrStyle) {
                     SubtitleStyleSection(
-                        title = stringResource(R.string.subtitle_edge_style),
-                        centerContent = false,
+                        title = stringResource(R.string.subtitle_style_brightness_hdr),
                         modifier = Modifier
                             .width(StyleCardWidth)
                             .height(StyleCardHeight)
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                SubtitleAppearanceButton(subtitleEdgeName(subtitleStyle.effectiveEdgeStyle), { showEdgePicker = true })
-
-                            }
-                            if (subtitleStyle.effectiveEdgeStyle == SubtitleEdgeStyle.OUTLINE) LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)) {
-                                items(SubtitleOutlineColors) { color ->
-                                    SubtitleStyleColorChip(
-                                        color = color.copy(alpha = if (subtitleStyle.outlineEnabled) 1f else 0.35f),
-                                        isSelected = subtitleStyle.outlineColor == color.toArgb(),
-                                        onClick = {
-                                            if (!subtitleStyle.outlineEnabled) {
-                                                onEvent(PlayerEvent.OnSetSubtitleOutlineEnabled(true))
-                                            }
-                                            onEvent(PlayerEvent.OnSetSubtitleOutlineColor(color.toArgb()))
-                                        }
-                                    )
+                        SubtitleStyleSettingRow {
+                            SubtitleStyleStepperButton(
+                                icon = Icons.Default.Remove,
+                                onClick = {
+                                    onEvent(PlayerEvent.OnSetSubtitleHdrBrightness(subtitleStyle.hdrBrightness - 10))
                                 }
+                            )
+                            SubtitleStyleValueDisplay(text = "${subtitleStyle.hdrBrightness}%")
+                            SubtitleStyleStepperButton(
+                                icon = Icons.Default.Add,
+                                onClick = {
+                                    onEvent(PlayerEvent.OnSetSubtitleHdrBrightness(subtitleStyle.hdrBrightness + 10))
+                                }
+                            )
+                        }
+                    }
+                }
+                SubtitleStyleSection(
+                    title = stringResource(R.string.subtitle_style_outline),
+                    centerContent = false,
+                    modifier = Modifier
+                        .width(StyleCardWidth)
+                        .height(StyleCardHeight)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            SubtitleStyleToggleButton(
+                                isEnabled = subtitleStyle.outlineEnabled,
+                                onClick = { onEvent(PlayerEvent.OnSetSubtitleOutlineEnabled(!subtitleStyle.outlineEnabled)) }
+                            )
+                            Text(
+                                text = stringResource(R.string.subtitle_style_color),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White.copy(alpha = 0.7f)
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)) {
+                            SubtitleOutlineColorPresets.forEach { color ->
+                                SubtitleStyleColorChip(
+                                    color = color.copy(alpha = if (subtitleStyle.outlineEnabled) 1f else 0.35f),
+                                    isSelected = subtitleStyle.outlineColor == color.toArgb(),
+                                    onClick = {
+                                        if (!subtitleStyle.outlineEnabled) {
+                                            onEvent(PlayerEvent.OnSetSubtitleOutlineEnabled(true))
+                                        }
+                                        onEvent(PlayerEvent.OnSetSubtitleOutlineColor(color.toArgb()))
+                                    }
+                                )
                             }
                         }
                     }
@@ -284,40 +293,14 @@ internal fun SubtitleStyleSidePanel(
                         SubtitleStyleStepperButton(
                             icon = Icons.Default.Remove,
                             contentDescription = stringResource(R.string.cd_decrease),
-                            onClick = { onEvent(PlayerEvent.OnSetSubtitleVerticalOffset(subtitleStyle.verticalOffset - 1)) }
+                            onClick = { onEvent(PlayerEvent.OnSetSubtitleVerticalOffset(subtitleStyle.verticalOffset - 5)) }
                         )
                         SubtitleStyleValueDisplay(text = subtitleStyle.verticalOffset.toString())
                         SubtitleStyleStepperButton(
                             icon = Icons.Default.Add,
                             contentDescription = stringResource(R.string.cd_increase),
-                            onClick = { onEvent(PlayerEvent.OnSetSubtitleVerticalOffset(subtitleStyle.verticalOffset + 1)) }
+                            onClick = { onEvent(PlayerEvent.OnSetSubtitleVerticalOffset(subtitleStyle.verticalOffset + 5)) }
                         )
-                    }
-                }
-                if (isEditingHdrStyle && !bitmapTrack) {
-                    SubtitleStyleSection(
-                        title = stringResource(R.string.subtitle_style_brightness_hdr),
-                        modifier = Modifier
-                            .width(StyleCardWidth)
-                            .height(StyleCardHeight)
-                    ) {
-                        SubtitleStyleSettingRow {
-                            SubtitleStyleStepperButton(
-                                icon = Icons.Default.Remove,
-                                contentDescription = stringResource(R.string.cd_decrease),
-                                onClick = {
-                                    onEvent(PlayerEvent.OnSetSubtitleHdrBrightness(subtitleStyle.hdrBrightness - 10))
-                                }
-                            )
-                            SubtitleStyleValueDisplay(text = "${subtitleStyle.hdrBrightness}%")
-                            SubtitleStyleStepperButton(
-                                icon = Icons.Default.Add,
-                                contentDescription = stringResource(R.string.cd_increase),
-                                onClick = {
-                                    onEvent(PlayerEvent.OnSetSubtitleHdrBrightness(subtitleStyle.hdrBrightness + 10))
-                                }
-                            )
-                        }
                     }
                 }
                 SubtitleStyleSection(
@@ -345,10 +328,6 @@ internal fun SubtitleStyleSidePanel(
             }
         }
     }
-    if (showFontPicker && !bitmapTrack && !isStyleDisabledByLibass) SubtitleFontDialog(subtitleStyle.font,
-        { dispatchStyleEvent(PlayerEvent.OnSetSubtitleFont(it)) }) { showFontPicker = false }
-    if (showEdgePicker && !bitmapTrack && !isStyleDisabledByLibass) SubtitleEdgeDialog(subtitleStyle.effectiveEdgeStyle,
-        { dispatchStyleEvent(PlayerEvent.OnSetSubtitleEdgeStyle(it)) }) { showEdgePicker = false }
 }
 
 @Composable
@@ -467,7 +446,7 @@ private fun SubtitleStyleColorChip(
     val swatchLabel = stringResource(R.string.cd_color_swatch, panelSwatchColorLabel(color))
 
     val borderModifier = when {
-        isFocused -> Modifier.border(NuvioTheme.spacing.xxs, Color.White, CircleShape)
+        isFocused -> Modifier.border(NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs), CircleShape)
         isSelected -> Modifier.border(NuvioTheme.spacing.xxs, Color.White, CircleShape)
         else -> Modifier
     }

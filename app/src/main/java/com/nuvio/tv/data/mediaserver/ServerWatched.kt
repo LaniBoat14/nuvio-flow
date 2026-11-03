@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import android.widget.Toast
 import com.nuvio.tv.R
-import com.nuvio.tv.core.tracking.TrackingExternalIds
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -18,7 +17,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 
 data class ServerWatchMark(
     val contentId: String,
@@ -59,7 +57,10 @@ class ServerWatched internal constructor(
         if (targets.isEmpty()) return null
         return scope.launch {
             val failed = write(targets, played)
-            if (failed.isEmpty()) return@launch
+            if (failed.isEmpty()) {
+                Log.i(TAG, "Marked ${targets.size} server items played=$played")
+                return@launch
+            }
             Log.w(TAG, "Could not mark ${failed.size} of ${targets.size} server items played=$played")
             notifyFailure()
             onFailed(failed)
@@ -72,22 +73,36 @@ class ServerWatched internal constructor(
         val catalogMarks = marks.filterNot { ServerItemRef.isServerId(it.contentId) }
         if (connections.isEmpty() || catalogMarks.isEmpty()) return null
         return scope.launch {
+            var lookupFailures = 0
             val targets = catalogMarks.flatMap { mark ->
                 val request = matcher.request(mark.contentType, mark.videoId ?: mark.contentId, mark.season, mark.episode)
                     ?: return@flatMap emptyList()
                 connections.filter { matcher.supports(it, request.kind) }.flatMap { connection ->
                     try {
-                        matcher.match(connection, request, forceRefresh = false).map { it to mark }
+                        matcher.match(connection, request, forceRefresh = false)
+                            .also { if (it.isEmpty()) Log.i(TAG, "No ${connection.providerId} match for ${mark.label()}") }
+                            .map { it to mark }
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Exception) {
-                        Log.w(TAG, "Looking up ${mark.contentType} ${mark.videoId ?: mark.contentId} on ${connection.providerId} failed: ${error.forLog()}")
+                        lookupFailures++
+                        Log.w(TAG, "Looking up ${mark.label()} on ${connection.providerId} failed", error)
                         emptyList()
                     }
                 }
             }.distinctBy { it.first }
+            if (lookupFailures > 0) {
+                Log.w(TAG, "Skipped mirroring played=$played after $lookupFailures failed lookups")
+                notifyFailure()
+                return@launch
+            }
             val failed = write(targets, played)
-            if (failed.isNotEmpty()) Log.w(TAG, "Could not mirror played=$played to ${failed.size} of ${targets.size} server items")
+            if (failed.isNotEmpty()) {
+                Log.w(TAG, "Could not mirror played=$played to ${failed.size} of ${targets.size} server items")
+                notifyFailure()
+                return@launch
+            }
+            Log.i(TAG, "Mirrored played=$played to ${targets.size} server items")
         }
     }
 
@@ -122,40 +137,26 @@ class ServerWatched internal constructor(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            Log.w(TAG, "Setting played=$played on item ${ref.itemId} failed: ${error.forLog()}")
+            Log.w(TAG, "Setting played=$played on ${ref.label()} failed", error)
             false
         }
-
-    /** IMDb, TMDB and TVDB ids of a server title, or null when the server has none or cannot be asked. */
-    suspend fun trackerIds(contentId: String): TrackingExternalIds? {
-        val ref = ServerItemRef.parse(contentId) ?: return null
-        val ids = try {
-            withTimeoutOrNull(TRACKER_IDS_TIMEOUT_MS) {
-                repository.call(ref.connectionId) { provider, session ->
-                    if (!provider.supports(ServerCapability.EXTERNAL_ID_LOOKUP)) throw ServerException(ServerFailure.UNSUPPORTED)
-                    provider.externalIds(session, ref.itemId)
-                }
-            }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Exception) {
-            return null
-        } ?: return null
-        return TrackingExternalIds(imdb = ids.imdb, tmdb = ids.tmdb, tvdb = ids.tvdb).takeIf { it.hasAny }
-    }
 
     private suspend fun resync(ref: ServerItemRef) {
         try {
             catalog.details(ref)
         } catch (error: CancellationException) {
             throw error
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            Log.w(TAG, "Refreshing ${ref.label()} after a failed write failed", error)
         }
     }
+
+    private fun ServerItemRef.label(): String = "${repository.connection(connectionId)?.providerId ?: connectionId} item $itemId"
+
+    private fun ServerWatchMark.label(): String = "$contentType ${videoId ?: contentId}"
 
     private companion object {
         const val TAG = "ServerWatched"
         const val WRITE_BATCH = 6
-        const val TRACKER_IDS_TIMEOUT_MS = 5_000L
     }
 }

@@ -46,22 +46,11 @@ class PostPlayRecommendationStateTest {
     }
 
     @Test
-    fun `prefetched recommendation does not block natural completion`() {
-        val recommendation = PostPlayRecommendation(
-            id = "tmdb:1",
-            contentType = "movie",
-            title = "Example",
-            poster = null,
-            backdrop = null,
-            logo = null,
-            description = null,
-            releaseInfo = null,
-            rating = null,
-            genres = emptyList(),
-            runtime = null
-        )
+    fun `loading recommendation holds natural completion until player return`() {
+        val loading = PostPlayRecommendationUiState(isLoadingRecommendation = true)
 
-        assertFalse(PostPlayRecommendationUiState(recommendation = recommendation).blocksNaturalCompletion)
+        assertTrue(loading.blocksNaturalCompletion)
+        assertFalse(loading.copy(hasReturnedToPlayer = true).blocksNaturalCompletion)
     }
 
     @Test
@@ -209,8 +198,8 @@ class PostPlayRecommendationStateTest {
     }
 
     @Test
-    fun `post play recommendations default off and respect the setting`() {
-        assertFalse(PlayerSettings().postPlayRecommendationsEnabled)
+    fun `post play recommendations default on and respect the setting`() {
+        assertTrue(PlayerSettings().postPlayRecommendationsEnabled)
         assertFalse(
             shouldUsePostPlayRecommendation(
                 contentType = "movie",

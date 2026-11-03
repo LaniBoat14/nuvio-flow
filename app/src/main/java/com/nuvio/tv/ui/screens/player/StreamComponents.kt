@@ -7,23 +7,33 @@ package com.nuvio.tv.ui.screens.player
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.LaunchedEffect
@@ -41,21 +51,21 @@ import androidx.tv.material3.Border
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import com.nuvio.tv.core.streams.StreamBadgePlacement
 import com.nuvio.tv.domain.model.Stream
 import com.nuvio.tv.ui.components.SourceChipItem
-import com.nuvio.tv.ui.components.PlayerPanelRow
 import com.nuvio.tv.ui.components.SourceChipStatus
 import com.nuvio.tv.ui.components.SourceStatusFilterChip
-import com.nuvio.tv.domain.model.DebridStreamPreferences
-import com.nuvio.tv.domain.model.DebridStreamResolution
-import com.nuvio.tv.domain.model.DebridStreamQuality
-import com.nuvio.tv.domain.model.DebridStreamVisualTag
-import com.nuvio.tv.domain.model.DebridStreamAudioTag
-import com.nuvio.tv.domain.model.DebridStreamAudioChannel
-import com.nuvio.tv.domain.model.DebridStreamEncode
-import com.nuvio.tv.core.debrid.DirectDebridStreamFilter
+import com.nuvio.tv.ui.components.StreamBadgeChips
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.util.contentTextDirection
+import com.nuvio.tv.ui.util.toAbsoluteAlignment
 import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.withFrameNanos
@@ -69,7 +79,6 @@ internal fun StreamItem(
     focusRequester: FocusRequester? = null,
     requestInitialFocus: Boolean = true,
     isCurrentStream: Boolean = false,
-    isDeadSource: Boolean = false,
     showFileSizeBadges: Boolean = true,
     showAddonLogo: Boolean = true,
     badgePlacement: StreamBadgePlacement = StreamBadgePlacement.BOTTOM,
@@ -77,45 +86,33 @@ internal fun StreamItem(
     onFocusChanged: ((Boolean) -> Unit)? = null,
     onUpKey: (() -> Unit)? = null
 ) {
-    val releaseGroup = remember(stream) {
-        DirectDebridStreamFilter.releaseGroupOf(stream)
-    }
+    val context = LocalContext.current
+    val density = LocalDensity.current
     val unknownStreamLabel = stringResource(R.string.stream_unknown)
-    val fallbackTitle = listOfNotNull(
-        stream.addonName.takeIf { it.isNotBlank() },
-        releaseGroup.takeIf { it.isNotBlank() }
-    ).joinToString(" - ").ifBlank { unknownStreamLabel }
-
-    // factsFor's classification fields do not depend on preferences, so defaults give correct facts.
-    val facts = remember(stream) {
-        DirectDebridStreamFilter.factsFor(stream, DebridStreamPreferences())
+    val streamName = remember(stream, unknownStreamLabel) { stream.getDisplayNameOrNull() ?: unknownStreamLabel }
+    val streamDescription = remember(stream) { stream.getDisplayDescription() }
+    val hasBadges = stream.badges.isNotEmpty() || (showFileSizeBadges && stream.behaviorHints?.videoSize != null)
+    // Pre-upscale: decode at 2× target pixels so the hardware compositor
+    // has enough pixel data for smooth edges inside Card RenderNodes.
+    val logoDecodeSize = remember(density) {
+        with(density) { NuvioTheme.spacing.xxl.roundToPx() } * 2
     }
-    val rowText = remember(stream, facts, fallbackTitle) {
-        streamRowText(
-            displayName = stream.getDisplayNameOrNull(),
-            displayDescription = stream.getDisplayDescription(),
-            factsLine = streamFactsLine(facts),
-            fallbackTitle = fallbackTitle
-        )
-    }
-    val sizeLabel = if (showFileSizeBadges) remember(facts.size) {
-        facts.size?.let { bytes ->
-            if (bytes >= 1_073_741_824L) "%.1f GB".format(bytes / 1_073_741_824.0)
-            else "%.0f MB".format(bytes / 1_048_576.0)
+    val addonLogoModel = remember(context, stream.addonLogo, logoDecodeSize) {
+        stream.addonLogo?.let { logo ->
+            ImageRequest.Builder(context)
+                .data(logo)
+                .size(width = logoDecodeSize, height = logoDecodeSize)
+                .memoryCacheKey("${logo}_${logoDecodeSize}x${logoDecodeSize}")
+                .crossfade(true)
+                .build()
         }
-    } else null
+    }
 
-    PlayerPanelRow(
-        title = rowText.title,
-        titleEnd = sizeLabel,
-        subtitle = rowText.subtitle,
-        titleMaxLines = STREAM_ROW_TITLE_MAX_LINES,
-        subtitleMaxLines = STREAM_ROW_SUBTITLE_MAX_LINES,
-        selected = isCurrentStream,
+    Card(
         onClick = onClick,
-        focusRequester = if (requestInitialFocus) focusRequester else null,
         modifier = Modifier
-            .then(if (isDeadSource) Modifier.alpha(0.45f) else Modifier)
+            .fillMaxWidth()
+            .then(if (focusRequester != null && requestInitialFocus) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged {
                 onFocusChanged?.invoke(it.isFocused)
             }
@@ -125,93 +122,132 @@ internal fun StreamItem(
                     onUpKey(); true
                 } else false
             } else Modifier),
-        trailing = null
-    )
-}
+        colors = CardDefaults.colors(
+            containerColor = NuvioTheme.colors.BackgroundElevated,
+            focusedContainerColor = NuvioTheme.colors.BackgroundElevated
+        ),
+        shape = CardDefaults.shape(shape = RoundedCornerShape(NuvioTheme.radii.md)),
+        border = CardDefaults.border(
+            border = Border(
+                border = BorderStroke(
+                    NuvioTheme.spacing.hairline,
+                    if (isCurrentStream) NuvioTheme.colors.Primary.copy(alpha = 0.65f) else Color.Transparent
+                ),
+                shape = RoundedCornerShape(NuvioTheme.radii.md)
+            ),
+            focusedBorder = Border(
+                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                shape = RoundedCornerShape(NuvioTheme.radii.md)
+            )
+        ),
+        scale = CardDefaults.scale(focusedScale = 1.04f)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(NuvioTheme.spacing.lg),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
+            ) {
+                if (hasBadges && badgePlacement == StreamBadgePlacement.TOP) {
+                    StreamBadgeChips(
+                        badges = stream.badges,
+                        fileSizeBytes = stream.behaviorHints?.videoSize,
+                        showFileSizeBadge = showFileSizeBadges
+                    )
+                    Spacer(modifier = Modifier.height(NuvioTheme.spacing.xxs))
+                }
 
-private const val STREAM_ROW_TITLE_MAX_LINES = 3
-private const val STREAM_ROW_SUBTITLE_MAX_LINES = 8
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Row(
+                        modifier = Modifier.align(streamName.contentTextDirection().toAbsoluteAlignment()),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
+                    ) {
+                        Text(
+                            text = streamName,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                textDirection = streamName.contentTextDirection()
+                            ),
+                            color = NuvioTheme.colors.TextPrimary
+                        )
 
-internal data class StreamRowText(val title: String, val subtitle: String?)
+                        if (isCurrentStream) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(NuvioTheme.colors.Primary.copy(alpha = 0.2f))
+                                    .padding(horizontal = NuvioTheme.spacing.sm, vertical = NuvioTheme.spacing.xs)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.sources_playing),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = NuvioTheme.colors.Primary
+                                )
+                            }
+                        }
+                    }
+                }
 
-/**
- * Text for a source row in the player: the addon's own name and description, as on the
- * Sources page. The facts line stands in only when the addon gives no description.
- */
-internal fun streamRowText(
-    displayName: String?,
-    displayDescription: String?,
-    factsLine: String,
-    fallbackTitle: String
-): StreamRowText {
-    val title = displayName?.trim()?.takeIf { it.isNotEmpty() } ?: fallbackTitle
-    val description = displayDescription?.trim()?.takeIf { it.isNotEmpty() && it != title }
-    return StreamRowText(
-        title = title,
-        subtitle = description ?: factsLine.takeIf { it.isNotBlank() }
-    )
-}
+                streamDescription?.let { description ->
+                    if (description != streamName) {
+                        Text(
+                            text = description,
+                            modifier = Modifier.align(description.contentTextDirection().toAbsoluteAlignment()),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                textDirection = description.contentTextDirection()
+                            ),
+                            color = NuvioTheme.extendedColors.textSecondary
+                        )
+                    }
+                }
 
-/**
- * Builds the single facts line shown beneath a stream's title, e.g.
- * "4K · BluRay REMUX · DV · HDR10 · HEVC · 10-bit · TrueHD · Atmos · 7.1".
- * The classifier's tag lists are additive and redundant (a DV+HDR10 file emits
- * HDR+DV, HDR10, DV, HDR, 10-bit), so this collapses them: DV once, the single
- * most-specific HDR flavour, and a lossless-first primary audio codec plus the
- * object-audio flag. Empty/unknown fields are dropped, so sparse sources degrade
- * cleanly rather than showing "Unknown".
- */
-private fun streamFactsLine(facts: DirectDebridStreamFilter.StreamFacts): String {
-    val parts = mutableListOf<String>()
+                if (hasBadges && badgePlacement == StreamBadgePlacement.BOTTOM) {
+                    StreamBadgeChips(
+                        badges = stream.badges,
+                        fileSizeBytes = stream.behaviorHints?.videoSize,
+                        showFileSizeBadge = showFileSizeBadges,
+                        modifier = Modifier.padding(top = NuvioTheme.spacing.xxs)
+                    )
+                }
+            }
 
-    if (facts.resolution != DebridStreamResolution.UNKNOWN) {
-        parts += if (facts.resolution == DebridStreamResolution.P2160) "4K" else facts.resolution.label
+            if (showAddonLogo) {
+                Column(
+                    horizontalAlignment = Alignment.End
+                ) {
+                    if (addonLogoModel != null) {
+                        AsyncImage(
+                            model = addonLogoModel,
+                            // Decorative: the addon name is announced by the sibling Text below,
+                            // so naming the logo too would duplicate it in the merged card.
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(NuvioTheme.spacing.xxl)
+                                .clip(RoundedCornerShape(NuvioTheme.radii.xs)),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(NuvioTheme.spacing.xs))
+
+                    Text(
+                        text = stream.addonName,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            textDirection = stream.addonName.contentTextDirection()
+                        ),
+                        color = NuvioTheme.extendedColors.textTertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
     }
-    if (facts.quality != DebridStreamQuality.UNKNOWN) parts += facts.quality.label
-
-    val vt = facts.visualTags
-    if (vt.contains(DebridStreamVisualTag.DV)) parts += "DV"
-    val hdrFlavour = when {
-        vt.contains(DebridStreamVisualTag.HDR10_PLUS) -> "HDR10+"
-        vt.contains(DebridStreamVisualTag.HDR10) -> "HDR10"
-        vt.contains(DebridStreamVisualTag.HLG) -> "HLG"
-        vt.contains(DebridStreamVisualTag.HDR) -> "HDR"
-        else -> null
-    }
-    if (hdrFlavour != null) parts += hdrFlavour
-    if (vt.contains(DebridStreamVisualTag.IMAX)) parts += "IMAX"
-
-    if (facts.encode != DebridStreamEncode.UNKNOWN) parts += facts.encode.label
-    if (vt.contains(DebridStreamVisualTag.TEN_BIT)) parts += "10-bit"
-
-    val at = facts.audioTags
-    val atmos = at.contains(DebridStreamAudioTag.ATMOS)
-    val dtsx = at.contains(DebridStreamAudioTag.DTS_X)
-    val dtsFamily = setOf(
-        DebridStreamAudioTag.DTS_HD_MA, DebridStreamAudioTag.DTS_HD,
-        DebridStreamAudioTag.DTS_ES, DebridStreamAudioTag.DTS
-    )
-    // Lossless-first so a TrueHD+DD compat pairing shows TrueHD, not DD.
-    val basePriority = listOf(
-        DebridStreamAudioTag.TRUEHD, DebridStreamAudioTag.DTS_HD_MA, DebridStreamAudioTag.DTS_HD,
-        DebridStreamAudioTag.DTS_ES, DebridStreamAudioTag.DTS, DebridStreamAudioTag.FLAC,
-        DebridStreamAudioTag.DD_PLUS, DebridStreamAudioTag.DD, DebridStreamAudioTag.OPUS,
-        DebridStreamAudioTag.AAC
-    )
-    val base = basePriority.firstOrNull { at.contains(it) }
-    if (dtsx) {
-        parts += "DTS:X"
-        if (base != null && base !in dtsFamily) parts += base.label
-    } else if (base != null) {
-        parts += base.label
-    }
-    if (atmos) parts += "Atmos"
-
-    facts.audioChannels.firstOrNull { it != DebridStreamAudioChannel.UNKNOWN }?.let {
-        parts += it.label
-    }
-
-    return parts.joinToString(" · ")
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)

@@ -27,7 +27,6 @@ class AndroidTvChannelManagerTest {
     private val packageManager: PackageManager = mockk(relaxed = true)
     private val contentResolver: ContentResolver = mockk(relaxed = true)
     private val prefs: TvChannelPreferences = mockk(relaxed = true)
-    private val appIconManager: com.nuvio.tv.launcher.AppIconManager = mockk(relaxed = true)
     private lateinit var manager: AndroidTvChannelManager
 
     private val channelId = 42L
@@ -78,9 +77,7 @@ class AndroidTvChannelManagerTest {
         every { context.contentResolver } returns contentResolver
         every { context.packageName } returns "com.nuvio.tv"
         every { context.getString(any<Int>()) } returns "Continue Watching"
-        every { appIconManager.selectedEntry() } returns "com.nuvio.tv.launcher.AppIconOriginal"
-        coEvery { prefs.getLogoKey() } returns "com.nuvio.tv.launcher.AppIconOriginal"
-        manager = AndroidTvChannelManager(context, prefs, dagger.Lazy { appIconManager })
+        manager = AndroidTvChannelManager(context, prefs)
     }
 
     @After
@@ -98,24 +95,6 @@ class AndroidTvChannelManagerTest {
     fun `isSupported returns true on leanback device`() {
         every { packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) } returns true
         assert(manager.isSupported())
-    }
-
-    @Test
-    fun `isSupported returns false on Fire OS even with the leanback flag`() {
-        every { packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) } returns true
-        every { packageManager.hasSystemFeature("amazon.hardware.fire_tv") } returns true
-        assert(!manager.isSupported())
-    }
-
-    @Test
-    fun `reconcile with nothing to show creates no channel`() = runTest {
-        setupLeanback()
-        coEvery { prefs.getChannelId() } returns null
-
-        manager.reconcile(emptyList())
-
-        verify(exactly = 0) { contentResolver.insert(any(), any()) }
-        verify(exactly = 0) { contentResolver.query(any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -244,21 +223,4 @@ class AndroidTvChannelManagerTest {
         duration = 5_400_000L,
         lastWatched = System.currentTimeMillis()
     )
-
-    @Test
-    fun `a new synopsis rewrites the channel program, an unchanged one does not`() = runTest {
-        setupLeanback()
-        setupChannelExists()
-        val item = fakeProgress("tt001", "movie")
-
-        stubProgramQuery(existingRows = mapOf("tt001" to 99L))
-        manager.reconcile(listOf(item), mapOf("tt001" to "First synopsis"))
-        stubProgramQuery(existingRows = mapOf("tt001" to 99L))
-        manager.reconcile(listOf(item), mapOf("tt001" to "First synopsis"))
-        verify(exactly = 1) { contentResolver.update(any(), any(), null, null) }
-
-        stubProgramQuery(existingRows = mapOf("tt001" to 99L))
-        manager.reconcile(listOf(item), mapOf("tt001" to "Second synopsis"))
-        verify(exactly = 2) { contentResolver.update(any(), any(), null, null) }
-    }
 }

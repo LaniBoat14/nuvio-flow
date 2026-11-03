@@ -3,7 +3,7 @@ package com.nuvio.tv.data.repository
 import android.content.Context
 import com.nuvio.tv.R
 import com.nuvio.tv.core.profile.ProfileManager
-import com.nuvio.tv.core.trakt.traktLandscapeOnlyUrl
+import com.nuvio.tv.core.trakt.traktBestBackdropUrl
 import com.nuvio.tv.core.trakt.traktBestLogoUrl
 import com.nuvio.tv.core.trakt.traktBestPosterUrl
 import com.nuvio.tv.data.remote.api.TraktApi
@@ -23,7 +23,6 @@ import com.nuvio.tv.domain.model.ListMembershipChanges
 import com.nuvio.tv.domain.model.ListMembershipSnapshot
 import com.nuvio.tv.domain.model.LibraryListPrivacy
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -64,7 +63,6 @@ class TraktLibraryService @Inject constructor(
     private val refreshingState = MutableStateFlow(false)
     private val refreshMutex = Mutex()
     private var lastRefreshMs: Long = 0L
-    @Volatile private var writeSequence = 0L
 
     private val cacheTtlMs = 60_000L
     private val listFetchConcurrency = 3
@@ -101,59 +99,34 @@ class TraktLibraryService @Inject constructor(
             .onStart { ensureFresh() }
     }
 
-    /** The watchlist and list entries already loaded, without asking Trakt. */
-    fun currentItems(): List<LibraryEntry> = snapshotState.value.allEntries
-
-    /** Like [currentItems], but null until the first load for this profile has worked. */
-    fun currentItemsOrNull(): List<LibraryEntry>? = snapshotState.value.takeIf { it.updatedAtMs > 0L }?.allEntries
-
     fun observeIsRefreshing(): Flow<Boolean> {
         return refreshingState
     }
 
     suspend fun getMembershipSnapshot(item: LibraryEntryInput): ListMembershipSnapshot {
         ensureFresh()
-        return cachedMembership(item)
+        val snapshot = snapshotState.value
+        val key = contentKey(item.itemId, item.itemType)
+        val memberships = snapshot.membershipByContent[key].orEmpty()
+        val map = snapshot.listTabs.associate { tab ->
+            tab.key to memberships.contains(tab.key)
+        }
+        return ListMembershipSnapshot(listMembership = map)
     }
 
-    /**
-     * Membership for the Add to library button: the loaded lists as they are shown, so the press acts
-     * at once. Before the first load only the watchlist is read.
-     */
-    suspend fun getDefaultMembershipSnapshot(item: LibraryEntryInput): ListMembershipSnapshot {
-        if (hasLoadedLists()) return cachedMembership(item)
-        val watchlist = rebuildSnapshot(emptyList(), mapOf(WATCHLIST_KEY to fetchWatchlistEntries()))
-        val inWatchlist = WATCHLIST_KEY in watchlist.membershipByContent[contentKey(item.itemId, item.itemType)].orEmpty()
-        return ListMembershipSnapshot(listMembership = mapOf(WATCHLIST_KEY to inWatchlist))
-    }
-
-    /** Writes against the loaded lists straight away; the lists are refreshed in the background afterwards. */
     suspend fun applyMembershipChanges(
         item: LibraryEntryInput,
         changes: ListMembershipChanges
     ) {
-        try {
-            applyMembershipChangesNow(item, changes)
-        } finally {
-            scope.launch { ensureFresh() }
-        }
-    }
-
-    private suspend fun applyMembershipChangesNow(
-        item: LibraryEntryInput,
-        changes: ListMembershipChanges
-    ) {
-        val loaded = hasLoadedLists()
-        val current = if (loaded) cachedMembership(item).listMembership else emptyMap()
+        ensureFresh()
+        val current = getMembershipSnapshot(item).listMembership
         val desired = changes.desiredMembership
         val keys = (current.keys + desired.keys).distinct()
 
         keys.forEach { listKey ->
             val before = current[listKey] == true
             val after = desired[listKey] == true
-            // Before the first load the current state is unknown, so every requested change is sent.
-            if (loaded && before == after) return@forEach
-            if (!loaded && listKey !in desired) return@forEach
+            if (before == after) return@forEach
 
             if (listKey == WATCHLIST_KEY) {
                 if (after) {
@@ -340,16 +313,6 @@ class TraktLibraryService @Inject constructor(
         refresh(force = false)
     }
 
-    private fun hasLoadedLists(): Boolean = snapshotState.value.listTabs.isNotEmpty()
-
-    private fun cachedMembership(item: LibraryEntryInput): ListMembershipSnapshot {
-        val snapshot = snapshotState.value
-        val memberships = snapshot.membershipByContent[contentKey(item.itemId, item.itemType)].orEmpty()
-        return ListMembershipSnapshot(listMembership = snapshot.listTabs.associate { tab ->
-            tab.key to memberships.contains(tab.key)
-        })
-    }
-
     private suspend fun refresh(force: Boolean): Boolean {
         val now = System.currentTimeMillis()
         return refreshMutex.withLock {
@@ -359,14 +322,9 @@ class TraktLibraryService @Inject constructor(
 
             refreshingState.value = true
             try {
-                val writesBefore = writeSequence
+                val previous = snapshotState.value
                 val refreshed = runCatching { fetchSnapshot() }.getOrNull()
-                if (refreshed != null && writeSequence != writesBefore) {
-                    // A write landed while the lists were downloading; keep it and load again next time.
-                    lastRefreshMs = 0L
-                    return@withLock false
-                }
-                val snapshotToUse = refreshed ?: snapshotState.value
+                val snapshotToUse = refreshed ?: previous
                 snapshotState.value = snapshotToUse
                 lastRefreshMs = now
                 refreshed != null
@@ -382,15 +340,12 @@ class TraktLibraryService @Inject constructor(
     ) {
         val before = snapshotState.value
         val optimisticSnapshot = optimistic(before)
-        writeSequence++
         snapshotState.value = optimisticSnapshot
         try {
             mutation()
         } catch (error: Throwable) {
             snapshotState.value = before
             throw error
-        } finally {
-            writeSequence++
         }
     }
 
@@ -739,7 +694,7 @@ class TraktLibraryService @Inject constructor(
             type = normalizedType,
             name = mediaTitle ?: contentId,
             poster = images.traktBestPosterUrl(),
-            background = images.traktLandscapeOnlyUrl(),
+            background = images.traktBestBackdropUrl(),
             logo = images.traktBestLogoUrl(),
             description = overview?.takeIf { it.isNotBlank() },
             releaseInfo = mediaYear?.toString() ?: releaseDate?.take(4),
@@ -918,14 +873,7 @@ class TraktLibraryService @Inject constructor(
         val allItems = mutableListOf<T>()
         var currentPage = 1
         while (true) {
-            var response = fetch(currentPage)
-            var attempt = 0
-            while (!response.isSuccessful && response.code() == 429 && attempt < RATE_LIMIT_MAX_RETRIES) {
-                attempt++
-                val retryAfterMs = response.headers()["Retry-After"]?.toLongOrNull()?.times(1000)
-                delay(retryAfterMs ?: (RATE_LIMIT_BACKOFF_MS * attempt))
-                response = fetch(currentPage)
-            }
+            val response = fetch(currentPage)
             if (!response.isSuccessful) {
                 throw IllegalStateException(appContext.getString(com.nuvio.tv.R.string.trakt_library_error_paginated_fetch_failed, response.code()))
             }
@@ -941,7 +889,5 @@ class TraktLibraryService @Inject constructor(
         const val WATCHLIST_KEY = "watchlist"
         const val PERSONAL_KEY_PREFIX = "personal:"
         private const val ME_PATH = "me"
-        private const val RATE_LIMIT_MAX_RETRIES = 3
-        private const val RATE_LIMIT_BACKOFF_MS = 2_000L
     }
 }

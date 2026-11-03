@@ -269,7 +269,7 @@ private fun SupportersContentPanel(
         modifier = modifier
             .fillMaxSize()
             .clip(RoundedCornerShape(28.dp))
-            .background(Color.Black.copy(alpha = 0.85f))
+            .background(NuvioTheme.colors.BackgroundElevated)
             .border(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border, RoundedCornerShape(28.dp))
             .padding(NuvioTheme.spacing.xl),
         verticalArrangement = Arrangement.spacedBy(18.dp)
@@ -606,10 +606,10 @@ private fun TabErrorState(
                     .focusRequester(retryFocusRequester)
                     .focusProperties { left = leftFocusRequester },
                 colors = ButtonDefaults.colors(
-                    containerColor = Color.White.copy(alpha = 0.14f),
-                    focusedContainerColor = Color.White.copy(alpha = 0.24f),
-                    contentColor = Color.White,
-                    focusedContentColor = Color.White
+                    containerColor = NuvioTheme.colors.Secondary,
+                    focusedContainerColor = NuvioTheme.colors.SecondaryVariant,
+                    contentColor = NuvioTheme.colors.OnSecondary,
+                    focusedContentColor = NuvioTheme.colors.OnSecondaryVariant
                 ),
                 shape = ButtonDefaults.shape(RoundedCornerShape(50))
             ) {
@@ -640,8 +640,8 @@ private fun SupporterCard(
             }
             .onFocusChanged { isFocused = it.isFocused },
         colors = CardDefaults.colors(
-            containerColor = Color.Black.copy(alpha = 0.85f),
-            focusedContainerColor = Color.Black.copy(alpha = 0.85f)
+            containerColor = NuvioTheme.colors.BackgroundCard,
+            focusedContainerColor = NuvioTheme.colors.BackgroundCard
         ),
         border = CardDefaults.border(
             border = Border(
@@ -649,7 +649,7 @@ private fun SupporterCard(
                 shape = RoundedCornerShape(22.dp)
             ),
             focusedBorder = Border(
-                border = BorderStroke(NuvioTheme.spacing.xxs, Color.White),
+                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
                 shape = RoundedCornerShape(22.dp)
             )
         ),
@@ -700,7 +700,7 @@ private fun SupporterCard(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.OpenInNew,
                 contentDescription = null,
-                tint = if (isFocused) Color.White else NuvioTheme.colors.TextTertiary,
+                tint = if (isFocused) NuvioTheme.colors.FocusRing else NuvioTheme.colors.TextTertiary,
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -728,8 +728,8 @@ private fun SponsorCard(
             }
             .onFocusChanged { isFocused = it.isFocused },
         colors = CardDefaults.colors(
-            containerColor = Color.Black.copy(alpha = 0.85f),
-            focusedContainerColor = Color.Black.copy(alpha = 0.85f)
+            containerColor = NuvioTheme.colors.BackgroundCard,
+            focusedContainerColor = NuvioTheme.colors.BackgroundCard
         ),
         border = CardDefaults.border(
             border = Border(
@@ -737,7 +737,7 @@ private fun SponsorCard(
                 shape = RoundedCornerShape(22.dp)
             ),
             focusedBorder = Border(
-                border = BorderStroke(NuvioTheme.spacing.xxs, Color.White),
+                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
                 shape = RoundedCornerShape(22.dp)
             )
         ),
@@ -769,7 +769,7 @@ private fun SponsorCard(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.OpenInNew,
                 contentDescription = null,
-                tint = if (isFocused) Color.White else NuvioTheme.colors.TextTertiary,
+                tint = if (isFocused) NuvioTheme.colors.FocusRing else NuvioTheme.colors.TextTertiary,
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -797,8 +797,8 @@ private fun ContributorCard(
             }
             .onFocusChanged { isFocused = it.isFocused },
         colors = CardDefaults.colors(
-            containerColor = Color.Black.copy(alpha = 0.85f),
-            focusedContainerColor = Color.Black.copy(alpha = 0.85f)
+            containerColor = NuvioTheme.colors.BackgroundCard,
+            focusedContainerColor = NuvioTheme.colors.BackgroundCard
         ),
         border = CardDefaults.border(
             border = Border(
@@ -806,7 +806,7 @@ private fun ContributorCard(
                 shape = RoundedCornerShape(22.dp)
             ),
             focusedBorder = Border(
-                border = BorderStroke(NuvioTheme.spacing.xxs, Color.White),
+                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
                 shape = RoundedCornerShape(22.dp)
             )
         ),
@@ -847,7 +847,7 @@ private fun ContributorCard(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.OpenInNew,
                 contentDescription = null,
-                tint = if (isFocused) Color.White else NuvioTheme.colors.TextTertiary,
+                tint = if (isFocused) NuvioTheme.colors.FocusRing else NuvioTheme.colors.TextTertiary,
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -967,20 +967,20 @@ private fun RowScope.SupportersTabButton(
                 if (state.isFocused) onClick()
             },
         colors = CardDefaults.colors(
-            containerColor = if (selected) Color.Black.copy(alpha = 0.85f) else NuvioTheme.colors.Background,
-            focusedContainerColor = Color.Black.copy(alpha = 0.85f)
+            containerColor = if (selected) NuvioTheme.colors.BackgroundCard else NuvioTheme.colors.Background,
+            focusedContainerColor = NuvioTheme.colors.BackgroundCard
         ),
         border = CardDefaults.border(
             border = if (selected) {
                 Border(
-                    border = BorderStroke(NuvioTheme.spacing.hairline, Color.White.copy(alpha = 0.8f)),
+                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.hairline, alpha = 0.8f),
                     shape = RoundedCornerShape(999.dp)
                 )
             } else {
                 Border.None
             },
             focusedBorder = Border(
-                border = BorderStroke(NuvioTheme.spacing.xxs, Color.White),
+                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
                 shape = RoundedCornerShape(999.dp)
             )
         ),
@@ -1067,10 +1067,10 @@ private fun SponsorDetailsDialog(
                 enabled = sponsor.channelUrl != null,
                 modifier = Modifier.focusRequester(primaryFocusRequester),
                 colors = ButtonDefaults.colors(
-                    containerColor = Color.White.copy(alpha = 0.14f),
-                    focusedContainerColor = Color.White.copy(alpha = 0.24f),
-                    contentColor = Color.White,
-                    focusedContentColor = Color.White
+                    containerColor = NuvioTheme.colors.Secondary,
+                    focusedContainerColor = NuvioTheme.colors.SecondaryVariant,
+                    contentColor = NuvioTheme.colors.OnSecondary,
+                    focusedContentColor = NuvioTheme.colors.OnSecondaryVariant
                 ),
                 shape = ButtonDefaults.shape(RoundedCornerShape(50))
             ) {
@@ -1080,10 +1080,10 @@ private fun SponsorDetailsDialog(
             Button(
                 onClick = onDismiss,
                 colors = ButtonDefaults.colors(
-                    containerColor = Color.Black.copy(alpha = 0.85f),
-                    focusedContainerColor = Color.White.copy(alpha = 0.14f),
+                    containerColor = NuvioTheme.colors.BackgroundCard,
+                    focusedContainerColor = NuvioTheme.colors.FocusBackground,
                     contentColor = NuvioTheme.colors.TextPrimary,
-                    focusedContentColor = Color.White
+                    focusedContentColor = NuvioTheme.colors.Primary
                 ),
                 shape = ButtonDefaults.shape(RoundedCornerShape(50))
             ) {
@@ -1140,10 +1140,10 @@ private fun SupporterDetailsDialog(
                 },
                 modifier = Modifier.focusRequester(primaryFocusRequester),
                 colors = ButtonDefaults.colors(
-                    containerColor = Color.White.copy(alpha = 0.14f),
-                    focusedContainerColor = Color.White.copy(alpha = 0.24f),
-                    contentColor = Color.White,
-                    focusedContentColor = Color.White
+                    containerColor = NuvioTheme.colors.Secondary,
+                    focusedContainerColor = NuvioTheme.colors.SecondaryVariant,
+                    contentColor = NuvioTheme.colors.OnSecondary,
+                    focusedContentColor = NuvioTheme.colors.OnSecondaryVariant
                 ),
                 shape = ButtonDefaults.shape(RoundedCornerShape(50))
             ) {
@@ -1153,10 +1153,10 @@ private fun SupporterDetailsDialog(
             Button(
                 onClick = onDismiss,
                 colors = ButtonDefaults.colors(
-                    containerColor = Color.Black.copy(alpha = 0.85f),
-                    focusedContainerColor = Color.White.copy(alpha = 0.14f),
+                    containerColor = NuvioTheme.colors.BackgroundCard,
+                    focusedContainerColor = NuvioTheme.colors.FocusBackground,
                     contentColor = NuvioTheme.colors.TextPrimary,
-                    focusedContentColor = Color.White
+                    focusedContentColor = NuvioTheme.colors.Primary
                 ),
                 shape = ButtonDefaults.shape(RoundedCornerShape(50))
             ) {
@@ -1253,10 +1253,10 @@ private fun ContributorDetailsDialog(
                 enabled = contributor.profileUrl != null,
                 modifier = Modifier.focusRequester(primaryFocusRequester),
                 colors = ButtonDefaults.colors(
-                    containerColor = Color.White.copy(alpha = 0.14f),
-                    focusedContainerColor = Color.White.copy(alpha = 0.24f),
-                    contentColor = Color.White,
-                    focusedContentColor = Color.White
+                    containerColor = NuvioTheme.colors.Secondary,
+                    focusedContainerColor = NuvioTheme.colors.SecondaryVariant,
+                    contentColor = NuvioTheme.colors.OnSecondary,
+                    focusedContentColor = NuvioTheme.colors.OnSecondaryVariant
                 ),
                 shape = ButtonDefaults.shape(RoundedCornerShape(50))
             ) {
@@ -1267,10 +1267,10 @@ private fun ContributorDetailsDialog(
                 Button(
                     onClick = { showSupportQr = !showSupportQr },
                     colors = ButtonDefaults.colors(
-                        containerColor = Color.Black.copy(alpha = 0.85f),
-                        focusedContainerColor = Color.White.copy(alpha = 0.14f),
+                        containerColor = NuvioTheme.colors.BackgroundCard,
+                        focusedContainerColor = NuvioTheme.colors.FocusBackground,
                         contentColor = NuvioTheme.colors.TextPrimary,
-                        focusedContentColor = Color.White
+                        focusedContentColor = NuvioTheme.colors.Primary
                     ),
                     shape = ButtonDefaults.shape(RoundedCornerShape(50))
                 ) {
@@ -1289,10 +1289,10 @@ private fun ContributorDetailsDialog(
             Button(
                 onClick = onDismiss,
                 colors = ButtonDefaults.colors(
-                    containerColor = Color.Black.copy(alpha = 0.85f),
-                    focusedContainerColor = Color.White.copy(alpha = 0.14f),
+                    containerColor = NuvioTheme.colors.BackgroundCard,
+                    focusedContainerColor = NuvioTheme.colors.FocusBackground,
                     contentColor = NuvioTheme.colors.TextPrimary,
-                    focusedContentColor = Color.White
+                    focusedContentColor = NuvioTheme.colors.Primary
                 ),
                 shape = ButtonDefaults.shape(RoundedCornerShape(50))
             ) {

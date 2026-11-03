@@ -6,14 +6,12 @@ internal object MpvStartupWatchdogPolicy {
     const val IDLE_AFTER_LOAD_MS = 4_000L
     const val STALL_TIMEOUT_MS = 20_000L
     const val ABSOLUTE_TIMEOUT_MS = 30_000L
-    const val CACHE_GROWTH_TIMEOUT_MS = 120_000L
     const val MIN_CACHE_GROWTH_SEC = 0.25
 
     val surfaceWaitTicks: Int = (SURFACE_WAIT_MS / POLL_INTERVAL_MS).toInt()
     val idleTicksLimit: Int = (IDLE_AFTER_LOAD_MS / POLL_INTERVAL_MS).toInt()
     val stallTicksLimit: Int = (STALL_TIMEOUT_MS / POLL_INTERVAL_MS).toInt()
     val absoluteTicksLimit: Int = (ABSOLUTE_TIMEOUT_MS / POLL_INTERVAL_MS).toInt()
-    val cacheGrowthTicksLimit: Int = (CACHE_GROWTH_TIMEOUT_MS / POLL_INTERVAL_MS).toInt()
 
     enum class Action {
         Continue,
@@ -28,7 +26,6 @@ internal object MpvStartupWatchdogPolicy {
         val idleTicks: Int = 0,
         val stallTicks: Int = 0,
         val absoluteTicks: Int = 0,
-        val cacheGrowthTicks: Int = 0,
     )
 
     data class Input(
@@ -74,36 +71,21 @@ internal object MpvStartupWatchdogPolicy {
                 Counters(
                     idleTicks = idle,
                     stallTicks = input.counters.stallTicks,
-                    absoluteTicks = absolute,
-                    cacheGrowthTicks = input.counters.cacheGrowthTicks
+                    absoluteTicks = absolute
                 )
             )
         }
 
-        if (input.cacheProgressing) {
-            val growth = input.counters.cacheGrowthTicks + 1
-            if (growth >= cacheGrowthTicksLimit) {
-                return Step(Action.AbsoluteTimeout, Counters())
-            }
-            return Step(
-                Action.Continue,
-                Counters(absoluteTicks = input.counters.absoluteTicks, cacheGrowthTicks = growth)
-            )
-        }
         if (absolute >= absoluteTicksLimit) {
             return Step(Action.AbsoluteTimeout, Counters())
         }
-        val stall = input.counters.stallTicks + 1
+        val stall = if (input.cacheProgressing) 0 else input.counters.stallTicks + 1
         if (stall >= stallTicksLimit) {
             return Step(Action.StallTimeout, Counters())
         }
         return Step(
             Action.Continue,
-            Counters(
-                stallTicks = stall,
-                absoluteTicks = absolute,
-                cacheGrowthTicks = input.counters.cacheGrowthTicks
-            )
+            Counters(stallTicks = stall, absoluteTicks = absolute)
         )
     }
 }

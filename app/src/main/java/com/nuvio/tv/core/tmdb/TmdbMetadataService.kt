@@ -32,11 +32,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -56,14 +54,9 @@ class TmdbMetadataService(
     constructor(tmdbApi: TmdbApi) : this(tmdbApi, Dispatchers.IO)
 
     // In-memory caches
-    private val homeAgeRatingCache = ConcurrentHashMap<String, String>()
-    private val homeHeroCache = ConcurrentHashMap<String, TmdbEnrichment>()
-    private val homeHeroInFlight = ConcurrentHashMap<String, CompletableDeferred<TmdbEnrichment?>>()
     private val enrichmentCache = ConcurrentHashMap<String, TmdbEnrichment>()
     private val episodeCache = ConcurrentHashMap<String, Map<Pair<Int, Int>, TmdbEpisodeEnrichment>>()
     private val enrichmentInFlight = ConcurrentHashMap<String, CompletableDeferred<TmdbEnrichment?>>()
-    private val posterArtCache = ConcurrentHashMap<String, TmdbPosterArt>()
-    private val posterArtInFlight = ConcurrentHashMap<String, CompletableDeferred<TmdbPosterArt?>>()
     private val episodeInFlight = ConcurrentHashMap<String, CompletableDeferred<Map<Pair<Int, Int>, TmdbEpisodeEnrichment>>>()
     private val personCache = ConcurrentHashMap<String, PersonDetail>()
     private val moreLikeThisCache = ConcurrentHashMap<String, List<MetaPreview>>()
@@ -77,115 +70,21 @@ class TmdbMetadataService(
         return enrichmentCache.entries.firstOrNull { it.key.startsWith(prefix) }?.value?.originalTitle
     }
 
-    /** Home's core result never waits on credits, trailers, alternative titles or other addons.
-     * Separate cache: a partial Home response must never masquerade as complete Details data.
-     */
-    suspend fun fetchHomeHero(tmdbId: String, contentType: ContentType, language: String = "en"): TmdbEnrichment? =
-        withContext(ioDispatcher) {
-            val normalized = normalizeTmdbLanguage(language)
-            val key = "$tmdbId:${contentType.name}:$normalized"
-            enrichmentCache[key]?.let { return@withContext it }
-            homeHeroCache[key]?.let { return@withContext it }
-            val id = tmdbId.toIntOrNull() ?: return@withContext null
-            val result = CompletableDeferred<TmdbEnrichment?>()
-            homeHeroInFlight.putIfAbsent(key, result)?.let { return@withContext it.await() }
-            try {
-                val tv = contentType == ContentType.SERIES || contentType == ContentType.TV
-                val hero = coroutineScope {
-                    val images = async {
-                        // A slow/missing logo must not hold the background or readable title hostage.
-                        withTimeoutOrNull(750) {
-                            val languages = "${normalized.substringBefore('-')},$normalized,en,null"
-                            try {
-                                if (tv) tmdbApi.getTvImages(id, TMDB_API_KEY, languages).body()
-                                else tmdbApi.getMovieImages(id, TMDB_API_KEY, languages).body()
-                            } catch (e: CancellationException) { throw e }
-                            catch (_: Exception) { null }
-                        }
-                    }
-                    val details = if (tv) tmdbApi.getTvDetails(id, TMDB_API_KEY, normalized).body()
-                        else tmdbApi.getMovieDetails(id, TMDB_API_KEY, normalized).body()
-                    if (details == null) { images.cancel(); return@coroutineScope null }
-                    TmdbEnrichment(
-                        localizedTitle = details.title ?: details.name,
-                        description = details.overview?.takeIf(String::isNotBlank),
-                        genres = details.genres.orEmpty().map { it.name }.filter(String::isNotBlank),
-                        backdrop = buildImageUrl(details.backdropPath, "original"),
-                        logo = buildImageUrl(images.await()?.logos?.let { selectBestLocalizedImagePath(it, normalized) }, "original"),
-                        poster = buildImageUrl(details.posterPath, "w500"),
-                        directorMembers = emptyList(), writerMembers = emptyList(), castMembers = emptyList(),
-                        releaseInfo = (if (tv) details.firstAirDate else details.releaseDate).yearPart(),
-                        rating = details.voteAverage, runtimeMinutes = details.runtime ?: details.episodeRunTime?.firstOrNull(),
-                        director = emptyList(), writer = emptyList(), productionCompanies = emptyList(), networks = emptyList(),
-                        ageRating = null, status = details.status, countries = null, language = details.originalLanguage,
-                        collectionId = null, collectionName = null, originalTitle = details.originalTitle ?: details.originalName
-                    )
-                }
-                if (hero != null) {
-                    if (homeHeroCache.size >= 192) homeHeroCache.keys.firstOrNull()?.let(homeHeroCache::remove)
-                    homeHeroCache[key] = hero
-                }
-                result.complete(hero)
-                hero
-            } catch (e: CancellationException) {
-                result.cancel(e)
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "Home hero request failed: ${e.javaClass.simpleName}")
-                result.complete(null)
-                null
-            } finally {
-                if (!result.isCompleted) result.complete(null)
-                homeHeroInFlight.remove(key, result)
-            }
-        }
-
-    suspend fun fetchHomeAgeRating(tmdbId: String, contentType: ContentType, language: String): String? =
-        withContext(ioDispatcher) {
-            val normalized = normalizeTmdbLanguage(language)
-            val key = "$tmdbId:${contentType.name}:$normalized"
-            homeAgeRatingCache[key]?.let { return@withContext it.takeIf(String::isNotBlank) }
-            val id = tmdbId.toIntOrNull() ?: return@withContext null
-            withTimeoutOrNull(1000) {
-                try {
-                    val rating = if (contentType == ContentType.SERIES || contentType == ContentType.TV) {
-                        val response = tmdbApi.getTvContentRatings(id, TMDB_API_KEY)
-                        if (!response.isSuccessful) return@withTimeoutOrNull null
-                        selectTvAgeRating(response.body()?.results.orEmpty(), normalized)
-                    } else {
-                        val response = tmdbApi.getMovieReleaseDates(id, TMDB_API_KEY)
-                        if (!response.isSuccessful) return@withTimeoutOrNull null
-                        selectMovieAgeRating(response.body()?.results.orEmpty(), normalized)
-                    }
-                    if (homeAgeRatingCache.size >= 192) homeAgeRatingCache.keys.firstOrNull()?.let(homeAgeRatingCache::remove)
-                    homeAgeRatingCache[key] = rating.orEmpty()
-                    rating
-                } catch (e: CancellationException) { throw e }
-                catch (_: Exception) { null }
-            }
-        }
-
     suspend fun fetchEnrichment(
         tmdbId: String,
         contentType: ContentType,
-        language: String = "en",
-        onHeroReady: (suspend (TmdbHeroContent) -> Unit)? = null
+        language: String = "en"
     ): TmdbEnrichment? =
         withContext(ioDispatcher) {
             val normalizedLanguage = normalizeTmdbLanguage(language)
             val cacheKey = "$tmdbId:${contentType.name}:$normalizedLanguage"
-            enrichmentCache[cacheKey]?.let {
-                onHeroReady?.invoke(it.heroContent())
-                return@withContext it
-            }
-            enrichmentInFlight[cacheKey]?.let {
-                return@withContext it.await()?.also { ready -> onHeroReady?.invoke(ready.heroContent()) }
-            }
+            enrichmentCache[cacheKey]?.let { return@withContext it }
+            enrichmentInFlight[cacheKey]?.let { return@withContext it.await() }
 
             val numericId = tmdbId.toIntOrNull() ?: return@withContext null
             val requestDeferred = CompletableDeferred<TmdbEnrichment?>()
             enrichmentInFlight.putIfAbsent(cacheKey, requestDeferred)?.let { existing ->
-                return@withContext existing.await()?.also { ready -> onHeroReady?.invoke(ready.heroContent()) }
+                return@withContext existing.await()
             }
             val tmdbType = when (contentType) {
                 ContentType.SERIES, ContentType.TV -> "tv"
@@ -200,9 +99,7 @@ class TmdbMetadataService(
                     append(",en,null")
                 }
 
-                // Details callers publish hero data before launching below-the-fold work.
-                // Other callers retain concurrent enrichment, sharing the same final cache.
-                val secondaryStart = if (onHeroReady != null) CoroutineStart.LAZY else CoroutineStart.DEFAULT
+                // Fetch details, credits, images, alt titles, and trailers in parallel
                 val (details, credits, images, ageRating, altTitles, trailers) = coroutineScope {
                     val detailsDeferred = async {
                         when (tmdbType) {
@@ -210,7 +107,7 @@ class TmdbMetadataService(
                             else -> tmdbApi.getMovieDetails(numericId, TMDB_API_KEY, normalizedLanguage)
                         }.body()
                     }
-                    val creditsDeferred = async(start = secondaryStart) {
+                    val creditsDeferred = async {
                         when (tmdbType) {
                             "tv" -> {
                                 val aggregate = tmdbApi.getTvAggregateCredits(numericId, TMDB_API_KEY, normalizedLanguage).body()
@@ -225,7 +122,7 @@ class TmdbMetadataService(
                             else -> tmdbApi.getMovieImages(numericId, TMDB_API_KEY, includeImageLanguage)
                         }.body()
                     }
-                    val ageRatingDeferred = async(start = secondaryStart) {
+                    val ageRatingDeferred = async {
                         when (tmdbType) {
                             "tv" -> {
                                 val ratings = tmdbApi.getTvContentRatings(numericId, TMDB_API_KEY).body()?.results.orEmpty()
@@ -237,7 +134,7 @@ class TmdbMetadataService(
                             }
                         }
                     }
-                    val altTitlesDeferred = async(start = secondaryStart) {
+                    val altTitlesDeferred = async {
                         runCatching {
                             val resp = when (tmdbType) {
                                 "tv" -> tmdbApi.getTvAlternativeTitles(numericId, TMDB_API_KEY).body()
@@ -247,33 +144,17 @@ class TmdbMetadataService(
                                 .mapNotNull { it.title?.trim()?.takeIf(String::isNotBlank) }
                         }.getOrDefault(emptyList())
                     }
-                    val trailersDeferred = async(start = secondaryStart) {
+                    val trailersDeferred = async {
                         fetchTmdbTrailers(
                             tmdbId = numericId,
                             tmdbType = tmdbType,
                             preferredLanguage = normalizedLanguage
                         )
                     }
-                    val heroDetails = detailsDeferred.await()
-                    val heroImages = imagesDeferred.await()
-                    onHeroReady?.invoke(TmdbHeroContent(
-                        backdrop = buildImageUrl(heroDetails?.backdropPath, TmdbImageSizes.backdrop),
-                        logo = buildImageUrl(heroImages?.logos?.let {
-                            selectBestLocalizedImagePath(it, normalizedLanguage)
-                        }, "original"),
-                        description = heroDetails?.overview?.takeIf { it.isNotBlank() },
-                        genres = heroDetails?.genres?.mapNotNull { it.name.trim().takeIf(String::isNotBlank) }.orEmpty(),
-                        runtimeMinutes = heroDetails?.runtime ?: heroDetails?.episodeRunTime?.firstOrNull(),
-                        rating = heroDetails?.voteAverage,
-                        title = (heroDetails?.title ?: heroDetails?.name)?.takeIf(String::isNotBlank),
-                        poster = buildImageUrl(heroDetails?.posterPath, "w500"),
-                        releaseInfo = (if (tmdbType == "tv") heroDetails?.firstAirDate else heroDetails?.releaseDate).yearPart()
-                    ))
-                    listOf(creditsDeferred, ageRatingDeferred, altTitlesDeferred, trailersDeferred).forEach { it.start() }
                     Sextuple(
-                        heroDetails,
+                        detailsDeferred.await(),
                         creditsDeferred.await(),
-                        heroImages,
+                        imagesDeferred.await(),
                         ageRatingDeferred.await(),
                         altTitlesDeferred.await(),
                         trailersDeferred.await()
@@ -416,7 +297,7 @@ class TmdbMetadataService(
                         )
                     }
                 val poster = buildImageUrl(details?.posterPath, size = "w500")
-                val backdrop = buildImageUrl(details?.backdropPath, size = TmdbImageSizes.backdrop)
+                val backdrop = buildImageUrl(details?.backdropPath, size = "w1280")
 
                 val collectionId = details?.belongsToCollection?.id
                 val collectionName = details?.belongsToCollection?.name
@@ -425,7 +306,7 @@ class TmdbMetadataService(
                     selectBestLocalizedImagePath(it, normalizedLanguage)
                 }
 
-                val logo = buildImageUrl(logoPath, size = "original")
+                val logo = buildImageUrl(logoPath, size = "w500")
 
                 val castMembers = credits?.cast
                     .orEmpty()
@@ -627,93 +508,6 @@ class TmdbMetadataService(
                     requestDeferred.complete(null)
                 }
                 enrichmentInFlight.remove(cacheKey, requestDeferred)
-            }
-        }
-
-    /**
-     * Genre names from one TMDB details call, not kept in memory here. Empty when TMDB has none or does not know the
-     * title, null when the request failed.
-     */
-    suspend fun fetchGenres(tmdbId: Int, contentType: ContentType, language: String = "en"): List<String>? =
-        withContext(ioDispatcher) {
-            val normalizedLanguage = normalizeTmdbLanguage(language)
-            try {
-                val response = when (contentType) {
-                    ContentType.SERIES, ContentType.TV -> tmdbApi.getTvDetails(tmdbId, TMDB_API_KEY, normalizedLanguage)
-                    else -> tmdbApi.getMovieDetails(tmdbId, TMDB_API_KEY, normalizedLanguage)
-                }
-                when {
-                    response.code() == 404 -> emptyList()
-                    !response.isSuccessful -> null
-                    else -> response.body()?.genres?.mapNotNull { genre -> genre.name.trim().takeIf(String::isNotBlank) }
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to fetch TMDB genres: ${e.message}")
-                null
-            }
-        }
-
-    /**
-     * Lightweight artwork fetch for grids: a single TMDB details call (no
-     * credits/images/ratings/alt-title fan-out), cached and in-flight-deduped.
-     * Use instead of [fetchEnrichment] when only poster/backdrop (and basic
-     * text) is needed. The detail screen still calls [fetchEnrichment] for the
-     * full set, so nothing downstream loses data.
-     */
-    suspend fun fetchPosterArt(
-        tmdbId: String,
-        contentType: ContentType,
-        language: String = "en"
-    ): TmdbPosterArt? =
-        withContext(ioDispatcher) {
-            val normalizedLanguage = normalizeTmdbLanguage(language)
-            val cacheKey = "$tmdbId:${contentType.name}:$normalizedLanguage"
-            posterArtCache[cacheKey]?.let { return@withContext it }
-            posterArtInFlight[cacheKey]?.let { return@withContext it.await() }
-
-            val numericId = tmdbId.toIntOrNull() ?: return@withContext null
-            val requestDeferred = CompletableDeferred<TmdbPosterArt?>()
-            posterArtInFlight.putIfAbsent(cacheKey, requestDeferred)?.let { existing ->
-                return@withContext existing.await()
-            }
-            val tmdbType = when (contentType) {
-                ContentType.SERIES, ContentType.TV -> "tv"
-                else -> "movie"
-            }
-            try {
-                val details = when (tmdbType) {
-                    "tv" -> tmdbApi.getTvDetails(numericId, TMDB_API_KEY, normalizedLanguage)
-                    else -> tmdbApi.getMovieDetails(numericId, TMDB_API_KEY, normalizedLanguage)
-                }.body()
-                if (details == null) {
-                    requestDeferred.complete(null)
-                    return@withContext null
-                }
-                val art = TmdbPosterArt(
-                    poster = buildImageUrl(details.posterPath, size = "w500"),
-                    backdrop = buildImageUrl(details.backdropPath, size = TmdbImageSizes.backdrop),
-                    description = details.overview?.takeIf { it.isNotBlank() },
-                    genres = details.genres?.mapNotNull { genre ->
-                        genre.name.trim().takeIf { name -> name.isNotBlank() }
-                    } ?: emptyList()
-                )
-                posterArtCache[cacheKey] = art
-                requestDeferred.complete(art)
-                art
-            } catch (e: CancellationException) {
-                requestDeferred.cancel(e)
-                throw e
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to fetch TMDB poster art: ${e.message}", e)
-                requestDeferred.complete(null)
-                null
-            } finally {
-                if (!requestDeferred.isCompleted) {
-                    requestDeferred.complete(null)
-                }
-                posterArtInFlight.remove(cacheKey, requestDeferred)
             }
         }
 
@@ -944,7 +738,7 @@ class TmdbMetadataService(
                             )
                         }
 
-                        val backdrop = buildImageUrl(localizedBackdropPath ?: rec.backdropPath, size = TmdbImageSizes.backdrop)
+                        val backdrop = buildImageUrl(localizedBackdropPath ?: rec.backdropPath, size = "w1280")
                         val fallbackPoster = buildImageUrl(rec.posterPath, size = "w780")
 
                         val releaseInfo = if (recTmdbType == "tv") {
@@ -1055,7 +849,7 @@ class TmdbMetadataService(
                             )
                         }
 
-                        val backdrop = buildImageUrl(localizedBackdropPath ?: part.backdropPath, size = TmdbImageSizes.backdrop)
+                        val backdrop = buildImageUrl(localizedBackdropPath ?: part.backdropPath, size = "w1280")
                         val fallbackPoster = buildImageUrl(part.posterPath, size = "w780")
                         val releaseInfo = part.releaseDate?.take(4)
 
@@ -1337,7 +1131,7 @@ class TmdbMetadataService(
         val poster = buildImageUrl(result.posterPath, size = "w500")
             ?: buildImageUrl(result.backdropPath, size = "w780")
             ?: return null
-        val background = buildImageUrl(result.backdropPath, size = TmdbImageSizes.backdrop)
+        val background = buildImageUrl(result.backdropPath, size = "w1280")
         val releaseInfo = when (mediaType) {
             TmdbEntityMediaType.MOVIE -> result.releaseDate?.take(4)
             TmdbEntityMediaType.TV -> result.firstAirDate?.take(4)
@@ -1649,7 +1443,7 @@ class TmdbMetadataService(
                     name = title,
                     poster = buildImageUrl(credit.posterPath, "w500"),
                     posterShape = PosterShape.POSTER,
-                    background = buildImageUrl(credit.backdropPath, TmdbImageSizes.backdrop),
+                    background = buildImageUrl(credit.backdropPath, "w1280"),
                     logo = null,
                     description = credit.overview?.takeIf { it.isNotBlank() },
                     releaseInfo = year,
@@ -1683,7 +1477,7 @@ class TmdbMetadataService(
                     name = title,
                     poster = buildImageUrl(credit.posterPath, "w500"),
                     posterShape = PosterShape.POSTER,
-                    background = buildImageUrl(credit.backdropPath, TmdbImageSizes.backdrop),
+                    background = buildImageUrl(credit.backdropPath, "w1280"),
                     logo = null,
                     description = credit.overview?.takeIf { it.isNotBlank() },
                     releaseInfo = year,
@@ -1717,7 +1511,7 @@ class TmdbMetadataService(
                     name = title,
                     poster = buildImageUrl(credit.posterPath, "w500"),
                     posterShape = PosterShape.POSTER,
-                    background = buildImageUrl(credit.backdropPath, TmdbImageSizes.backdrop),
+                    background = buildImageUrl(credit.backdropPath, "w1280"),
                     logo = null,
                     description = credit.overview?.takeIf { it.isNotBlank() },
                     releaseInfo = year,
@@ -1751,7 +1545,7 @@ class TmdbMetadataService(
                     name = title,
                     poster = buildImageUrl(credit.posterPath, "w500"),
                     posterShape = PosterShape.POSTER,
-                    background = buildImageUrl(credit.backdropPath, TmdbImageSizes.backdrop),
+                    background = buildImageUrl(credit.backdropPath, "w1280"),
                     logo = null,
                     description = credit.overview?.takeIf { it.isNotBlank() },
                     releaseInfo = year,
@@ -1846,13 +1640,6 @@ private fun selectTvAgeRating(
         .mapNotNull { it.rating?.trim() }
         .firstOrNull { it.isNotBlank() }
 }
-
-data class TmdbPosterArt(
-    val poster: String?,
-    val backdrop: String?,
-    val description: String?,
-    val genres: List<String>
-)
 
 data class TmdbMovieCollection(
     val name: String?,
@@ -1950,7 +1737,7 @@ data class TmdbEntityRailPageResult(
 private fun TmdbEpisode.toEnrichment(): TmdbEpisodeEnrichment {
     val title = name?.takeIf { it.isNotBlank() }
     val overview = overview?.takeIf { it.isNotBlank() }
-    val thumbnail = stillPath?.takeIf { it.isNotBlank() }?.let { "https://image.tmdb.org/t/p/${TmdbImageSizes.STILL}$it" }
+    val thumbnail = stillPath?.takeIf { it.isNotBlank() }?.let { "https://image.tmdb.org/t/p/w500$it" }
     val airDate = airDate?.takeIf { it.isNotBlank() }
     return TmdbEpisodeEnrichment(
         title = title,
@@ -2064,21 +1851,3 @@ internal fun resolveDisplayLabel(
     // Otherwise fallback to whatever non-null exists
     return fallback ?: originalLabel ?: name
 }
-
-/** First visible Details data; deliberately independent of credits, trailers and recommendations. */
-data class TmdbHeroContent(
-    val backdrop: String?,
-    val logo: String?,
-    val description: String?,
-    val genres: List<String>,
-    val runtimeMinutes: Int?,
-    val rating: Double?,
-    val title: String? = null,
-    val poster: String? = null,
-    val releaseInfo: String? = null
-)
-
-private fun TmdbEnrichment.heroContent() = TmdbHeroContent(
-    backdrop, logo, description, genres, runtimeMinutes, rating,
-    localizedTitle ?: originalTitle, poster, releaseInfo
-)

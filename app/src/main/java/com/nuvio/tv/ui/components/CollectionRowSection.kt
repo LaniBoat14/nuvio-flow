@@ -303,17 +303,13 @@ private fun FolderCard(
         ) {
             val activeImageUrl = collectionFolderCardImageUrl(folder, isFocused)
             if (!activeImageUrl.isNullOrBlank()) {
-                var cropCover by remember(activeImageUrl, folder.tileShape) { mutableStateOf(false) }
                 AsyncImage(
                     model = activeImageUrl,
                     contentDescription = if (folder.hideTitle) folder.title else null,
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(shape),
-                    contentScale = if (cropCover) ContentScale.Crop else ContentScale.FillBounds,
-                    onSuccess = {
-                        cropCover = wideFolderCoverNeedsCrop(folder.tileShape, it.result.image.width, it.result.image.height)
-                    }
+                    contentScale = ContentScale.FillBounds
                 )
             } else if (!folder.coverEmoji.isNullOrBlank()) {
                 Box(

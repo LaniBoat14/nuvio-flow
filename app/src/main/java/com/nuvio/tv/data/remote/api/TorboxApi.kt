@@ -4,7 +4,6 @@ import com.nuvio.tv.data.remote.dto.TorboxCreateTorrentDataDto
 import com.nuvio.tv.data.remote.dto.TorboxCloudItemDto
 import com.nuvio.tv.data.remote.dto.TorboxCachedItemDto
 import com.nuvio.tv.data.remote.dto.TorboxCheckCachedRequestDto
-import com.nuvio.tv.data.remote.dto.TorboxControlTorrentRequestDto
 import com.nuvio.tv.data.remote.dto.TorboxDeviceAuthorizationDto
 import com.nuvio.tv.data.remote.dto.TorboxDeviceTokenDto
 import com.nuvio.tv.data.remote.dto.TorboxDeviceTokenRequestDto
@@ -53,12 +52,6 @@ interface TorboxApi {
         @Part("allow_zip") allowZip: RequestBody
     ): Response<TorboxEnvelopeDto<TorboxCreateTorrentDataDto>>
 
-    @POST("v1/api/torrents/controltorrent")
-    suspend fun controlTorrent(
-        @Header("Authorization") authorization: String,
-        @Body body: TorboxControlTorrentRequestDto
-    ): Response<TorboxEnvelopeDto<Any>>
-
     @GET("v1/api/torrents/mylist")
     suspend fun getTorrent(
         @Header("Authorization") authorization: String,
@@ -69,14 +62,6 @@ interface TorboxApi {
     @GET("v1/api/torrents/mylist")
     suspend fun listCloudTorrents(
         @Header("Authorization") authorization: String
-    ): Response<TorboxEnvelopeDto<List<TorboxCloudItemDto>>>
-
-    @GET("v1/api/torrents/mylist")
-    suspend fun listTorrents(
-        @Header("Authorization") authorization: String,
-        @Query("bypass_cache") bypassCache: Boolean,
-        @Query("offset") offset: Int,
-        @Query("limit") limit: Int
     ): Response<TorboxEnvelopeDto<List<TorboxCloudItemDto>>>
 
     @GET("v1/api/usenet/mylist")

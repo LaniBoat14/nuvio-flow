@@ -1,9 +1,7 @@
 package com.nuvio.tv.ui.screens.player.autosync
 
 import android.os.SystemClock
-import android.util.Log
 import androidx.media3.common.C
-import com.nuvio.tv.ui.screens.player.PlayerRuntimeController
 import com.nuvio.tv.ui.screens.player.SubtitleSyncCue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
@@ -242,11 +240,6 @@ internal object AutomaticSubtitleSync {
             }
 
             val indexedTimeline = indexedTimelineDeferred.await()
-            Log.d(
-                PlayerRuntimeController.TAG,
-                "AUTO_SYNC_V2 index source=${indexedTimeline?.source ?: "unavailable"} " +
-                    "tracks=${indexedTimeline?.tracks?.size ?: 0} ms=${indexedTimeline?.loadMs ?: -1}",
-            )
             var selectedResolved = selectedSubtitleDeferred.isCompleted
             var selected =
                 if (selectedResolved) {

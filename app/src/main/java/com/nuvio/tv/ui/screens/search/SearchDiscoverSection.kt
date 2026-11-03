@@ -1,11 +1,5 @@
 package com.nuvio.tv.ui.screens.search
 
-import com.nuvio.tv.ui.v2.appearance.LocalV2Appearance
-import com.nuvio.tv.ui.v2.appearance.V2Atmosphere
-import com.nuvio.tv.ui.v2.components.nuvioControlSurface
-import com.nuvio.tv.ui.v2.components.nuvioGlass
-import com.nuvio.tv.ui.v2.components.nuvioV2Focus
-import com.nuvio.tv.ui.v2.components.GlassRole
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.screens.home.HeroBackdropState
 
@@ -252,12 +246,7 @@ internal fun DiscoverSection(
                     focusedItemIndex = focusedItemIndex,
                     shouldRestoreFocusedItem = shouldRestoreFocusedItem,
                     onRestoreFocusedItemHandled = onRestoreFocusedItemHandled,
-                    onItemFocused = { index ->
-                        uiState.discoverResults.getOrNull(index)?.let { item ->
-                            HeroBackdropState.selectPageArtwork("${item.apiType}:${item.id}", item.backdropUrl)
-                        }
-                        onDiscoverItemFocused(index)
-                    },
+                    onItemFocused = onDiscoverItemFocused,
                     pendingCount = uiState.pendingDiscoverResults.size,
                     canLoadMore = uiState.discoverHasMore,
                     isLoadingMore = uiState.discoverLoadingMore,
@@ -346,7 +335,6 @@ private fun DiscoverDropdownPicker(
             onClick = { onExpandedChange(!expanded) },
             modifier = Modifier
                 .fillMaxWidth()
-                .nuvioControlSurface(RoundedCornerShape(14.dp))
                 .onSizeChanged { anchorSize = it }
                 .onFocusChanged { state ->
                     isFocused = state.isFocused
@@ -357,10 +345,10 @@ private fun DiscoverDropdownPicker(
                 ),
             shape = CardDefaults.shape(shape = RoundedCornerShape(14.dp)),
             colors = CardDefaults.colors(
-                containerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.BackgroundCard,
-                focusedContainerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.FocusBackground
+                containerColor = NuvioTheme.colors.BackgroundCard,
+                focusedContainerColor = NuvioTheme.colors.FocusBackground
             ),
-            border = if (LocalV2Appearance.current != null) CardDefaults.border(border = androidx.tv.material3.Border.None, focusedBorder = androidx.tv.material3.Border.None) else CardDefaults.border(
+            border = CardDefaults.border(
                 border = Border(
                     border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
                     shape = RoundedCornerShape(14.dp)
@@ -418,10 +406,9 @@ private fun DiscoverDropdownPicker(
             },
             modifier = Modifier
                 .width(with(LocalDensity.current) { anchorSize.width.toDp() })
-                .heightIn(max = 320.dp)
-                .then(if (LocalV2Appearance.current != null) Modifier.nuvioGlass(GlassRole.PANEL, shape = RoundedCornerShape(14.dp)) else Modifier),
+                .heightIn(max = 320.dp),
             shape = RoundedCornerShape(14.dp),
-            containerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.BackgroundCard,
+            containerColor = NuvioTheme.colors.BackgroundCard,
             tonalElevation = NuvioTheme.spacing.none,
             shadowElevation = NuvioTheme.spacing.sm,
             border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border)
@@ -430,12 +417,12 @@ private fun DiscoverDropdownPicker(
                 val isSelected = option.value == selectedValue
                 val isOptionFocused = option.value == focusedOptionValue
                 val itemTextColor = when {
-                    isOptionFocused && LocalV2Appearance.current == null -> NuvioTheme.colors.OnSecondary
+                    isOptionFocused -> NuvioTheme.colors.OnSecondary
                     isSelected -> NuvioTheme.colors.TextPrimary
                     else -> NuvioTheme.colors.TextPrimary
                 }
                 val itemBackgroundColor = when {
-                    isOptionFocused -> NuvioTheme.colors.Secondary.copy(alpha = if (LocalV2Appearance.current != null) .20f else 1f)
+                    isOptionFocused -> NuvioTheme.colors.Secondary
                     isSelected -> NuvioTheme.colors.FocusBackground
                     else -> Color.Transparent
                 }
@@ -452,7 +439,6 @@ private fun DiscoverDropdownPicker(
                             }
                         )
                         .padding(horizontal = 6.dp, vertical = NuvioTheme.spacing.xxs)
-                        .nuvioV2Focus(isOptionFocused, RoundedCornerShape(10.dp), stationary = true)
                         .background(
                             color = itemBackgroundColor,
                             shape = RoundedCornerShape(10.dp)
@@ -775,7 +761,6 @@ private fun DiscoverActionCard(
                     if (globalLandscape) Modifier.fillMaxWidth().aspectRatio(com.nuvio.tv.domain.model.PosterShape.LANDSCAPE.aspectRatio())
                     else Modifier.width(posterCardStyle.width).height(posterCardStyle.height)
                 )
-                .nuvioControlSurface(cardShape)
                 .focusProperties { canFocus = actionType != DiscoverGridAction.Loading }
                 .onPreviewKeyEvent { event ->
                     actionType != DiscoverGridAction.None &&
@@ -789,16 +774,16 @@ private fun DiscoverActionCard(
                 ),
             shape = CardDefaults.shape(shape = cardShape),
             colors = CardDefaults.colors(
-                containerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.BackgroundCard,
-                focusedContainerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.FocusBackground
+                containerColor = NuvioTheme.colors.BackgroundCard,
+                focusedContainerColor = NuvioTheme.colors.FocusBackground
             ),
             border = CardDefaults.border(
-                focusedBorder = if (LocalV2Appearance.current != null) Border.None else Border(
+                focusedBorder = Border(
                     border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
                     shape = cardShape
                 )
             ),
-            scale = CardDefaults.scale(focusedScale = if (LocalV2Appearance.current != null) 1f else posterCardStyle.focusedScale)
+            scale = CardDefaults.scale(focusedScale = posterCardStyle.focusedScale)
         ) {
             Box(
                 modifier = Modifier

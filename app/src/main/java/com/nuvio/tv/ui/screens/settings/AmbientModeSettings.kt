@@ -1,10 +1,12 @@
 package com.nuvio.tv.ui.screens.settings
 
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -13,9 +15,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.AmbientModeSettings
 
-/** Ambient Mode rows for the Appearance screensaver group; the caller provides the card. */
 @Composable
-internal fun AmbientModeSettingsRows(
+internal fun AmbientModeSettingsCard(
     viewModel: AmbientModeSettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -24,34 +25,40 @@ internal fun AmbientModeSettingsRows(
     var showCatalogsDialog by remember { mutableStateOf(false) }
     val selectedCatalogs = settings.catalogKeys.filter { key -> uiState.catalogs.any { it.key == key } }
 
-    SettingsToggleRow(
+    SettingsGroupCard(
+        modifier = Modifier.fillMaxWidth(),
         title = stringResource(R.string.ambient_mode_title),
-        subtitle = stringResource(R.string.ambient_mode_enabled_subtitle),
-        checked = settings.enabled,
-        onToggle = { viewModel.setEnabled(!settings.enabled) }
-    )
-    if (settings.enabled) {
-        SettingsActionRow(
-            title = stringResource(R.string.ambient_mode_timeout),
-            subtitle = stringResource(R.string.ambient_mode_timeout_subtitle),
-            value = timeoutLabel(settings.timeoutMinutes),
-            onClick = { showTimeoutDialog = true }
+        subtitle = stringResource(R.string.ambient_mode_subtitle)
+    ) {
+        SettingsToggleRow(
+            title = stringResource(R.string.ambient_mode_title),
+            subtitle = stringResource(R.string.ambient_mode_enabled_subtitle),
+            checked = settings.enabled,
+            onToggle = { viewModel.setEnabled(!settings.enabled) }
         )
-        SettingsActionRow(
-            title = stringResource(R.string.ambient_mode_catalogs),
-            subtitle = stringResource(R.string.ambient_mode_catalogs_subtitle),
-            value = if (selectedCatalogs.isEmpty()) {
-                stringResource(R.string.ambient_mode_catalogs_default)
-            } else {
-                stringResource(
-                    R.string.ambient_mode_catalogs_count,
-                    selectedCatalogs.size,
-                    AmbientModeSettings.MAX_CATALOGS
-                )
-            },
-            enabled = uiState.catalogs.isNotEmpty(),
-            onClick = { showCatalogsDialog = true }
-        )
+        if (settings.enabled) {
+            SettingsActionRow(
+                title = stringResource(R.string.ambient_mode_timeout),
+                subtitle = stringResource(R.string.ambient_mode_timeout_subtitle),
+                value = timeoutLabel(settings.timeoutMinutes),
+                onClick = { showTimeoutDialog = true }
+            )
+            SettingsActionRow(
+                title = stringResource(R.string.ambient_mode_catalogs),
+                subtitle = stringResource(R.string.ambient_mode_catalogs_subtitle),
+                value = if (selectedCatalogs.isEmpty()) {
+                    stringResource(R.string.ambient_mode_catalogs_default)
+                } else {
+                    stringResource(
+                        R.string.ambient_mode_catalogs_count,
+                        selectedCatalogs.size,
+                        AmbientModeSettings.MAX_CATALOGS
+                    )
+                },
+                enabled = uiState.catalogs.isNotEmpty(),
+                onClick = { showCatalogsDialog = true }
+            )
+        }
     }
 
     if (showTimeoutDialog) {

@@ -79,9 +79,6 @@ static const AVSampleFormat OUTPUT_FORMAT_PCM_16BIT = AV_SAMPLE_FMT_S16;
 static const AVSampleFormat OUTPUT_FORMAT_PCM_FLOAT = AV_SAMPLE_FMT_FLT;
 // Default center level when no downmix metadata is present (-3 dB).
 static const double DEFAULT_CENTER_MIX_LEVEL = M_SQRT1_2;
-// LFE folded into the front channels when the output has no LFE, at -6 dB. FFmpeg drops it
-// by default, which loses the bass on stereo downmixes.
-static const double LFE_MIX_LEVEL = 0.5;
 // Kodi AudioEngine limiter defaults. The limiter sits after rematrixing and
 // catches decoded/remixed float peaks without permanently lowering the mix.
 static const float LIMITER_DEFAULT_SAMPLE_RATE = 48000.0f;
@@ -103,10 +100,6 @@ struct AudioLimiter {
 struct DecoderContext {
   AVCodecContext* codec_context;
   SwrContext* resample_context;
-  // Input sample rate the resampler was configured with. The transcode path
-  // may resample to a different output rate, so a change of input rate is
-  // detected against this value.
-  int configured_input_sample_rate;
   AVSampleFormat output_sample_format;
   AVChannelLayout input_layout;
   AVChannelLayout output_layout;
@@ -164,9 +157,7 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
                  uint8_t* outputBuffer, int outputSize,
                  jint userCenterMixLevelDb,
                  jboolean downmixNormalizationEnabled,
-                 GrowOutputBufferCallback growBuffer, jboolean endOfStream);
-
-int ac3TrailingSilenceSamples(int queuedSamples, int frameSize);
+                 GrowOutputBufferCallback growBuffer);
 
 /**
  * Configures or recreates the resampler for the current frame.
@@ -191,21 +182,6 @@ void logError(const char* functionName, int errorNumber);
 void releaseContext(DecoderContext* decoderContext);
 
 void clearResampler(DecoderContext* decoderContext);
-
-// AC-3 encoding only accepts 32/44.1/48 kHz. Map arbitrary input rates to the
-// nearest legal target, preferring an integer resample ratio: 88.2/176.4 kHz
-// -> 44.1 kHz, 96/192 kHz (and anything else) -> 48 kHz. Standard rates pass
-// through untouched so the existing <=48 kHz behaviour is byte-identical.
-static int ac3TargetSampleRate(int inputRate) {
-  switch (inputRate) {
-    case 32000:
-    case 44100:
-    case 48000:
-      return inputRate;
-    default:
-      return (inputRate > 0 && inputRate % 44100 == 0) ? 44100 : 48000;
-  }
-}
 
 void resetLimiter(AudioLimiter* limiter);
 
@@ -292,8 +268,7 @@ AUDIO_DECODER_FUNC(jint, ffmpegDecode, jlong context, jobject inputData,
                    jint inputSize, jobject decoderOutputBuffer,
                    jobject outputData, jint outputSize,
                    jint userCenterMixLevelDb,
-                   jboolean downmixNormalizationEnabled,
-                   jboolean endOfStream) {
+                   jboolean downmixNormalizationEnabled) {
   if (!context) {
     LOGE("Context must be non-NULL.");
     return -1;
@@ -323,8 +298,7 @@ AUDIO_DECODER_FUNC(jint, ffmpegDecode, jlong context, jobject inputData,
       decodePacket((DecoderContext*)context, packet, outputBuffer, outputSize,
                    userCenterMixLevelDb,
                    downmixNormalizationEnabled,
-                   GrowOutputBufferCallback{env, thiz, decoderOutputBuffer},
-                   endOfStream);
+                   GrowOutputBufferCallback{env, thiz, decoderOutputBuffer});
   av_packet_free(&packet);
   return ret;
 }
@@ -360,12 +334,7 @@ AUDIO_DECODER_FUNC(jint, ffmpegGetSampleRate, jlong context) {
     LOGE("Context must be non-NULL.");
     return -1;
   }
-  DecoderContext* decoderContext = (DecoderContext*)context;
-  if (decoderContext->transcode_to_ac3 && decoderContext->encoder_context &&
-      decoderContext->encoder_context->sample_rate > 0) {
-    return decoderContext->encoder_context->sample_rate;
-  }
-  return decoderContext->codec_context->sample_rate;
+  return ((DecoderContext*)context)->codec_context->sample_rate;
 }
 
 AUDIO_DECODER_FUNC(jlong, ffmpegReset, jlong jContext, jbyteArray extraData) {
@@ -490,194 +459,19 @@ DecoderContext* createContext(JNIEnv* env, const AVCodec* codec,
   return decoderContext;
 }
 
-int ac3TrailingSilenceSamples(int queuedSamples, int frameSize) {
-  if (frameSize <= 0 || queuedSamples <= 0) {
-    return 0;
-  }
-  int remainder = queuedSamples % frameSize;
-  if (remainder == 0) {
-    return 0;
-  }
-  return frameSize - remainder;
-}
-
-int receiveEncoderPackets(DecoderContext* decoderContext, uint8_t** outputBuffer,
-                          int* outSize, int* outputSize,
-                          GrowOutputBufferCallback growBuffer) {
-  while (true) {
-    int ret = avcodec_receive_packet(decoderContext->encoder_context,
-                                     decoderContext->encoder_packet);
-    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-      return 0;
-    }
-    if (ret < 0) {
-      logError("avcodec_receive_packet", ret);
-      return AUDIO_DECODER_ERROR_OTHER;
-    }
-    int packetSize = decoderContext->encoder_packet->size;
-    if (*outSize + packetSize > *outputSize) {
-      *outputSize = *outSize + packetSize;
-      uint8_t* newBase = growBuffer(*outputSize);
-      if (!newBase) {
-        LOGE("Failed to grow output buffer during encoding.");
-        av_packet_unref(decoderContext->encoder_packet);
-        return AUDIO_DECODER_ERROR_OTHER;
-      }
-      *outputBuffer = newBase + *outSize;
-    }
-    memcpy(*outputBuffer, decoderContext->encoder_packet->data, packetSize);
-    *outputBuffer += packetSize;
-    *outSize += packetSize;
-    av_packet_unref(decoderContext->encoder_packet);
-  }
-}
-
-int encodeFullAc3Frames(DecoderContext* decoderContext, uint8_t** outputBuffer,
-                        int* outSize, int* outputSize,
-                        GrowOutputBufferCallback growBuffer) {
-  int frameSize = decoderContext->encoder_context->frame_size;
-  if (frameSize <= 0) {
-    return 0;
-  }
-  while (av_audio_fifo_size(decoderContext->fifo) >= frameSize) {
-    av_audio_fifo_read(decoderContext->fifo,
-                       (void**)decoderContext->encoder_frame->data, frameSize);
-    decoderContext->encoder_frame->nb_samples = frameSize;
-    int ret = avcodec_send_frame(decoderContext->encoder_context,
-                                 decoderContext->encoder_frame);
-    if (ret < 0) {
-      logError("avcodec_send_frame", ret);
-      return AUDIO_DECODER_ERROR_OTHER;
-    }
-    ret = receiveEncoderPackets(decoderContext, outputBuffer, outSize, outputSize,
-                                growBuffer);
-    if (ret < 0) {
-      return ret;
-    }
-  }
-  return 0;
-}
-
-int flushResamplerToFifo(DecoderContext* decoderContext) {
-  if (!decoderContext->resample_context || !decoderContext->fifo ||
-      !decoderContext->encoder_context) {
-    return 0;
-  }
-  int nbChannels = decoderContext->output_layout.nb_channels;
-  if (nbChannels <= 0) {
-    return 0;
-  }
-  int outCapacity = swr_get_out_samples(decoderContext->resample_context, 0);
-  if (outCapacity < 0) {
-    logError("swr_get_out_samples", outCapacity);
-    return AUDIO_DECODER_ERROR_INVALID_DATA;
-  }
-  if (outCapacity == 0) {
-    return 0;
-  }
-  uint8_t** convertedData = (uint8_t**)calloc(nbChannels, sizeof(uint8_t*));
-  if (!convertedData) {
-    return AUDIO_DECODER_ERROR_OTHER;
-  }
-  for (int i = 0; i < nbChannels; i++) {
-    convertedData[i] = (uint8_t*)malloc(outCapacity * sizeof(float));
-    if (!convertedData[i]) {
-      for (int j = 0; j < i; j++) {
-        free(convertedData[j]);
-      }
-      free(convertedData);
-      return AUDIO_DECODER_ERROR_OTHER;
-    }
-  }
-  int converted = swr_convert(decoderContext->resample_context, convertedData,
-                              outCapacity, NULL, 0);
-  if (converted < 0) {
-    logError("swr_convert", converted);
-    for (int i = 0; i < nbChannels; i++) {
-      free(convertedData[i]);
-    }
-    free(convertedData);
-    return AUDIO_DECODER_ERROR_INVALID_DATA;
-  }
-  if (converted > 0) {
-    av_audio_fifo_write(decoderContext->fifo, (void**)convertedData, converted);
-  }
-  for (int i = 0; i < nbChannels; i++) {
-    free(convertedData[i]);
-  }
-  free(convertedData);
-  return 0;
-}
-
-int flushAc3Encoder(DecoderContext* decoderContext, uint8_t** outputBuffer,
-                    int* outSize, int* outputSize,
-                    GrowOutputBufferCallback growBuffer) {
-  if (!decoderContext->encoder_initialized || !decoderContext->fifo ||
-      !decoderContext->encoder_context || !decoderContext->encoder_frame) {
-    return 0;
-  }
-  int flushed = flushResamplerToFifo(decoderContext);
-  if (flushed < 0) {
-    return flushed;
-  }
-  flushed = encodeFullAc3Frames(decoderContext, outputBuffer, outSize, outputSize,
-                                growBuffer);
-  if (flushed < 0) {
-    return flushed;
-  }
-  int frameSize = decoderContext->encoder_context->frame_size;
-  int queued = av_audio_fifo_size(decoderContext->fifo);
-  int silence = ac3TrailingSilenceSamples(queued, frameSize);
-  if (queued > 0 && silence > 0) {
-    av_audio_fifo_read(decoderContext->fifo,
-                       (void**)decoderContext->encoder_frame->data, queued);
-    int channels = decoderContext->encoder_frame->ch_layout.nb_channels;
-    int bytesPerSample =
-        av_get_bytes_per_sample((AVSampleFormat)decoderContext->encoder_frame->format);
-    for (int channel = 0; channel < channels; channel++) {
-      memset(decoderContext->encoder_frame->data[channel] + queued * bytesPerSample, 0,
-             silence * bytesPerSample);
-    }
-    decoderContext->encoder_frame->nb_samples = frameSize;
-    int ret = avcodec_send_frame(decoderContext->encoder_context,
-                                 decoderContext->encoder_frame);
-    if (ret < 0) {
-      logError("avcodec_send_frame", ret);
-      return AUDIO_DECODER_ERROR_OTHER;
-    }
-    ret = receiveEncoderPackets(decoderContext, outputBuffer, outSize, outputSize,
-                                growBuffer);
-    if (ret < 0) {
-      return ret;
-    }
-  }
-  int ret = avcodec_send_frame(decoderContext->encoder_context, NULL);
-  if (ret < 0 && ret != AVERROR_EOF) {
-    logError("avcodec_send_frame", ret);
-    return AUDIO_DECODER_ERROR_OTHER;
-  }
-  return receiveEncoderPackets(decoderContext, outputBuffer, outSize, outputSize,
-                               growBuffer);
-}
-
 int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
                  uint8_t* outputBuffer, int outputSize,
                  jint userCenterMixLevelDb,
                  jboolean downmixNormalizationEnabled,
-                 GrowOutputBufferCallback growBuffer, jboolean endOfStream) {
+                 GrowOutputBufferCallback growBuffer) {
   AVCodecContext* codecContext = decoderContext->codec_context;
-  bool deliverInput = packet->size > 0 || !endOfStream;
-  if (deliverInput) {
-    int result = avcodec_send_packet(codecContext, packet);
-    if (result) {
-      logError("avcodec_send_packet", result);
-      return transformError(result);
-    }
+  int result = avcodec_send_packet(codecContext, packet);
+  if (result) {
+    logError("avcodec_send_packet", result);
+    return transformError(result);
   }
 
   int outSize = 0;
-  int result = 0;
-  bool decoderDrained = false;
   while (true) {
     AVFrame* frame = av_frame_alloc();
     if (!frame) {
@@ -687,17 +481,7 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
     result = avcodec_receive_frame(codecContext, frame);
     if (result) {
       av_frame_free(&frame);
-      if (result == AVERROR(EAGAIN) || result == AVERROR_EOF) {
-        if (endOfStream && decoderContext->transcode_to_ac3 && !decoderDrained) {
-          decoderDrained = true;
-          int flushSend = avcodec_send_packet(codecContext, NULL);
-          if (flushSend == 0 || flushSend == AVERROR(EAGAIN)) {
-            continue;
-          }
-          if (flushSend != AVERROR_EOF) {
-            logError("avcodec_send_packet", flushSend);
-          }
-        }
+      if (result == AVERROR(EAGAIN)) {
         break;
       }
       logError("avcodec_receive_frame", result);
@@ -738,8 +522,7 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
 
       if (decoderContext->downmix_active) {
         limitPlanarFloat(&decoderContext->limiter, converted_data,
-                         convertedSamples, nb_channels,
-                         decoderContext->encoder_context->sample_rate);
+                         convertedSamples, nb_channels, sampleRate);
       }
 
       av_audio_fifo_write(decoderContext->fifo, (void**)converted_data, convertedSamples);
@@ -749,10 +532,43 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
       }
       free(converted_data);
 
-      int encoded = encodeFullAc3Frames(decoderContext, &outputBuffer, &outSize, &outputSize,
-                                       growBuffer);
-      if (encoded < 0) {
-        return encoded;
+      while (av_audio_fifo_size(decoderContext->fifo) >= decoderContext->encoder_context->frame_size) {
+        av_audio_fifo_read(decoderContext->fifo, (void**)decoderContext->encoder_frame->data,
+                            decoderContext->encoder_context->frame_size);
+
+        int ret = avcodec_send_frame(decoderContext->encoder_context, decoderContext->encoder_frame);
+        if (ret < 0) {
+          logError("avcodec_send_frame", ret);
+          return AUDIO_DECODER_ERROR_OTHER;
+        }
+
+        while (true) {
+          ret = avcodec_receive_packet(decoderContext->encoder_context, decoderContext->encoder_packet);
+          if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            break;
+          } else if (ret < 0) {
+            logError("avcodec_receive_packet", ret);
+            return AUDIO_DECODER_ERROR_OTHER;
+          }
+
+          int packetSize = decoderContext->encoder_packet->size;
+          if (outSize + packetSize > outputSize) {
+            outputSize = outSize + packetSize;
+            uint8_t* newBase = growBuffer(outputSize);
+            if (!newBase) {
+              LOGE("Failed to grow output buffer during encoding.");
+              av_packet_unref(decoderContext->encoder_packet);
+              return AUDIO_DECODER_ERROR_OTHER;
+            }
+            outputBuffer = newBase + outSize;
+          }
+
+          memcpy(outputBuffer, decoderContext->encoder_packet->data, packetSize);
+          outputBuffer += packetSize;
+          outSize += packetSize;
+
+          av_packet_unref(decoderContext->encoder_packet);
+        }
       }
       codecContext->sample_rate = sampleRate;
     } else {
@@ -801,13 +617,6 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
       codecContext->sample_rate = sampleRate;
     }
   }
-  if (endOfStream && decoderContext->transcode_to_ac3) {
-    int flushed = flushAc3Encoder(decoderContext, &outputBuffer, &outSize, &outputSize,
-                                  growBuffer);
-    if (flushed < 0) {
-      return flushed;
-    }
-  }
   return outSize;
 }
 
@@ -835,15 +644,6 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
 
   int inputSampleRate =
       frame->sample_rate > 0 ? frame->sample_rate : codecContext->sample_rate;
-  // Resample hi-res sources down to an AC-3-legal rate before encoding. Once
-  // the encoder is open its rate is fixed, so later input-rate changes must
-  // keep feeding the encoder's rate rather than re-deriving one.
-  int outputSampleRate = inputSampleRate;
-  if (decoderContext->transcode_to_ac3) {
-    outputSampleRate = decoderContext->encoder_initialized
-        ? decoderContext->encoder_context->sample_rate
-        : ac3TargetSampleRate(inputSampleRate);
-  }
   AVSampleFormat inputSampleFormat = (AVSampleFormat)frame->format;
   bool isDownmixActive = outputLayout.nb_channels < inputLayout.nb_channels;
   bool applyNormalization = isDownmixActive && downmixNormalizationEnabled;
@@ -857,7 +657,7 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
       !channelLayoutsEqual(&decoderContext->input_layout, &inputLayout) ||
       !channelLayoutsEqual(&decoderContext->output_layout, &outputLayout) ||
       codecContext->sample_fmt != inputSampleFormat ||
-      decoderContext->configured_input_sample_rate != inputSampleRate ||
+      codecContext->sample_rate != inputSampleRate ||
       decoderContext->downmix_normalization_enabled != applyNormalization ||
       (!decoderContext->has_center_mix_level && isDownmixActive) ||
       (decoderContext->has_center_mix_level != isDownmixActive) ||
@@ -875,7 +675,7 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
   SwrContext* resampleContext = NULL;
   int result = swr_alloc_set_opts2(&resampleContext, &outputLayout,
                                    decoderContext->output_sample_format,
-                                   outputSampleRate, &inputLayout,
+                                   inputSampleRate, &inputLayout,
                                    inputSampleFormat, inputSampleRate, 0, NULL);
   if (result < 0) {
     logError("swr_alloc_set_opts2", result);
@@ -886,7 +686,6 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
 
   if (isDownmixActive) {
     av_opt_set_double(resampleContext, "center_mix_level", centerMixLevel, 0);
-    av_opt_set_double(resampleContext, "lfe_mix_level", LFE_MIX_LEVEL, 0);
     if ((decoderContext->output_sample_format == AV_SAMPLE_FMT_FLT ||
          decoderContext->output_sample_format == AV_SAMPLE_FMT_FLTP) &&
         (inputSampleFormat == AV_SAMPLE_FMT_FLT ||
@@ -906,7 +705,6 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
   }
 
   decoderContext->resample_context = resampleContext;
-  decoderContext->configured_input_sample_rate = inputSampleRate;
   if (decoderContext->has_input_layout) {
     av_channel_layout_uninit(&decoderContext->input_layout);
   }
@@ -941,7 +739,7 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
       return AUDIO_DECODER_ERROR_OTHER;
     }
     enc_ctx->sample_fmt = AV_SAMPLE_FMT_FLTP;
-    enc_ctx->sample_rate = outputSampleRate;
+    enc_ctx->sample_rate = inputSampleRate;
     av_channel_layout_copy(&enc_ctx->ch_layout, &outputLayout);
     enc_ctx->bit_rate = 640000;
     
@@ -1021,7 +819,6 @@ void clearResampler(DecoderContext* decoderContext) {
   if (!decoderContext) {
     return;
   }
-  decoderContext->configured_input_sample_rate = 0;
   if (decoderContext->resample_context) {
     swr_free(&decoderContext->resample_context);
   }

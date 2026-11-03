@@ -1,9 +1,5 @@
 package com.nuvio.tv.ui.components
 
-import com.nuvio.tv.ui.screens.home.rowFocusRing
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
 import com.nuvio.tv.ui.screens.home.shuffleFocusKey
 
 import android.view.KeyEvent as AndroidKeyEvent
@@ -67,19 +63,16 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.tv.material3.Border
-import androidx.compose.ui.zIndex
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Button
+import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Text
 import com.nuvio.tv.ui.screens.home.ContinueWatchingItem
-import com.nuvio.tv.ui.screens.home.showsEpisodeCode
-import com.nuvio.tv.ui.v2.appearance.LocalV2Appearance
-import com.nuvio.tv.ui.v2.components.nuvioV2Focus
 import com.nuvio.tv.ui.theme.NuvioTheme
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
-import com.nuvio.tv.core.image.homePosterPriority
 import coil3.request.transformations
 import coil3.request.crossfade
 import kotlin.math.roundToInt
@@ -100,6 +93,8 @@ import com.nuvio.tv.domain.model.CardDepthStyle
 import kotlinx.coroutines.delay
 
 private val BadgeShape = RoundedCornerShape(NuvioTheme.radii.xs)
+private val CwNewEpisodeBadgeColor = Color(0xFF1D4ED8)
+private val CwNewSeasonBadgeColor = Color(0xFFB45309)
 
 /** URLs that failed to load — skip them immediately on next recomposition. */
 internal val brokenImageUrls = java.util.Collections.synchronizedSet(mutableSetOf<String>())
@@ -152,9 +147,7 @@ fun ContinueWatchingSection(
     imageHeight: Dp = 162.dp,
     cardStyle: ContinueWatchingCardStyle = ContinueWatchingCardStyle.CARD,
     cornerRadius: Dp = NuvioTheme.radii.md,
-    posterTitleOverride: TextStyle? = null,
-    /** Replaces the options dialog on a long press when set. */
-    onLongPress: ((ContinueWatchingItem) -> Unit)? = null
+    posterTitleOverride: TextStyle? = null
 ) {
     if (items.isEmpty()) return
 
@@ -264,9 +257,7 @@ fun ContinueWatchingSection(
                 val requester = focusRequesters.getOrPut(index) { FocusRequester() }
                 val focusModifier = Modifier.focusRequester(requester)
                 val stableOnClick = remember(progress) { { onItemClick(progress) } }
-                val stableOnLongPress = remember(progress, onLongPress) {
-                    { if (onLongPress != null) onLongPress(progress) else { optionsItem = progress } }
-                }
+                val stableOnLongPress = remember(progress) { { optionsItem = progress } }
                 var isCardFocused by remember { mutableStateOf(false) }
 
                     ContinueWatchingCard(
@@ -455,7 +446,6 @@ fun ContinueWatchingCard(
     cornerRadius: Dp = NuvioTheme.radii.md,
     posterTitleOverride: TextStyle? = null
 ) {
-    val isV2 = LocalV2Appearance.current != null
     val isPosterStyle = cardStyle == ContinueWatchingCardStyle.POSTER
     val isWideStyle = cardStyle == ContinueWatchingCardStyle.WIDE
     val effectiveEpisodeThumbnails =
@@ -482,7 +472,7 @@ fun ContinueWatchingCard(
     val nextUp = remember(item) { (item as? ContinueWatchingItem.NextUp)?.info }
     val cardContext = LocalContext.current
     val episodeStr = remember(progress, nextUp, cardContext) {
-        val season = progress?.season ?: nextUp?.season?.takeIf { nextUp.showsEpisodeCode }
+        val season = progress?.season ?: nextUp?.season
         val episode = progress?.episode ?: nextUp?.episode
         if (season != null && episode != null) {
             cardContext.getString(R.string.season_episode_format, season, episode)
@@ -505,9 +495,7 @@ fun ContinueWatchingCard(
     val effectiveNextUpLabel = if (useShortLabels) strNextUpShort else strNextUp
     val effectiveNewEpisodeLabel = if (useShortLabels) strNewEpisodeShort else strNewEpisode
     val nextUpBadgeText = nextUp?.let { info ->
-        if (info.badgeLabel != null) {
-            info.badgeLabel
-        } else if (info.isReleaseAlert) {
+        if (info.isReleaseAlert) {
             if (info.isNewSeasonRelease) strNewSeason else effectiveNewEpisodeLabel
         } else if (!info.hasAired) {
             val airDateText = if (useShortLabels) {
@@ -595,11 +583,9 @@ fun ContinueWatchingCard(
             titleMarqueeActive = true
         }
     }
-    val homeImagePriority = com.nuvio.tv.core.image.LocalHomePosterPriority.current
-    val imageRequest = remember(effectiveImageModel, requestWidthPx, requestHeightPx, shouldBlur, homeImagePriority) {
+    val imageRequest = remember(effectiveImageModel, requestWidthPx, requestHeightPx, shouldBlur) {
         val builder = ImageRequest.Builder(context)
             .data(effectiveImageModel)
-            .homePosterPriority(homeImagePriority)
             .crossfade(true)
             .memoryCacheKey(
                 continueWatchingImageCacheKey(
@@ -623,15 +609,18 @@ fun ContinueWatchingCard(
     }
 
     val bgColor = NuvioTheme.colors.Background
-    val badgeBackground = remember { Color.Black.copy(alpha = 0.7f) }
-    
-    val cardDescription = remember(titleText, episodeStr, episodeTitle, badgeText) {
-        listOfNotNull(titleText, episodeStr, episodeTitle, badgeText).filter { it.isNotBlank() }.joinToString(", ")
+    val badgeBackground = remember(bgColor, nextUp) {
+        when {
+            nextUp?.isNewSeasonRelease == true -> CwNewSeasonBadgeColor
+            nextUp?.isReleaseAlert == true -> CwNewEpisodeBadgeColor
+            else -> bgColor.copy(alpha = 0.8f)
+        }
     }
+    
     val bgCardColor = NuvioTheme.colors.BackgroundCard
     val backgroundPainter = remember(bgCardColor) { androidx.compose.ui.graphics.painter.ColorPainter(bgCardColor) }
 
-    NuvioCard(
+    LightweightCard(
         onClick = {
             if (longPressTriggered) {
                 longPressTriggered = false
@@ -639,14 +628,8 @@ fun ContinueWatchingCard(
                 onClick()
             }
         },
-        shape = cwCardShape,
-        light = isV2,
         modifier = modifier
-            .then(if (isV2) Modifier.zIndex(if (isFocused) 0.5f else 0f) else Modifier)
             .width(cardWidth)
-            // One description per card: the artwork, texts and badge inside are not read one by one.
-            .semantics { contentDescription = cardDescription }
-            .rowFocusRing(isFocused, cwCardShape)
             .recompositionHighlighter()
             .onPreviewKeyEvent { event ->
                 val native = event.nativeKeyEvent
@@ -676,8 +659,10 @@ fun ContinueWatchingCard(
                 }
                 false
             },
+        shape = cwCardShape,
+        containerColor = Color.Transparent,
         // With text under the artwork the card border would ring the text too, so the artwork draws its own.
-        focusedBorder = if (isV2 || textBelowArtwork) {
+        focusedBorder = if (textBelowArtwork) {
             Border.None
         } else {
             Border(
@@ -716,20 +701,18 @@ fun ContinueWatchingCard(
                     }
                 }
             )
-            return@NuvioCard
+            return@LightweightCard
         }
         Column(
-            modifier = Modifier.clearAndSetSemantics {}.then(
-                if (textBelowArtwork) {
-                    Modifier
-                } else {
-                    Modifier.nuvioCardDepth(
-                        shape = cwCardShape,
-                        surface = CardDepthSurface.CONTINUE_WATCHING,
-                        style = cardDepthStyle
-                    )
-                }
-            )
+            modifier = if (textBelowArtwork) {
+                Modifier
+            } else {
+                Modifier.nuvioCardDepth(
+                    shape = cwCardShape,
+                    surface = CardDepthSurface.CONTINUE_WATCHING,
+                    style = cardDepthStyle
+                )
+            }
         ) {
             // Thumbnail with progress overlay
             Box(
@@ -749,7 +732,7 @@ fun ContinueWatchingCard(
                     )
                     .clip(cwClipShape)
                     .then(
-                        if (!isV2 && textBelowArtwork && isFocused) {
+                        if (textBelowArtwork && isFocused) {
                             Modifier.border(
                                 border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
                                 shape = cwClipShape
@@ -962,7 +945,6 @@ private fun WideCardContent(
         modifier = Modifier
             .fillMaxWidth()
             .height(stripHeight)
-            .clearAndSetSemantics {}
             .nuvioCardDepth(
                 shape = cardShape,
                 surface = CardDepthSurface.CONTINUE_WATCHING,
@@ -1139,9 +1121,7 @@ fun ContinueWatchingOptionsDialog(
     onDetails: () -> Unit,
     onStartFromBeginning: () -> Unit = {},
     showPlayManually: Boolean = false,
-    onPlayManually: () -> Unit = {},
-    showRemove: Boolean = true,
-    onHideFromComingUp: (() -> Unit)? = null
+    onPlayManually: () -> Unit = {}
 ) {
     val isPlayEnabled = LocalPlaybackAvailability.current.canStream(item)
     val title = when (item) {
@@ -1160,38 +1140,54 @@ fun ContinueWatchingOptionsDialog(
         title = title,
         subtitle = stringResource(R.string.cw_dialog_subtitle)
     ) {
-        PanelActionRow(
-            label = stringResource(R.string.cw_action_go_to_details),
+        Button(
             onClick = onDetails,
-            focusRequester = detailsFocusRequester
-        )
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(detailsFocusRequester),
+            colors = ButtonDefaults.colors(
+                containerColor = NuvioTheme.colors.BackgroundCard,
+                contentColor = NuvioTheme.colors.TextPrimary
+            )
+        ) {
+            Text(stringResource(R.string.cw_action_go_to_details))
+        }
 
         if (showPlayManually && isPlayEnabled) {
-            PanelActionRow(
-                label = stringResource(R.string.play_manually),
-                onClick = onPlayManually
-            )
+            Button(
+                onClick = onPlayManually,
+                colors = ButtonDefaults.colors(
+                    containerColor = NuvioTheme.colors.BackgroundCard,
+                    contentColor = NuvioTheme.colors.TextPrimary
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.play_manually))
+            }
         }
 
         if (item is ContinueWatchingItem.InProgress && isPlayEnabled) {
-            PanelActionRow(
-                label = stringResource(R.string.cw_action_start_from_beginning),
-                onClick = onStartFromBeginning
-            )
+            Button(
+                onClick = onStartFromBeginning,
+                colors = ButtonDefaults.colors(
+                    containerColor = NuvioTheme.colors.BackgroundCard,
+                    contentColor = NuvioTheme.colors.TextPrimary
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.cw_action_start_from_beginning))
+            }
         }
 
-        if (onHideFromComingUp != null) {
-            PanelActionRow(
-                label = stringResource(R.string.calendar_coming_up_hide),
-                onClick = onHideFromComingUp
-            )
-        }
-
-        if (showRemove) {
-            PanelActionRow(
-                label = stringResource(R.string.cw_action_remove),
-                onClick = onRemove
-            )
+        Button(
+            onClick = onRemove,
+            colors = ButtonDefaults.colors(
+                containerColor = NuvioTheme.colors.BackgroundCard,
+                contentColor = NuvioTheme.colors.TextPrimary
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(stringResource(R.string.cw_action_remove))
         }
     }
 }

@@ -84,7 +84,7 @@ suspend fun dispatchTrackingScrobble(
     action: TrackingScrobbleAction,
     event: TrackingScrobbleEvent
 ): List<TrackingScrobbleFailure> = supervisorScope {
-    scrobblers.filter { it.providerId !in event.skippedProviders }.map { scrobbler ->
+    scrobblers.map { scrobbler ->
         async {
             try {
                 scrobbler.scrobble(action, event)

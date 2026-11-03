@@ -153,12 +153,6 @@ class MetaRepositoryCandidateTypeTest {
         val addonRepository = mockk<AddonRepository>(relaxed = true) {
             every { getInstalledAddons() } returns flowOf(addons.toList())
         }
-        return MetaRepositoryImpl(
-            context = context,
-            api = api,
-            addonRepository = addonRepository,
-            healthStore = mockk(relaxed = true),
-            serverCatalog = mockk(relaxed = true)
-        )
+        return MetaRepositoryImpl(context = context, api = api, addonRepository = addonRepository, serverCatalog = mockk(relaxed = true))
     }
 }

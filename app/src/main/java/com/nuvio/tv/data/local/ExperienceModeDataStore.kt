@@ -23,7 +23,6 @@ class ExperienceModeDataStore @Inject constructor(
 
     private val modeKey = stringPreferencesKey("mode")
     private val addonSetupSkippedKey = booleanPreferencesKey("addon_setup_skipped")
-    private val essentialChosenKey = booleanPreferencesKey("essential_chosen")
 
     private fun store(profileId: Int = profileManager.activeProfileId.value) =
         factory.get(profileId, FEATURE)
@@ -35,7 +34,9 @@ class ExperienceModeDataStore @Inject constructor(
         }
 
     val mode: Flow<ExperienceMode?> = profileFlow { prefs ->
-        resolveExperienceMode(prefs[modeKey], prefs[essentialChosenKey] == true)
+        prefs[modeKey]?.let { value ->
+            runCatching { ExperienceMode.valueOf(value) }.getOrNull()
+        }
     }
 
     val addonSetupSkipped: Flow<Boolean> = profileFlow { prefs ->
@@ -45,7 +46,6 @@ class ExperienceModeDataStore @Inject constructor(
     suspend fun setMode(mode: ExperienceMode) {
         store().edit { prefs ->
             prefs[modeKey] = mode.name
-            prefs[essentialChosenKey] = mode == ExperienceMode.ESSENTIAL
         }
     }
 
@@ -55,12 +55,3 @@ class ExperienceModeDataStore @Inject constructor(
         }
     }
 }
-
-// Everyone starts on Advanced. Essential counts only when picked from Settings, so older
-// Essential choices (first-run screen, or synced from another device) read as Advanced.
-internal fun resolveExperienceMode(storedMode: String?, essentialChosen: Boolean): ExperienceMode =
-    if (storedMode == ExperienceMode.ESSENTIAL.name && essentialChosen) {
-        ExperienceMode.ESSENTIAL
-    } else {
-        ExperienceMode.ADVANCED
-    }

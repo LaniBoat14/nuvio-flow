@@ -5,6 +5,9 @@ package com.nuvio.tv.ui.screens.player
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.util.keepLtr
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +37,7 @@ import androidx.compose.ui.res.stringResource
 import com.nuvio.tv.R
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 
 private val ROW_HEIGHT = 18.dp
 private val ROW_GAP = NuvioTheme.spacing.xxs
@@ -54,27 +58,54 @@ fun DisplayModeOverlay(
     val count = items.size
     val totalLineHeight = (ROW_HEIGHT.value * count) + (ROW_GAP.value * (count - 1))
 
-    var frame by remember { mutableStateOf(StaggeredOverlayFrame.hidden(count)) }
+    val containerAlpha = remember { Animatable(0f) }
+    val lineHeightFraction = remember { Animatable(0f) }
+    val itemAlphas = remember(info) { List(count) { Animatable(0f) } }
     var animating by remember { mutableStateOf(false) }
 
     LaunchedEffect(isVisible, info) {
-        if (isVisible) {
+        if (isVisible && !animating) {
             animating = true
-            runStaggeredOverlay(count, alreadyShown = frame.containerAlpha > 0f) { frame = it }
+
+            containerAlpha.animateTo(1f, tween(300))
+            lineHeightFraction.animateTo(1f, tween(400, easing = FastOutSlowInEasing))
+
+            for (i in 0 until count) {
+                delay(80)
+                itemAlphas[i].animateTo(1f, tween(200))
+            }
+
+            delay(5000)
+
+            for (i in (count - 1) downTo 0) {
+                delay(60)
+                itemAlphas[i].animateTo(0f, tween(150))
+            }
+
+            delay(100)
+            lineHeightFraction.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
+
+            delay(200)
+            containerAlpha.animateTo(0f, tween(200))
+
             animating = false
             onAnimationComplete()
-        } else if (animating) {
-            frame = StaggeredOverlayFrame.hidden(count)
+        } else if (!isVisible && animating) {
+            for (i in (count - 1) downTo 0) {
+                itemAlphas[i].snapTo(0f)
+            }
+            lineHeightFraction.snapTo(0f)
+            containerAlpha.snapTo(0f)
             animating = false
             onAnimationComplete()
         }
     }
 
-    if (frame.containerAlpha <= 0f) return
+    if (containerAlpha.value <= 0f) return
 
     Column(
         modifier = modifier
-            .alpha(frame.containerAlpha)
+            .alpha(containerAlpha.value)
             .padding(end = NuvioTheme.spacing.xxl, top = NuvioTheme.spacing.xl),
         verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
         horizontalAlignment = Alignment.End
@@ -104,7 +135,7 @@ fun DisplayModeOverlay(
                     Row(
                         modifier = Modifier
                             .height(ROW_HEIGHT)
-                            .alpha(frame.itemAlphas.getOrNull(index) ?: 0f),
+                            .alpha(itemAlphas.getOrNull(index)?.value ?: 0f),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
@@ -132,7 +163,7 @@ fun DisplayModeOverlay(
             Box(
                 modifier = Modifier
                     .width(3.dp)
-                    .height((totalLineHeight * frame.lineFraction).dp)
+                    .height((totalLineHeight * lineHeightFraction.value).dp)
                     .clip(RoundedCornerShape(NuvioTheme.spacing.hairline))
                     .background(NuvioTheme.colors.Secondary)
             )

@@ -27,7 +27,6 @@ import java.nio.ByteBuffer
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -82,12 +81,7 @@ class ParallelRangeChunkLeaseTest {
     fun tearDown() {
         opened.forEach { runCatching { it.close() } }
         teardownSessions()
-        call(owned, "clearGlobalPool")
-        val executor = field(owned, "executorDelegate") as Lazy<*>
-        if (executor.isInitialized()) {
-            (executor.value as ThreadPoolExecutor).shutdownNow()
-            (executor.value as ThreadPoolExecutor).awaitTermination(5, TimeUnit.SECONDS)
-        }
+        drainPool()
         ParallelRangeDataSource.allocateChunk = allocateBefore
         ParallelRangeDataSource.freeChunk = freeBefore
         server.shutdown()
@@ -118,55 +112,37 @@ class ParallelRangeChunkLeaseTest {
         server.start()
     }
 
-    // Playback sources share this test-owned owner, so no playback worker outlives the test.
-    private val owned: Any = ParallelRangeDataSource::class.java.declaredClasses.single { it.simpleName == "Resources" }
-        .declaredConstructors.single { it.parameterCount == 2 }.apply { isAccessible = true }.newInstance(false, 2)
+    private fun source(continuation: Boolean = true) = ParallelRangeDataSource(
+        OkHttpDataSource.Factory(OkHttpClient()),
+        parallelConnections = 2,
+        chunkSize = CHUNK,
+        useNativeMemory = true,
+        allowContinuationReopen = continuation,
+    ).also { opened.add(it) }
 
-    private fun source(isolated: Boolean = false, continuation: Boolean = true): ParallelRangeDataSource {
-        val source = ParallelRangeDataSource(
-            OkHttpDataSource.Factory(OkHttpClient()),
-            parallelConnections = 2,
-            chunkSize = CHUNK,
-            allowContinuationReopen = continuation,
-            isolateSession = isolated,
-        )
-        if (!isolated) {
-            source.close()
-            ParallelRangeDataSource::class.java.getDeclaredField("resources").apply { isAccessible = true }.set(source, owned)
-        }
-        return source.also { opened.add(it) }
-    }
+    private fun teardownSessions() = ParallelRangeDataSource.releaseRetainedSession()
 
-    private fun teardownSessions() {
-        call(owned, "releaseRetainedSession")
-    }
-
-    private fun drainPool() {
-        call(owned, "drainIdleBuffers", CHUNK)
-    }
+    private fun drainPool() = ParallelRangeDataSource.drainIdleBuffers(CHUNK)
 
     private val fileUri by lazy { uriOf(server.url("/file").toString()) }
 
     private fun spec(position: Long) = DataSpec.Builder().setUri(fileUri).setPosition(position).build()
-
-    private fun resources(source: ParallelRangeDataSource): Any =
-        ParallelRangeDataSource::class.java.getDeclaredField("resources").apply { isAccessible = true }.get(source)
 
     private fun pooledBuffer(allocation: Allocation): Any =
         Class.forName("com.nuvio.tv.ui.screens.player.ParallelRangeDataSource\$PooledBuffer")
             .declaredConstructors.single().apply { isAccessible = true }.newInstance(allocation, allocation.buffer)
 
     private fun call(target: Any, name: String, vararg args: Any?): Any? = target.javaClass.declaredMethods
-        .single { (it.name == name || it.name.startsWith("$name$")) && it.parameterCount == args.size }
+        .single { it.name == name && it.parameterCount == args.size }
         .apply { isAccessible = true }.invoke(target, *args)
 
-    private fun releaseSessionBuffer(source: ParallelRangeDataSource, buffer: Any, poolCap: Int) {
-        call(resources(source), "releaseSessionBuffer", buffer, CHUNK, poolCap)
+    private fun releaseSessionBuffer(buffer: Any, poolCap: Int) {
+        call(ParallelRangeDataSource.Companion, "releaseSessionBuffer", buffer, CHUNK, poolCap)
     }
 
-    private fun pooled(source: ParallelRangeDataSource): Int =
-        (resources(source).javaClass.getDeclaredField("globalBufferPool").apply { isAccessible = true }
-            .get(resources(source)) as Map<*, *>).values.sumOf { (it as Collection<*>).size }
+    private fun pooled(): Int =
+        (ParallelRangeDataSource::class.java.getDeclaredField("globalBufferPool").apply { isAccessible = true }
+            .get(null) as Map<*, *>).values.sumOf { (it as Collection<*>).size }
 
     // Reads like the player: compares every byte with the file and reopens at the same position
     // after a failed read.
@@ -254,109 +230,45 @@ class ParallelRangeChunkLeaseTest {
 
     @Test
     fun `releasing a buffer nobody reads frees it once and refuses later leases`() {
-        val first = source()
         val buffer = pooledBuffer(memory.allocate(CHUNK.toInt()))
-        releaseSessionBuffer(first, buffer, 0)
-        releaseSessionBuffer(first, buffer, 0)
-        releaseSessionBuffer(first, buffer, 4)
+        releaseSessionBuffer(buffer, 0)
+        releaseSessionBuffer(buffer, 0)
+        releaseSessionBuffer(buffer, 4)
         assertEquals(1, memory.freed.get())
         assertEquals(0, memory.badFrees.get())
         assertFalse(call(buffer, "lease") as Boolean)
-        assertEquals(0, pooled(first))
+        assertEquals(0, pooled())
     }
 
     @Test
     fun `release requested during a read waits for the reader`() {
-        val first = source()
         val buffer = pooledBuffer(memory.allocate(CHUNK.toInt()))
         assertTrue(call(buffer, "lease") as Boolean)
         assertTrue(call(buffer, "lease") as Boolean)
-        releaseSessionBuffer(first, buffer, 0)
+        releaseSessionBuffer(buffer, 0)
         assertEquals(0, memory.freed.get())
         assertFalse("no new reader once release is requested", call(buffer, "lease") as Boolean)
         call(buffer, "endLease")
         assertEquals(0, memory.freed.get())
         call(buffer, "endLease")
         assertEquals(1, memory.freed.get())
-        releaseSessionBuffer(first, buffer, 0)
+        releaseSessionBuffer(buffer, 0)
         assertEquals(1, memory.freed.get())
         assertEquals(0, memory.badFrees.get())
     }
 
     @Test
     fun `pooled memory is not reachable through the chunk that gave it back`() {
-        val first = source()
         val buffer = pooledBuffer(memory.allocate(CHUNK.toInt()))
-        releaseSessionBuffer(first, buffer, 4)
-        assertEquals(1, pooled(first))
+        releaseSessionBuffer(buffer, 4)
+        assertEquals(1, pooled())
         assertFalse(call(buffer, "lease") as Boolean)
         drainPool()
         assertEquals(1, memory.freed.get())
     }
 
     @Test
-    fun `a piece size no longer used gives its spare buffers back and pools no late ones`() {
-        val first = source()
-        releaseSessionBuffer(first, pooledBuffer(memory.allocate(CHUNK.toInt())), 4)
-        assertEquals(1, pooled(first))
-        call(owned, "retireChunkSize", CHUNK)
-        assertEquals(0, pooled(first))
-        assertEquals(1, memory.freed.get())
-        // A download that finishes after the change hands its buffer back to memory, not to the pool.
-        releaseSessionBuffer(first, pooledBuffer(memory.allocate(CHUNK.toInt())), 4)
-        assertEquals(0, pooled(first))
-        assertEquals(2, memory.freed.get())
-        // A session of that size again pools as before.
-        call(owned, "obtainPendingSession", uriOf("http://127.0.0.1/file"), emptyMap<String, String>(), CHUNK, 4, 4, 3)
-        releaseSessionBuffer(first, pooledBuffer(memory.allocate(CHUNK.toInt())), 4)
-        assertEquals(1, pooled(first))
-        assertEquals(0, memory.badFrees.get())
-    }
-
-    @Test
-    fun `a pre-started session for another link is kept, one for this link can be dropped`() {
-        val next = uriOf("http://127.0.0.1/next")
-        val film = uriOf("http://127.0.0.1/film")
-        call(owned, "obtainPendingSession", next, emptyMap<String, String>(), CHUNK, 4, 4, 3)
-        assertTrue(call(owned, "otherPendingSession", film) as Boolean)
-        call(owned, "dropPendingSession", film)
-        assertTrue(call(owned, "otherPendingSession", film) as Boolean)
-        call(owned, "dropPendingSession", next)
-        assertFalse(call(owned, "otherPendingSession", film) as Boolean)
-    }
-
-    @Test
-    fun `a chunk that outlives its session is freed, and the pool is freed when playback ends`() {
-        val first = source()
-        val session = call(owned, "obtainPendingSession", uriOf("http://127.0.0.1/file"),
-            emptyMap<String, String>(), CHUNK, 4, 4, 3)!!
-        call(first, "releaseBuffer", pooledBuffer(memory.allocate(CHUNK.toInt())), session)
-        assertEquals(1, pooled(first))
-        teardownSessions()
-        assertEquals(0, pooled(first))
-        assertEquals(1, memory.freed.get())
-        call(first, "releaseBuffer", pooledBuffer(memory.allocate(CHUNK.toInt())), session)
-        assertEquals(0, pooled(first))
-        assertEquals(2, memory.freed.get())
-        assertEquals(0, memory.badFrees.get())
-    }
-
-    @Test
-    fun `release after the diagnostic session closed frees instead of pooling`() {
-        val diagnostic = source(isolated = true)
-        val buffer = pooledBuffer(memory.allocate(CHUNK.toInt()))
-        assertTrue(call(buffer, "lease") as Boolean)
-        diagnostic.close()
-        releaseSessionBuffer(diagnostic, buffer, 4)
-        assertEquals(0, memory.freed.get())
-        call(buffer, "endLease")
-        assertEquals(1, memory.freed.get())
-        assertEquals(0, pooled(diagnostic))
-    }
-
-    @Test
     fun `concurrent readers and one release free the memory exactly once and never under a reader`() {
-        val first = source()
         repeat(300) { round ->
             val allocation = memory.allocate(4_096)
             val bytes = allocation.buffer!!
@@ -380,7 +292,7 @@ class ParallelRangeChunkLeaseTest {
             }
             start.countDown()
             Thread.sleep(0, Random.nextInt(200_000))
-            releaseSessionBuffer(first, buffer, if (round % 2 == 0) 0 else 4)
+            releaseSessionBuffer(buffer, if (round % 2 == 0) 0 else 4)
             readers.forEach { it.join(5_000) }
             failure.get()?.let { throw it }
             assertEquals("reader saw freed memory in round $round", 0, sawPoison.get())

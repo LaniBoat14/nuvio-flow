@@ -7,7 +7,6 @@ import com.nuvio.tv.data.local.CollectionsDataStore
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.remote.supabase.SupabaseHomeCatalogSettingsBlob
 import com.nuvio.tv.domain.model.AuthState
-import com.nuvio.tv.domain.model.WatchedTitlesMode
 import com.nuvio.tv.domain.model.enabledAddons
 import com.nuvio.tv.domain.repository.AddonRepository
 import io.github.jan.supabase.postgrest.Postgrest
@@ -33,7 +32,6 @@ private const val TAG = "HomeCatalogSettingsSyncService"
 private const val HOME_CATALOG_SHARED_SYNC_PLATFORM = "home_catalog_shared"
 private const val PAYLOAD_SAMPLE_LIMIT = 5
 private const val HIDE_UNRELEASED_CONTENT_KEY = "hide_unreleased_content"
-private const val WATCHED_TITLES_MODE_KEY = "watched_titles_mode"
 
 @Serializable
 data class SyncCatalogItem(
@@ -50,7 +48,6 @@ data class SyncCatalogItem(
 @Serializable
 data class SyncHomeCatalogPayload(
     @SerialName("hide_unreleased_content") val hideUnreleasedContent: Boolean = false,
-    @SerialName("watched_titles_mode") val watchedTitlesMode: String = WatchedTitlesMode.SHOW.name,
     val items: List<SyncCatalogItem> = emptyList(),
 )
 
@@ -70,26 +67,6 @@ internal fun mergeHomeCatalogSettingsJson(
 ): JsonObject = buildJsonObject {
     remoteJson?.forEach { (key, value) -> put(key, value) }
     localJson.forEach { (key, value) -> put(key, value) }
-}
-
-internal fun decodeHomeCatalogPayloadPreservingLocal(
-    json: Json,
-    settingsJson: JsonObject,
-    localPayload: SyncHomeCatalogPayload
-): SyncHomeCatalogPayload {
-    val decoded = json.decodeFromJsonElement(SyncHomeCatalogPayload.serializer(), settingsJson)
-    return decoded.copy(
-        hideUnreleasedContent = if (settingsJson.containsKey(HIDE_UNRELEASED_CONTENT_KEY)) {
-            decoded.hideUnreleasedContent
-        } else {
-            localPayload.hideUnreleasedContent
-        },
-        watchedTitlesMode = if (settingsJson.containsKey(WATCHED_TITLES_MODE_KEY)) {
-            decoded.watchedTitlesMode
-        } else {
-            localPayload.watchedTitlesMode
-        }
-    )
 }
 
 @Singleton
@@ -251,7 +228,14 @@ class HomeCatalogSettingsSyncService @Inject constructor(
         settingsJson: JsonObject,
         localPayload: SyncHomeCatalogPayload
     ): SyncHomeCatalogPayload? = runCatching {
-        decodeHomeCatalogPayloadPreservingLocal(json, settingsJson, localPayload)
+        val decoded = json.decodeFromJsonElement(SyncHomeCatalogPayload.serializer(), settingsJson)
+        decoded.copy(
+            hideUnreleasedContent = if (settingsJson.containsKey(HIDE_UNRELEASED_CONTENT_KEY)) {
+                decoded.hideUnreleasedContent
+            } else {
+                localPayload.hideUnreleasedContent
+            }
+        )
     }.getOrNull()
 
     private fun mergedSharedPayloadJson(
@@ -290,5 +274,5 @@ private fun SyncHomeCatalogPayload.summary(): String {
             "catalog:${item.addonId}/${item.type}/${item.catalogId},enabled=${item.enabled},order=${item.order}"
         }
     }
-    return "payload(items=${items.size}, disabled=$disabledCount, collections=$collectionCount, hideUnreleased=$hideUnreleasedContent, watchedTitles=$watchedTitlesMode, sample=[$sample])"
+    return "payload(items=${items.size}, disabled=$disabledCount, collections=$collectionCount, hideUnreleased=$hideUnreleasedContent, sample=[$sample])"
 }

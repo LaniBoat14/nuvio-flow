@@ -38,18 +38,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -88,14 +84,11 @@ class TraktProgressService @Inject constructor(
     private val layoutPreferenceDataStore: com.nuvio.tv.data.local.LayoutPreferenceDataStore,
     private val traktEpisodeMappingService: TraktEpisodeMappingService,
     private val profileManager: ProfileManager,
-    private val watchedSeriesStateHolder: com.nuvio.tv.data.local.WatchedSeriesStateHolder,
-    private val traktAuthDataStore: com.nuvio.tv.data.local.TraktAuthDataStore,
-    private val savedWatchedMovies: TraktSavedWatchedMovies
+    private val watchedSeriesStateHolder: com.nuvio.tv.data.local.WatchedSeriesStateHolder
 ) {
     companion object {
         private const val TAG = "TraktProgressSvc"
         private const val WATCHED_PAGE_LIMIT = 250
-        private const val PROFILE_READY_WAIT_MS = 5_000L
         private const val WATCHED_MAX_PAGES = 1_000
         private const val WATCHED_SHOWS_EXTENDED = "progress"
         private val MAPPING_CONCURRENCY =
@@ -175,7 +168,6 @@ class TraktProgressService @Inject constructor(
     private val optimisticProgress = MutableStateFlow<Map<String, OptimisticProgressEntry>>(emptyMap())
     private val metadataState = MutableStateFlow<Map<String, ContentMetadata>>(emptyMap())
     private val watchedMoviesState = MutableStateFlow<Set<String>>(emptySet())
-    private val watchedMoviesRestored = MutableStateFlow(false)
     private val watchedShowSeedsState = MutableStateFlow<List<WatchProgress>>(emptyList())
     /** Content IDs of shows dropped on Trakt (from users/hidden/progress_watched). */
     private val hiddenProgressShowIds = MutableStateFlow<Set<String>>(emptySet())
@@ -195,8 +187,6 @@ class TraktProgressService @Inject constructor(
     private val cacheMutex = Mutex()
     private val metadataMutex = Mutex()
     private val watchedMoviesMutex = Mutex()
-    private val watchedMoviesWriteLock = Any()
-    private val watchedMoviesAccountGeneration = AtomicLong(0L)
     private val watchedShowSeedsMutex = Mutex()
     private val episodeProgressMutex = Mutex()
     private val inFlightMetadataKeys = mutableSetOf<String>()
@@ -288,24 +278,8 @@ class TraktProgressService @Inject constructor(
                         return@collectLatest
                     }
                     resetProfileScopedState()
-                    restoreSavedWatchedMovies()
                     refreshSignals.tryEmit(Unit)
                 }
-        }
-        scope.launch {
-            withTimeoutOrNull(PROFILE_READY_WAIT_MS) { profileManager.activeProfileReady.first { it } }
-            restoreSavedWatchedMovies()
-        }
-        scope.launch {
-            while (true) {
-                try {
-                    dropWatchedMoviesOfSignedOutAccounts()
-                } catch (e: Exception) {
-                    currentCoroutineContext().ensureActive()
-                    Log.w(TAG, "Saved watched movies account check restarted", e)
-                    delay(1_000L)
-                }
-            }
         }
         scope.launch {
             traktSettingsDataStore.continueWatchingDaysCap.collectLatest { days ->
@@ -313,31 +287,16 @@ class TraktProgressService @Inject constructor(
             }
         }
         scope.launch {
-            // Without a Trakt account on this profile there is nothing to poll.
-            traktAuthDataStore.state
-                .map { it.isAuthenticated }
-                .distinctUntilChanged()
-                .flatMapLatest { signedIn ->
-                    if (signedIn) {
-                        refreshEvents()
-                    } else {
-                        consecutiveRefreshFailures = 0
-                        refreshIntervalMs = baseRefreshIntervalMs
-                        emptyFlow()
-                    }
+            refreshEvents().collectLatest {
+                val success = try {
+                    refreshRemoteSnapshot()
+                    true
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to refresh remote snapshot", e)
+                    false
                 }
-                .collectLatest {
-                    val success = try {
-                        refreshRemoteSnapshot()
-                        true
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        logRefreshFailure("Failed to refresh remote snapshot", e)
-                        false
-                    }
-                    updateRefreshBackoff(success)
-                }
+                updateRefreshBackoff(success)
+            }
         }
     }
 
@@ -350,7 +309,6 @@ class TraktProgressService @Inject constructor(
         optimisticProgress.value = emptyMap()
         metadataState.value = emptyMap()
         watchedMoviesState.value = emptySet()
-        watchedMoviesRestored.value = false
         watchedShowSeedsState.value = emptyList()
         hiddenProgressShowIds.value = emptySet()
         episodeProgressState.value = emptyMap()
@@ -617,13 +575,6 @@ class TraktProgressService @Inject constructor(
      */
     fun getWatchedShowEpisodes(): Map<String, Set<Pair<Int, Int>>> = watchedShowEpisodesMap
 
-    /** The watched shows already loaded, without asking Trakt; null before the first load. */
-    fun currentWatchedShowSeeds(): List<WatchProgress>? =
-        if (hasLoadedWatchedShowSeeds) watchedShowSeedsState.value else null
-
-    /** Content ids of the shows dropped on Trakt, as last loaded. */
-    fun currentDroppedShowIds(): Set<String> = hiddenProgressShowIds.value
-
     /**
      * Returns sibling ID mapping from Trakt: each content ID maps to its
      * alternate IDs from the same show (e.g. IMDB ↔ TMDB ↔ Trakt).
@@ -710,14 +661,8 @@ class TraktProgressService @Inject constructor(
     }
 
     fun observeAllWatchedMovieIds(): Flow<Set<String>> {
-        return combine(
-            watchedMoviesState,
-            optimisticProgress,
-            watchedMoviesRestored
-        ) { _, optimistic, restored ->
-            if (!restored) return@combine null
-            // The flag can arrive before the list set just ahead of it, so read the list itself.
-            val result = watchedMoviesState.value.toMutableSet()
+        return combine(watchedMoviesState, optimisticProgress) { watchedMovies, optimistic ->
+            val result = watchedMovies.toMutableSet()
             optimistic.forEach { (key, entry) ->
                 when {
                     entry.progress.isCompleted() -> result.add(key)
@@ -726,79 +671,10 @@ class TraktProgressService @Inject constructor(
             }
             result as Set<String>
         }
-            .filterNotNull()
             .onStart {
                 scope.launch { getWatchedMoviesSnapshot(forceRefresh = false) }
             }
             .distinctUntilChanged()
-    }
-
-    private suspend fun restoreSavedWatchedMovies() {
-        val generation = refreshGeneration.get()
-        val profileId = profileManager.activeProfileId.value
-        try {
-            val auth = traktAuthDataStore.getCurrentState(profileId)
-            val saved = savedWatchedMovies.restore(profileId, auth.isAuthenticated, auth.account)
-            if (saved != null) {
-                synchronized(watchedMoviesWriteLock) {
-                    if (
-                        refreshGeneration.get() == generation &&
-                        profileManager.activeProfileId.value == profileId &&
-                        !hasLoadedWatchedMovies &&
-                        watchedMoviesState.value.isEmpty()
-                    ) {
-                        watchedMoviesState.value = saved
-                        trace("watched-movies restored from the box: size=${saved.size}")
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            currentCoroutineContext().ensureActive()
-            Log.w(TAG, "Could not read saved watched movies", e)
-        } finally {
-            if (refreshGeneration.get() == generation) watchedMoviesRestored.value = true
-        }
-    }
-
-    private fun saveWatchedMovies(ids: Set<String>, generation: Long, profileId: Int) {
-        scope.launch {
-            try {
-                if (refreshGeneration.get() != generation) return@launch
-                savedWatchedMovies.saveIfSignedIn(profileId, ids) { traktAuthDataStore.getCurrentState(profileId) }
-            } catch (e: Exception) {
-                currentCoroutineContext().ensureActive()
-                Log.w(TAG, "Could not save watched movies", e)
-            }
-        }
-    }
-
-    private suspend fun dropWatchedMoviesOfSignedOutAccounts() {
-        profileManager.activeProfileId.collectLatest { profileId ->
-            var previousAccount: String? = null
-            traktAuthDataStore.state
-                .map { it.isAuthenticated to it.account }
-                .distinctUntilChanged()
-                .collect { (signedIn, account) ->
-                    if (profileManager.activeProfileId.value != profileId) return@collect
-                    val stale = try {
-                        savedWatchedMovies.onAccountState(profileId, signedIn, previousAccount, account)
-                    } catch (e: Exception) {
-                        currentCoroutineContext().ensureActive()
-                        Log.w(TAG, "Could not check saved watched movies", e)
-                        savedWatchedMovies.leftAccount(signedIn, previousAccount, account)
-                    }
-                    if (account != null) previousAccount = account
-                    if (!stale) return@collect
-                    synchronized(watchedMoviesWriteLock) {
-                        if (profileManager.activeProfileId.value != profileId) return@synchronized
-                        watchedMoviesAccountGeneration.incrementAndGet()
-                        watchedMoviesState.value = emptySet()
-                        watchedMoviesUpdatedAtMs = 0L
-                        hasLoadedWatchedMovies = false
-                        watchedMoviesStale = true
-                    }
-                }
-        }
     }
 
     suspend fun markAsWatched(
@@ -1146,15 +1022,6 @@ class TraktProgressService @Inject constructor(
         return merge(refreshTicker(), refreshSignals).onStart { emit(Unit) }
     }
 
-    // The stack trace once per run of failures; the backoff already spaces the retries out.
-    private fun logRefreshFailure(message: String, error: Exception) {
-        if (consecutiveRefreshFailures == 0) {
-            Log.w(TAG, message, error)
-        } else {
-            Log.w(TAG, "$message (${consecutiveRefreshFailures + 1} in a row): ${error.javaClass.simpleName}: ${error.message}")
-        }
-    }
-
     private fun updateRefreshBackoff(success: Boolean) {
         if (success) {
             if (consecutiveRefreshFailures > 0 || refreshIntervalMs != baseRefreshIntervalMs) {
@@ -1236,7 +1103,7 @@ class TraktProgressService @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logRefreshFailure("fetchAllProgressSnapshot failed, keeping existing snapshot", e)
+                Log.w(TAG, "fetchAllProgressSnapshot failed, keeping existing snapshot", e)
                 null
             }
             watchedMoviesDeferred?.let {
@@ -1250,7 +1117,6 @@ class TraktProgressService @Inject constructor(
                 // Keep the current snapshot, and let the next poll retry instead of
                 // treating this activity change as already fetched.
                 lastKnownActivityFingerprint = null
-                currentCoroutineContext().ensureActive()
                 throw IOException("Progress snapshot fetch failed")
             }
 
@@ -1490,9 +1356,6 @@ class TraktProgressService @Inject constructor(
             }
 
             watchedMoviesLastAttemptAtMs = now
-            val generation = refreshGeneration.get()
-            val accountGeneration = watchedMoviesAccountGeneration.get()
-            val profileId = profileManager.activeProfileId.value
             val watchedMovieItems = fetchWatchedMoviePages() ?: run {
                 return@withLock watchedMoviesState.value
             }
@@ -1503,24 +1366,11 @@ class TraktProgressService @Inject constructor(
                 }
                 .toSet()
 
-            val applied = synchronized(watchedMoviesWriteLock) {
-                val current = refreshGeneration.get() == generation &&
-                    watchedMoviesAccountGeneration.get() == accountGeneration &&
-                    profileManager.activeProfileId.value == profileId
-                if (current) {
-                    watchedMoviesState.value = watchedMovies
-                    watchedMoviesUpdatedAtMs = System.currentTimeMillis()
-                    hasLoadedWatchedMovies = true
-                    watchedMoviesStale = false
-                }
-                current
-            }
-            if (!applied) {
-                trace("watched-movies result dropped: profile or Trakt account changed")
-                return@withLock watchedMoviesState.value
-            }
+            watchedMoviesState.value = watchedMovies
+            watchedMoviesUpdatedAtMs = System.currentTimeMillis()
+            hasLoadedWatchedMovies = true
+            watchedMoviesStale = false
             trace("watched-movies cache refreshed: size=${watchedMovies.size}")
-            saveWatchedMovies(watchedMovies, generation, profileId)
             watchedMovies
         }
     }
@@ -1867,18 +1717,16 @@ class TraktProgressService @Inject constructor(
         val keys = setOf(rawKey, canonicalLookupKey(rawKey)).filter { it.isNotBlank() }
         if (keys.isEmpty()) return
         watchedMoviesMutex.withLock {
-            synchronized(watchedMoviesWriteLock) {
-                val updated = watchedMoviesState.value.toMutableSet()
-                if (watched) {
-                    updated.addAll(keys)
-                } else {
-                    updated.removeAll(keys)
-                }
-                watchedMoviesState.value = updated
-                watchedMoviesUpdatedAtMs = System.currentTimeMillis()
-                hasLoadedWatchedMovies = true
-                watchedMoviesStale = false
+            val updated = watchedMoviesState.value.toMutableSet()
+            if (watched) {
+                updated.addAll(keys)
+            } else {
+                updated.removeAll(keys)
             }
+            watchedMoviesState.value = updated
+            watchedMoviesUpdatedAtMs = System.currentTimeMillis()
+            hasLoadedWatchedMovies = true
+            watchedMoviesStale = false
             trace("watched-movies cache optimistic update: watched=$watched keys=${keys.joinToString()}")
         }
     }

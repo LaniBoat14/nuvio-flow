@@ -24,15 +24,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.fail
 import org.junit.Test
-import com.nuvio.tv.TestPreferencesStore
-import com.nuvio.tv.data.local.ProfileDataStoreFactory
-import com.nuvio.tv.data.local.ProfileStoreLifetime
-import com.nuvio.tv.domain.model.WatchedItem
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
 
 class WatchProgressRepositoryProfileIsolationTest {
     @Test
@@ -83,8 +75,7 @@ class WatchProgressRepositoryProfileIsolationTest {
         coVerify(exactly = 1) {
             harness.watchedPreferences.markAsWatched(
                 match { it.contentId == "item" },
-                profileId = 1,
-                generation = any()
+                profileId = 1
             )
         }
     }
@@ -109,64 +100,6 @@ class WatchProgressRepositoryProfileIsolationTest {
         coVerify(exactly = 0) {
             harness.progressPreferences.removeProgress("item", null, null, 2)
         }
-    }
-
-    @Test
-    fun `completion suspended across clear history cannot restore an old watched item`() = runTest {
-        val lifetime = ProfileStoreLifetime(TestPreferencesStore())
-        val factory = mockk<ProfileDataStoreFactory>()
-        every { factory.get(any(), any()) } returns lifetime
-        every { factory.isProfileDeleted(any()) } returns false
-        val manager = mockk<ProfileManager>()
-        every { manager.activeProfileId } returns MutableStateFlow(1)
-        val watched = WatchedItemsPreferences(factory, manager)
-        val harness = harness(1, watched)
-        val admitted = CompletableDeferred<Unit>()
-        val finish = CompletableDeferred<Unit>()
-        coEvery { harness.progressPreferences.saveProgress(any(), 1) } coAnswers {
-            admitted.complete(Unit); finish.await()
-        }
-        val completion = async { harness.repository.saveProgress(progress("old", 10000L, 10000L), profileId = 1, syncRemote = false) }
-        admitted.await()
-        watched.clearAll(1)
-        val current = WatchedItem("new", "movie", "fixture", watchedAt = 1)
-        watched.markAsWatched(current, 1)
-        finish.complete(Unit)
-        try { completion.await(); fail("old completion generation admitted") }
-        catch (_: CancellationException) { }
-        assertEquals(listOf(current), watched.getAllItems(1))
-        lifetime.retire()
-    }
-
-    @Test fun `quiet metadata batch stays on its explicit profile without remote mutations`() = runTest {
-        val harness=harness(activeProfileId=2)
-        val items=listOf(progress("one",2000L,10000L),progress("two",3000L,10000L))
-        harness.repository.saveProgressBatch(items,profileId=1,syncRemote=false)
-        coVerify(exactly=1) { harness.progressPreferences.saveProgressBatch(items,profileId=1) }
-        coVerify(exactly=0) { harness.progressPreferences.saveProgressBatch(any(),profileId=2) }
-        coVerify(exactly=0) { harness.mutationStore.queueProgressUpserts(any(),any()) }
-        coVerify(exactly=0) { harness.mutationStore.queueWatchedUpserts(any(),any()) }
-    }
-
-    @Test fun `explicit batch retains progress and completion ownership across a suspended queue`() = runTest {
-        val harness=harness(activeProfileId=2)
-        val items=listOf(progress("one",10000L,10000L),progress("two",3000L,10000L))
-        coEvery { harness.mutationStore.queueProgressUpserts(any(),1) } coAnswers { harness.activeProfile.value=3 }
-        harness.repository.saveProgressBatch(items,profileId=1,syncRemote=true)
-        coVerify(exactly=1) { harness.progressPreferences.saveProgressBatch(items,profileId=1) }
-        coVerify(exactly=1) { harness.mutationStore.queueProgressUpserts(mapOf("one" to items[0],"two" to items[1]),1) }
-        coVerify(exactly=1) { harness.watchedPreferences.markAsWatchedBatch(match { it.single().contentId=="one" },1,any()) }
-        coVerify(exactly=1) { harness.mutationStore.queueWatchedUpserts(match { it.single().contentId=="one" },1) }
-        coVerify(exactly=0) { harness.progressPreferences.saveProgressBatch(any(),profileId=3) }
-    }
-
-    @Test fun `legacy batch captures active profile before a suspended queue`() = runTest {
-        val harness=harness(activeProfileId=1)
-        val items=listOf(progress("one",2000L,10000L))
-        coEvery { harness.mutationStore.queueProgressUpserts(any(),1) } coAnswers { harness.activeProfile.value=2 }
-        harness.repository.saveProgressBatch(items,syncRemote=true)
-        coVerify(exactly=1) { harness.progressPreferences.saveProgressBatch(items,profileId=1) }
-        coVerify(exactly=0) { harness.progressPreferences.saveProgressBatch(any(),profileId=2) }
     }
 
     @Test
@@ -199,14 +132,14 @@ class WatchProgressRepositoryProfileIsolationTest {
         assertEquals(emptySet<String>(), harness.repository.observeWatchedMovieIds().first())
     }
 
-    private fun harness(activeProfileId: Int, watched: WatchedItemsPreferences? = null): Harness {
+    private fun harness(activeProfileId: Int): Harness {
         val activeProfile = MutableStateFlow(activeProfileId)
         val profileManager = mockk<ProfileManager>()
         every { profileManager.activeProfileId } returns activeProfile
 
         val progressPreferences = mockk<WatchProgressPreferences>(relaxed = true)
         coEvery { progressPreferences.getAllRawEntries(any()) } returns emptyMap()
-        val watchedPreferences = watched ?: mockk<WatchedItemsPreferences>(relaxed = true)
+        val watchedPreferences = mockk<WatchedItemsPreferences>(relaxed = true)
         val mutationStore = mockk<WatchStateMutationStore>(relaxed = true)
         val authManager = mockk<AuthManager>(relaxed = true)
         every { authManager.isAuthenticated } returns false

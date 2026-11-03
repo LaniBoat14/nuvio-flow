@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.screens.collection
 
+import androidx.compose.ui.semantics.clearAndSetSemantics
+
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 import androidx.activity.compose.BackHandler
@@ -83,7 +85,6 @@ import com.nuvio.tv.R
 import androidx.compose.ui.res.stringResource
 import com.nuvio.tv.ui.components.PosterCardDefaults
 import com.nuvio.tv.ui.components.PosterCardStyle
-import com.nuvio.tv.ui.components.rememberPosterCardStyle
 import com.nuvio.tv.ui.components.LocalCardDepthStyle
 import com.nuvio.tv.ui.components.LocalLandscapePosterMode
 import com.nuvio.tv.ui.components.nuvioCardDepth
@@ -134,8 +135,8 @@ fun FolderDetailScreen(
         { item -> uiState.movieWatchedStatus[com.nuvio.tv.ui.screens.home.homeItemStatusKey(item.id, item.apiType)] == true }
     }
 
-    // Kept as State: reading the values here would recompose the whole folder screen on every
-    // enrichment update.
+    // Kept as State down to ModernHomeContent, like ModernHomeRoute: reading the values here would
+    // recompose the whole folder screen on every enrichment update.
     val enrichingItemId = viewModel.enrichingItemId.collectAsStateWithLifecycle()
     val enrichedPreviews = viewModel.enrichedPreviews.collectAsStateWithLifecycle()
     val failedEnrichmentIds = viewModel.failedEnrichmentIds.collectAsStateWithLifecycle()
@@ -401,7 +402,11 @@ private fun TabbedGridContent(
         }
         currentTab.catalogRow != null -> {
             val items = currentTab.catalogRow.items
-            val posterCardStyle = rememberPosterCardStyle(uiState.posterCardWidthDp, uiState.posterCardCornerRadiusDp)
+            val posterCardStyle = PosterCardStyle(
+                width = uiState.posterCardWidthDp.dp,
+                height = (uiState.posterCardWidthDp * 1.5f).dp,
+                cornerRadius = uiState.posterCardCornerRadiusDp.dp
+            )
             val itemFocusRequesters = remember(uiState.selectedTabIndex) { mutableMapOf<String, FocusRequester>() }
             var lastFocusedItemKey by remember(
                 uiState.selectedTabIndex,
@@ -538,8 +543,8 @@ private fun TabbedGridContent(
                                 modifier = Modifier
                                     .width(posterCardStyle.width)
                                     .height(loadingCardHeight)
-                                    .clearAndSetSemantics {}
-                                    .focusProperties { canFocus = false },
+                              .clearAndSetSemantics {}
+                              .focusProperties { canFocus = false },
                                 shape = CardDefaults.shape(shape = cardShape),
                                 colors = CardDefaults.colors(
                                     containerColor = NuvioTheme.colors.BackgroundCard,
@@ -912,7 +917,13 @@ private fun FollowLayoutContent(
         return
     }
 
-    val posterCardStyle = rememberPosterCardStyle(homeState.posterCardWidthDp, homeState.posterCardCornerRadiusDp)
+    val posterCardStyle = remember {
+        PosterCardStyle(
+            width = homeState.posterCardWidthDp.dp,
+            height = homeState.posterCardHeightDp.dp,
+            cornerRadius = homeState.posterCardCornerRadiusDp.dp
+        )
+    }
     val noOpCwClick: (ContinueWatchingItem) -> Unit = remember { { } }
     val noOpRemoveCw: (String, Int?, Int?, Boolean) -> Unit = remember { { _, _, _, _ -> } }
     val noOpFolderDetail: (String, String) -> Unit = remember { { _, _ -> } }
@@ -993,9 +1004,9 @@ private fun FollowLayoutContent(
             uiState = homeState,
             modernPresentation = homeState.modernHomePresentation,
             focusState = focusState,
-            enrichingItemId = { enrichingItemId.value },
-            enrichedPreviews = { enrichedPreviews.value },
-            failedEnrichmentIds = { failedEnrichmentIds.value },
+            enrichingItemId = enrichingItemId,
+            enrichedPreviews = enrichedPreviews,
+            failedEnrichmentIds = failedEnrichmentIds,
             trailerPreviewUrls = trailerPreviewUrls,
             trailerPreviewAudioUrls = trailerPreviewAudioUrls,
             onNavigateToDetail = onNavigateToDetail,

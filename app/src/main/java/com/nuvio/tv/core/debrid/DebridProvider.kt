@@ -1,6 +1,5 @@
 package com.nuvio.tv.core.debrid
 
-import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.domain.model.DebridSettings
 
 data class DebridProvider(
@@ -51,7 +50,7 @@ object DebridProviders {
         id = PREMIUMIZE_ID,
         displayName = "Premiumize",
         shortName = "PM",
-        authMethod = premiumizeAuthMethod(BuildConfig.PREMIUMIZE_CLIENT_ID),
+        authMethod = DebridProviderAuthMethod.DeviceCode,
         capabilities = setOf(
             DebridProviderCapability.ClientResolve,
             DebridProviderCapability.LocalTorrentCacheCheck,
@@ -69,9 +68,6 @@ object DebridProviders {
     )
 
     private val registered = listOf(Torbox, Premiumize, RealDebrid)
-
-    fun premiumizeAuthMethod(clientId: String): DebridProviderAuthMethod =
-        if (clientId.isBlank()) DebridProviderAuthMethod.ApiKey else DebridProviderAuthMethod.DeviceCode
 
     fun all(): List<DebridProvider> = registered
 

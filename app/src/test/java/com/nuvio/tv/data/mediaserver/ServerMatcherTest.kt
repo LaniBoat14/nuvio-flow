@@ -31,11 +31,8 @@ class ServerMatcherTest {
         every { getMetaFromAllAddons(any(), any(), any()) } returns flowOf(NetworkResult.Error("no addon"))
     }
 
-    private fun matcher(
-        provider: FakeServerProvider = FakeServerProvider(),
-        libraries: List<ServerLibrary> = listOf(FakeServerProvider.MOVIE_LIBRARY, FakeServerProvider.SERIES_LIBRARY)
-    ): Triple<ServerMatcher, ServerRepository, ServerConnection> {
-        val (repository, connection) = fakeServerRepository(provider, libraries = libraries)
+    private fun matcher(provider: FakeServerProvider = FakeServerProvider()): Triple<ServerMatcher, ServerRepository, ServerConnection> {
+        val (repository, connection) = fakeServerRepository(provider)
         return Triple(ServerMatcher(repository, tmdbService, metaRepository), repository, connection)
     }
 
@@ -106,68 +103,6 @@ class ServerMatcherTest {
 
         assertTrue(matcher.supports(connection, ServerMediaKind.MOVIE))
         assertEquals(listOf(ServerItemRef(connection.id, "42")), matcher.match(connection, request, forceRefresh = false))
-    }
-
-    @Test
-    fun aLibraryOfMoviesAndShowsMatchesEachKindOnItsOwn() = runBlocking {
-        val provider = FakeServerProvider().apply {
-            indexedIds["42"] = TrackingExternalIds(tmdb = 100)
-            indexedIds[FakeServerProvider.SHOW_ID] = TrackingExternalIds(tmdb = 100)
-            episodes[1 to 1] = ServerEpisode(FakeServerProvider.EPISODE_ID, "2011-04-17")
-        }
-        val mixed = ServerLibrary("90", "Everything", ServerMediaKind.MIXED)
-        val (matcher, _, connection) = matcher(provider, libraries = listOf(mixed))
-
-        assertTrue(matcher.supports(connection, ServerMediaKind.MOVIE))
-        assertTrue(matcher.supports(connection, ServerMediaKind.SERIES))
-        val movie = matcher.request("movie", "tmdb:100", null, null)!!
-        assertEquals(listOf(ServerItemRef(connection.id, "42")), matcher.match(connection, movie, forceRefresh = false))
-        val episode = matcher.request("series", "tmdb:100:1:1", 1, 1)!!
-        assertEquals(
-            listOf(ServerItemRef(connection.id, FakeServerProvider.EPISODE_ID)),
-            matcher.match(connection, episode, forceRefresh = false)
-        )
-    }
-
-    @Test
-    fun untickedLibrariesStillMatchMoviesAndEpisodes() = runBlocking {
-        val provider = FakeServerProvider().apply {
-            indexedIds["42"] = TrackingExternalIds(imdb = "tt0111161")
-            indexedIds[FakeServerProvider.SHOW_ID] = TrackingExternalIds(imdb = "tt0944947")
-            episodes[1 to 1] = ServerEpisode(FakeServerProvider.EPISODE_ID, "2011-04-17")
-        }
-        val (matcher, repository, connection) = matcher(
-            provider,
-            libraries = listOf(
-                FakeServerProvider.MOVIE_LIBRARY.copy(selected = false),
-                FakeServerProvider.SERIES_LIBRARY.copy(selected = false)
-            )
-        )
-        val streams = ServerStreams(repository, matcher)
-
-        assertTrue(matcher.supports(connection, ServerMediaKind.MOVIE))
-        assertTrue(matcher.supports(connection, ServerMediaKind.SERIES))
-        assertTrue(streams.canServe("movie", "tt0111161"))
-        assertTrue(streams.canServe("series", "tt0944947:1:1"))
-        val movie = matcher.request("movie", "tt0111161", null, null)!!
-        assertEquals(listOf(ServerItemRef(connection.id, "42")), matcher.match(connection, movie, forceRefresh = false))
-        val episode = matcher.request("series", "tt0944947:1:1", 1, 1)!!
-        assertEquals(
-            listOf(ServerItemRef(connection.id, FakeServerProvider.EPISODE_ID)),
-            matcher.match(connection, episode, forceRefresh = false)
-        )
-        assertEquals(1, streams.sources("series", "tt0944947:1:1", 1, 1).size)
-    }
-
-    @Test
-    fun aTurnedOffServerIsNotAskedEvenWithItsLibrariesTicked() = runBlocking {
-        val provider = FakeServerProvider().apply { indexedIds["42"] = TrackingExternalIds(imdb = "tt0111161") }
-        val (matcher, repository, connection) = matcher(provider)
-        repository.setEnabled(connection.id, false)
-        val streams = ServerStreams(repository, matcher)
-
-        assertFalse(streams.canServe("movie", "tt0111161"))
-        assertTrue(streams.sources("movie", "tt0111161", null, null).isEmpty())
     }
 
     @Test

@@ -1,16 +1,11 @@
 package com.nuvio.tv.ui.screens.player
 
 import android.util.Log
-import com.nuvio.tv.core.logging.redactedUrlForLog
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import com.nuvio.tv.domain.model.Subtitle
-import com.nuvio.tv.data.local.InternalPlayerEngine
-import com.nuvio.tv.data.local.SubtitleLanguageRanking
-import com.nuvio.tv.data.local.SubtitleStyleSettings
-import com.nuvio.tv.data.local.subtitleLanguagesAfterPlayerChoice
 import com.nuvio.tv.ui.screens.player.autosync.AutoSyncSyncedSubtitle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
@@ -34,7 +29,7 @@ internal fun PlayerRuntimeController.filterEpisodeStreamsByAddon(addonName: Stri
 
 internal fun PlayerRuntimeController.showControlsTemporarily() {
     hideSeekOverlayJob?.cancel()
-    _uiState.update { it.copy(showControls = true, showSeekOverlay = false, streamInfoData = buildStreamInfoData()) }
+    _uiState.update { it.copy(showControls = true, showSeekOverlay = false) }
     scheduleHideControls()
 }
 
@@ -43,7 +38,6 @@ internal fun PlayerRuntimeController.showSeekOverlayTemporarily() {
     _uiState.update { it.copy(showSeekOverlay = true) }
     hideSeekOverlayJob = scope.launch {
         delay(1500)
-        while (seekSettle.open) delay(250)
         _uiState.update { it.copy(showSeekOverlay = false) }
     }
 }
@@ -89,71 +83,6 @@ internal fun PlayerRuntimeController.selectAudioTrack(trackIndex: Int) {
             }
         }
     }
-}
-
-/**
- * A switch inside a live tunnel only recreates the AudioTrack when the sound format changes; a track of the same
- * format and layout is switched in place. Tunnelling asked for but not running never needs a rebuild.
- */
-internal fun tunneledAudioSwitchNeedsRebuild(tunnelingRunning: Boolean, current: TrackInfo?, target: TrackInfo): Boolean {
-    if (!tunnelingRunning) return false
-    if (current == null || current.codec == null || target.codec == null) return true
-    return !current.codec.equals(target.codec, ignoreCase = true) ||
-        current.channelCount != target.channelCount ||
-        current.sampleRate != target.sampleRate
-}
-
-/**
- * Tunnelled-playback guard for mid-stream audio track switches. Recreating the
- * AudioTrack inside a live tunnel leaves bad frame pacing on some vendor HALs
- * until the player is rebuilt, so a switch to another sound format rebuilds the
- * player at the current position instead.
- *
- * Must be called after rememberAudioSelection(): the rebuild restores the
- * target audio and subtitle preference from rememberedTrackPreference.
- *
- * Returns true when the rebuild path was taken (caller must skip the in-place
- * switch).
- */
-internal fun PlayerRuntimeController.maybeRebuildForTunneledAudioSwitch(trackIndex: Int): Boolean {
-    if (isUsingMpvEngine()) return false
-    val player = _exoPlayer ?: return false
-    val tracks = _uiState.value.audioTracks
-    val track = tracks.getOrNull(trackIndex) ?: return false
-    if (track.isSelected) return false
-    if (!tunneledAudioSwitchNeedsRebuild(player.isTunnelingEnabled, tracks.firstOrNull { it.isSelected }, track)) return false
-    // Seeded by rememberAudioSelection() immediately before this call; if the
-    // preference is somehow absent, fall back to the in-place path rather than
-    // rebuild without a restorable pick.
-    val preference = rememberedTrackPreference?.takeIf { it.audio != null } ?: return false
-    pendingEngineSwitchTrackPreference = PlayerRuntimeController.PendingEngineSwitchTrackPreference(
-        streamUrl = currentStreamUrl,
-        preference = preference,
-        sourceEngine = InternalPlayerEngine.EXOPLAYER
-    )
-    val savedPosition = player.currentPosition.takeIf { it > 0L } ?: 0L
-    val paused = pausedByUser
-    logSwitchTrace(
-        stage = "tunneled-audio-switch-rebuild",
-        message = "trackIndex=$trackIndex position=$savedPosition paused=$paused " +
-            "track=${track.language}/${track.name}/${track.trackId}"
-    )
-    Log.d(
-        PlayerRuntimeController.TAG,
-        "Tunneled audio switch: rebuilding player at ${savedPosition}ms for track index=$trackIndex name=${track.name}"
-    )
-    // Plain scope.launch (NOT errorRetryJob): releasePlayer() cancels
-    // errorRetryJob internally, and this job must not cancel itself mid-run.
-    // Both callees are regular (non-suspend) functions, so once launched the
-    // sequence runs to completion.
-    scope.launch {
-        releasePlayer(flushPlaybackState = false)
-        if (savedPosition > 0L) {
-            _uiState.update { it.copy(pendingSeekPosition = savedPosition) }
-        }
-        initializePlayer(currentStreamUrl, currentHeaders, startPaused = paused)
-    }
-    return true
 }
 
 internal fun PlayerRuntimeController.rememberAudioSelection(trackIndex: Int) {
@@ -330,46 +259,6 @@ internal fun PlayerRuntimeController.rememberInternalSubtitleSelection(trackInde
         basePreference
             .copy(subtitle = rememberedSelection)
     persistTrackPreference()
-    rememberSubtitleLanguagePreference(
-        PlayerSubtitleUtils.detectTrackLanguageVariant(
-            language = selectedTrack.language,
-            name = selectedTrack.name,
-            trackId = selectedTrack.trackId
-        )
-    )
-}
-
-/**
- * A subtitle language picked in the player becomes the profile's subtitle preference for every title.
- * Turning subtitles off is kept for that title only and never changes this preference. A language the
- * settings do not offer changes nothing.
- */
-private fun PlayerRuntimeController.rememberSubtitleLanguagePreference(language: String) {
-    val chosen = playerSettingsDataStore.selectableSubtitleLanguage(language) ?: return
-    val after = subtitleLanguagesAfterPlayerChoice(_uiState.value.subtitleStyle, chosen) ?: return
-    lastSubtitlePreferredLanguage = after.first
-    lastSubtitleSecondaryLanguage = after.second
-    lastSubtitleTertiaryLanguage = after.third
-    scope.launch {
-        runCatching { playerSettingsDataStore.rememberPlayerSubtitleChoice(chosen) }
-    }
-}
-
-/**
- * The preferred subtitle languages left after [chosen] is picked in the player, or null when they stay as they
- * are. Mirrors [com.nuvio.tv.data.local.PlayerSettingsDataStore.rememberPlayerSubtitleChoice].
- */
-internal fun subtitleLanguagesAfterPlayerChoice(style: SubtitleStyleSettings, chosen: String): SubtitleLanguageRanking? {
-    val restoring = style.preferredLanguage == "none"
-    val base = if (restoring) style.preferredLanguageBeforeOff else style.preferredLanguage
-    return subtitleLanguagesAfterPlayerChoice(
-        first = base,
-        second = style.secondaryPreferredLanguage,
-        third = style.tertiaryPreferredLanguage,
-        chosen = chosen
-    ) ?: base?.takeIf { restoring }?.let {
-        SubtitleLanguageRanking(it, style.secondaryPreferredLanguage, style.tertiaryPreferredLanguage)
-    }
 }
 
 internal fun PlayerRuntimeController.disableSubtitles() {
@@ -550,8 +439,6 @@ internal fun PlayerRuntimeController.toSubtitleConfiguration(subtitle: Subtitle)
 }
 
 internal fun PlayerRuntimeController.selectAddonSubtitle(subtitle: Subtitle) {
-    // Any actual selection supersedes a parked auto-restore.
-    deferredAutoAddonSubtitle = null
     logSwitchTrace(
         stage = "select-addon-subtitle",
         message = "usingMpv=${isUsingMpvEngine()} addonId=${subtitle.id} addonLang=${subtitle.lang} addonName=${subtitle.addonName}"
@@ -623,7 +510,7 @@ internal fun PlayerRuntimeController.selectAddonSubtitle(subtitle: Subtitle) {
             PlayerRuntimeController.TAG,
             "Selecting ADDON subtitle addon=${subtitle.addonName} lang=${subtitle.lang} normalizedLang=$normalizedLang " +
                 "id=${subtitle.id} inferredMime=$inferredMime " +
-                "url=${subtitle.url.redactedUrlForLog()}"
+                "url=${subtitle.url}"
         )
 
         // Prefer sidecar hot-attach so progressive/VOD buffer is not wiped (fast-startup path)
@@ -784,31 +671,10 @@ internal fun PlayerRuntimeController.rememberAddonSubtitleSelection(subtitle: Su
         basePreference
             .copy(subtitle = rememberedSelection)
     persistTrackPreference()
-    rememberSubtitleLanguagePreference(PlayerSubtitleUtils.normalizeLanguageCode(subtitle.lang))
 }
 
-internal fun PlayerRuntimeController.currentTrackPreferenceForPersistence(): PlayerRuntimeController.TrackPreference {
-    return trackPreferenceForPersistence(
-        remembered = rememberedTrackPreference,
-        pending = persistedTrackPreference,
-        loaded = loadedTrackPreference?.takeIf { it.first == contentId }?.second
-    )
-}
-
-/**
- * What gets saved for the title. A restore drops the fields it has applied (or could not match on this stream) from
- * [pending], so the loaded copy fills them back in and a later save keeps them.
- */
-internal fun trackPreferenceForPersistence(
-    remembered: PlayerRuntimeController.TrackPreference?,
-    pending: PlayerRuntimeController.TrackPreference?,
-    loaded: PlayerRuntimeController.TrackPreference?
-): PlayerRuntimeController.TrackPreference {
-    if (remembered != null) return remembered
-    return PlayerRuntimeController.TrackPreference(
-        audio = pending?.audio ?: loaded?.audio,
-        subtitle = pending?.subtitle ?: loaded?.subtitle
-    )
+private fun PlayerRuntimeController.currentTrackPreferenceForPersistence(): PlayerRuntimeController.TrackPreference {
+    return rememberedTrackPreference ?: persistedTrackPreference ?: PlayerRuntimeController.TrackPreference()
 }
 
 internal fun PlayerRuntimeController.persistTrackPreference() {

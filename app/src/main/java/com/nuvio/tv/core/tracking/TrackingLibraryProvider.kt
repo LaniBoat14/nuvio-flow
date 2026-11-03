@@ -19,13 +19,9 @@ interface TrackingLibraryProvider {
     val tabs: Flow<List<LibraryListTab>>
 
     fun recognizesListKey(key: String): Boolean
-    /** Whether being in this list shows the title as in the library; read-only lists the toggle cannot change do not. */
-    fun countsAsInLibrary(listKey: String): Boolean = true
     fun observeMembership(itemId: String, itemType: String): Flow<Set<String>>
     fun toggledDefaultMembership(currentMembership: Map<String, Boolean>): Map<String, Boolean>
     suspend fun getMembershipSnapshot(item: LibraryEntryInput): ListMembershipSnapshot
-    /** Membership for the one-press library toggle; may use the cached library without refreshing it first. */
-    suspend fun getDefaultMembershipSnapshot(item: LibraryEntryInput): ListMembershipSnapshot = getMembershipSnapshot(item)
     suspend fun membershipRemovalConfirmation(
         item: LibraryEntryInput,
         changes: ListMembershipChanges

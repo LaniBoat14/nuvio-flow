@@ -42,7 +42,6 @@ class TraktAuthService @Inject constructor(
     private val authSessionNoticeDataStore: AuthSessionNoticeDataStore
 ) {
     private val refreshLeewaySeconds = 60L
-    private val refreshFatalRetryDelayMs = 2_000L
     private val writeRequestMutex = Mutex()
     private val tokenRefreshMutex = Mutex()
     private var lastWriteRequestAtMs = 0L
@@ -271,45 +270,35 @@ class TraktAuthService @Inject constructor(
                 return@withLock true
             }
 
-            var lastFatalStatusCode: Int? = null
-            for (attempt in 1..2) {
-                trace("refreshTokenIfNeeded: refreshing token (force=$force, attempt=$attempt)")
-                val response = try {
-                    traktApi.refreshToken(
-                        TraktRefreshTokenRequestDto(
-                            refreshToken = refreshToken,
-                            clientId = BuildConfig.TRAKT_CLIENT_ID,
-                            clientSecret = BuildConfig.TRAKT_CLIENT_SECRET,
-                            redirectUri = traktRedirectUri()
-                        )
+            trace("refreshTokenIfNeeded: refreshing token (force=$force)")
+            val response = try {
+                traktApi.refreshToken(
+                    TraktRefreshTokenRequestDto(
+                        refreshToken = refreshToken,
+                        clientId = BuildConfig.TRAKT_CLIENT_ID,
+                        clientSecret = BuildConfig.TRAKT_CLIENT_SECRET,
+                        redirectUri = traktRedirectUri()
                     )
-                } catch (e: IOException) {
-                    Log.w("TraktAuthService", "Network error while refreshing token", e)
-                    return@withLock false
-                }
-
-                val tokenBody = response.body()
-                if (response.isSuccessful && tokenBody != null) {
-                    traktAuthDataStore.saveToken(tokenBody)
-                    authSessionNoticeDataStore.markTraktAuthenticated()
-                    resetCircuit()
-                    trace("refreshTokenIfNeeded: success")
-                    return@withLock true
-                }
-
-                trace("refreshTokenIfNeeded: failed code=${response.code()} attempt=$attempt")
-                val isCredentialRejection =
-                    response.code() == 400 || response.code() == 401 || response.code() == 403
-                if (!isCredentialRejection) {
-                    return@withLock false
-                }
-                lastFatalStatusCode = response.code()
-                if (attempt < 2) {
-                    delay(refreshFatalRetryDelayMs)
-                }
+                )
+            } catch (e: IOException) {
+                Log.w("TraktAuthService", "Network error while refreshing token", e)
+                return@withLock false
             }
-            lastFatalStatusCode?.let { statusCode -> invalidateCredentials(statusCode) }
-            false
+
+            val tokenBody = response.body()
+            if (!response.isSuccessful || tokenBody == null) {
+                trace("refreshTokenIfNeeded: failed code=${response.code()}")
+                if (response.code() == 400 || response.code() == 401 || response.code() == 403) {
+                    invalidateCredentials(response.code())
+                }
+                return@withLock false
+            }
+
+            traktAuthDataStore.saveToken(tokenBody)
+            authSessionNoticeDataStore.markTraktAuthenticated()
+            resetCircuit()
+            trace("refreshTokenIfNeeded: success")
+            true
         }
     }
 
@@ -345,33 +334,15 @@ class TraktAuthService @Inject constructor(
         return username
     }
 
-    // Each kind of failure is logged once until a request succeeds again; polls repeat them every few minutes.
-    private val reportedFailures: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
-
-    @androidx.annotation.VisibleForTesting
-    internal fun reportedFailureKinds(): Set<String> = reportedFailures.toSet()
-
-    private fun reportFailure(kind: String, error: Throwable? = null) {
-        if (reportedFailures.add(kind)) Log.w("TraktAuthService", "Authorized request failed: $kind", error)
-    }
-
     suspend fun <T> executeAuthorizedRequest(
         call: suspend (authorizationHeader: String) -> Response<T>
     ): Response<T>? {
         if (isCircuitOpen()) {
             trace("authorized request: circuit breaker is OPEN, skipping request")
-            reportFailure("circuit breaker open")
             return null
         }
 
-        if (getCurrentAuthState().accessToken.isNullOrBlank()) {
-            reportFailure("not signed in")
-            return null
-        }
-        var token = getValidAccessToken() ?: run {
-            reportFailure("token refresh failed")
-            return null
-        }
+        var token = getValidAccessToken() ?: return null
         var retriedAuth = false
         var retriedRateLimit = false
         var retriedTransient = false
@@ -389,7 +360,7 @@ class TraktAuthService @Inject constructor(
                     retriedNetwork = true
                     continue
                 }
-                reportFailure("network ${e.javaClass.simpleName}", e)
+                Log.w("TraktAuthService", "Network error during authorized request", e)
                 return null
             }
 
@@ -397,10 +368,8 @@ class TraktAuthService @Inject constructor(
 
             if (response.isSuccessful) {
                 resetCircuit()
-                reportedFailures.clear()
                 return response
             }
-            reportFailure("HTTP $code ${response.raw().request.url.encodedPath}")
 
             if (code == 403) {
                 tripCircuit("403 Forbidden (invalid API key or unapproved app) for ${responseTarget(response)}")

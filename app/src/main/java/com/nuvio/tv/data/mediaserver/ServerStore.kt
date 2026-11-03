@@ -18,10 +18,7 @@ data class StoredServers(
     val connections: List<ServerConnection> = emptyList(),
     val tokens: Map<String, String> = emptyMap(),
     val pendingPush: Boolean = false,
-    val syncedKeys: List<String>? = null,
-    val syncEnabled: Boolean = false,
-    val fullSourceText: Boolean = false,
-    val showServerLogos: Boolean = true
+    val syncedKeys: List<String>? = null
 ) {
     override fun toString(): String = "StoredServers(connections=${connections.size})"
 }

@@ -56,23 +56,23 @@ class DolbyVisionBaseLayerPolicyTest {
         assertTrue(r.mapToHevc)
     }
 
-    // ── DV display: always convert, a listed Profile 7 decoder does not change that ──
+    // ── NATIVE_DV7: native DV7 decoder (Shield) ──
 
     @Test
-    fun `DV display with a decoder listing Profile 7 converts`() {
+    fun `DV display with native DvheDtb decoder returns NATIVE_DV7`() {
         val r = resolve(
             displayDv = true,
             displayHdr10 = true,
             codecSupportsDvheDtb = true,
             bridgeReady = true
         )
-        assertEquals(Decision.CONVERT_TO_DV81, r.decision)
-        assertTrue(r.divertsFromNativeDv7)
+        assertEquals(Decision.NATIVE_DV7, r.decision)
+        assertFalse(r.divertsFromNativeDv7)
         assertFalse(r.mapToHevc)
     }
 
     @Test
-    fun `DV display with decoders listing Profile 7 and 8 converts`() {
+    fun `Amazon device with native DvheDtb prefers NATIVE_DV7 over conversion`() {
         val r = resolve(
             displayDv = true,
             displayHdr10 = true,
@@ -81,128 +81,19 @@ class DolbyVisionBaseLayerPolicyTest {
             isAmazonFireTv = true,
             bridgeReady = true
         )
-        assertEquals(Decision.CONVERT_TO_DV81, r.decision)
+        assertEquals(Decision.NATIVE_DV7, r.decision)
     }
 
     @Test
-    fun `built-in TV on DV display without a listed Profile 8 decoder converts`() {
+    fun `Xiaomi device with native DvheDtb prefers NATIVE_DV7 over conversion`() {
         val r = resolve(
-            displayDv = true,
-            displayHdr10 = true,
-            displayHdr10Plus = true,
-            codecSupportsDvheSt = false,
-            bridgeReady = true,
-            apiLevel = 34
-        )
-        assertEquals(Decision.CONVERT_TO_DV81, r.decision)
-    }
-
-    @Test
-    fun `DV display without bridge strips to HDR10 instead of passing DV7 through`() {
-        val r = resolve(
-            displayDv = true,
-            displayHdr10 = true,
-            codecSupportsDvheDtb = true,
-            codecSupportsDvheSt = true,
-            bridgeReady = false
-        )
-        assertEquals(Decision.STRIP_TO_HDR10, r.decision)
-        assertTrue(r.mapToHevc)
-    }
-
-    @Test
-    fun `no capability combination returns NATIVE_DV7`() {
-        val flags = listOf(true, false)
-        for (caps in flags) for (dv in flags) for (hdr10 in flags) for (dtb in flags) for (st in flags)
-            for (amazon in flags) for (samsung in flags) for (xiaomi in flags) for (bridge in flags) {
-                val r = resolve(
-                    hdrCapsKnown = caps,
-                    displayDv = dv,
-                    displayHdr10 = hdr10,
-                    codecSupportsDvheDtb = dtb,
-                    codecSupportsDvheSt = st,
-                    isAmazonFireTv = amazon,
-                    isSamsung = samsung,
-                    isXiaomi = xiaomi,
-                    bridgeReady = bridge
-                )
-                assertTrue(r.divertsFromNativeDv7)
-                if (caps && dv && bridge) assertEquals(Decision.CONVERT_TO_DV81, r.decision)
-            }
-    }
-
-    @Test
-    fun `Samsung on DV display without a listed Profile 8 decoder converts`() {
-        val r = resolve(
-            displayDv = true,
-            displayHdr10 = true,
-            isSamsung = true,
-            bridgeReady = true
-        )
-        assertEquals(Decision.CONVERT_TO_DV81, r.decision)
-    }
-
-    // ── Which conversions take the manual Convert to DV8.1 path ──
-
-    @Test
-    fun `decoder listing Profile 8 alone keeps Auto conversion`() {
-        val r = resolve(
-            displayDv = true,
-            displayHdr10 = true,
-            codecSupportsDvheSt = true,
-            isAmazonFireTv = true,
-            bridgeReady = true
-        )
-        assertFalse(r.usesManualConversion)
-    }
-
-    @Test
-    fun `Xiaomi without Profile 7 keeps Auto conversion`() {
-        val r = resolve(displayDv = true, displayHdr10 = true, isXiaomi = true, bridgeReady = true)
-        assertFalse(r.usesManualConversion)
-    }
-
-    @Test
-    fun `decoder listing Profile 7 takes the manual path`() {
-        val p7 = resolve(displayDv = true, displayHdr10 = true, codecSupportsDvheDtb = true, bridgeReady = true)
-        val p7p8 = resolve(
-            displayDv = true,
-            displayHdr10 = true,
-            codecSupportsDvheDtb = true,
-            codecSupportsDvheSt = true,
-            bridgeReady = true
-        )
-        val xiaomiP7 = resolve(
             displayDv = true,
             displayHdr10 = true,
             codecSupportsDvheDtb = true,
             isXiaomi = true,
             bridgeReady = true
         )
-        assertTrue(p7.usesManualConversion)
-        assertTrue(p7p8.usesManualConversion)
-        assertTrue(xiaomiP7.usesManualConversion)
-    }
-
-    @Test
-    fun `decoder listing no Profile 8 takes the manual path`() {
-        val r = resolve(displayDv = true, displayHdr10 = true, bridgeReady = true, apiLevel = 34)
-        assertTrue(r.usesManualConversion)
-    }
-
-    @Test
-    fun `manual path is only for DV display conversion`() {
-        val hdr10Convert = resolve(
-            displayHdr10 = true,
-            codecSupportsDvheDtb = true,
-            codecSupportsDvheSt = true,
-            isSamsung = true,
-            bridgeReady = true
-        )
-        val noBridge = resolve(displayDv = true, displayHdr10 = true, codecSupportsDvheDtb = true)
-        assertEquals(Decision.CONVERT_TO_DV81, hdr10Convert.decision)
-        assertFalse(hdr10Convert.usesManualConversion)
-        assertFalse(noBridge.usesManualConversion)
+        assertEquals(Decision.NATIVE_DV7, r.decision)
     }
 
     // ── CONVERT_TO_DV81: Fire TV Karat (Amazon-gated) ──
@@ -223,7 +114,7 @@ class DolbyVisionBaseLayerPolicyTest {
     }
 
     @Test
-    fun `Fire TV on DV display without bridge strips to HDR10`() {
+    fun `Fire TV on DV display without bridge falls through to NATIVE_DV7`() {
         val r = resolve(
             displayDv = true,
             displayHdr10 = true,
@@ -231,11 +122,11 @@ class DolbyVisionBaseLayerPolicyTest {
             isAmazonFireTv = true,
             bridgeReady = false
         )
-        assertEquals(Decision.STRIP_TO_HDR10, r.decision)
+        assertEquals(Decision.NATIVE_DV7, r.decision)
     }
 
     @Test
-    fun `Fire TV on DV display without a listed DV81 decoder still converts`() {
+    fun `Fire TV on DV display without DV81 decoder falls through to NATIVE_DV7`() {
         val r = resolve(
             displayDv = true,
             displayHdr10 = true,
@@ -243,7 +134,7 @@ class DolbyVisionBaseLayerPolicyTest {
             isAmazonFireTv = true,
             bridgeReady = true
         )
-        assertEquals(Decision.CONVERT_TO_DV81, r.decision)
+        assertEquals(Decision.NATIVE_DV7, r.decision)
     }
 
     // ── CONVERT_TO_DV81: Xiaomi Mi Box (relaxed, no codec check) ──
@@ -280,14 +171,14 @@ class DolbyVisionBaseLayerPolicyTest {
     }
 
     @Test
-    fun `Xiaomi on DV display without bridge strips to HDR10`() {
+    fun `Xiaomi on DV display without bridge falls through to NATIVE_DV7`() {
         val r = resolve(
             displayDv = true,
             displayHdr10 = true,
             isXiaomi = true,
             bridgeReady = false
         )
-        assertEquals(Decision.STRIP_TO_HDR10, r.decision)
+        assertEquals(Decision.NATIVE_DV7, r.decision)
     }
 
     @Test
@@ -315,7 +206,7 @@ class DolbyVisionBaseLayerPolicyTest {
         assertEquals(Decision.STRIP_TO_HDR10, r.decision)
     }
 
-    // Current fork: eligible DV-display conversion is not manufacturer-gated.
+    // ── CONVERT_TO_DV81: any device on DV display with DV81 decoder ──
 
     @Test
     fun `non-Amazon device on DV display with DV81 decoder and bridge converts`() {

@@ -1,13 +1,5 @@
 package com.nuvio.tv.ui.screens.library
 
-import com.nuvio.tv.ui.v2.components.sidebarPageContent
-
-import com.nuvio.tv.ui.v2.appearance.LocalV2Appearance
-import com.nuvio.tv.ui.v2.appearance.V2Atmosphere
-import com.nuvio.tv.ui.v2.components.nuvioControlSurface
-import com.nuvio.tv.ui.v2.components.nuvioGlass
-import com.nuvio.tv.ui.v2.components.nuvioV2Focus
-import com.nuvio.tv.ui.v2.components.GlassRole
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -48,7 +40,6 @@ import androidx.compose.material3.MenuDefaults
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
@@ -85,9 +76,6 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Border
@@ -114,12 +102,10 @@ import com.nuvio.tv.ui.screens.home.HeroBackdropState
 import com.nuvio.tv.ui.screens.stream.PlayerChoiceDialog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import com.nuvio.tv.ui.components.rememberPosterCardStyle
+import com.nuvio.tv.ui.components.PosterCardDefaults
 import com.nuvio.tv.domain.model.localizedTitle
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.NuvioDialog
-import com.nuvio.tv.ui.components.PanelActionRow
-import com.nuvio.tv.ui.components.PlayerPanelRow
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.util.localizedContentType
 import com.nuvio.tv.ui.util.localizedGenreLabel
@@ -154,21 +140,6 @@ fun LibraryScreen(
     onCloudPlaybackResolved: (CloudLibraryPlaybackInfo) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, viewModel) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_RESUME -> viewModel.setScreenVisible(true)
-                Lifecycle.Event.ON_PAUSE -> viewModel.setScreenVisible(false)
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            viewModel.setScreenVisible(false)
-        }
-    }
     val watchedMovieIds by viewModel.watchedMovieIds.collectAsState()
     val watchedSeriesIds by viewModel.watchedSeriesIds.collectAsState()
     val activityContext = LocalContext.current
@@ -210,7 +181,11 @@ fun LibraryScreen(
             keys.firstOrNull() // First in logical order = leftmost in LTR
         }
     }
-    val posterCardStyle = rememberPosterCardStyle(uiState.posterCardWidthDp, uiState.posterCardCornerRadiusDp)
+    val posterCardStyle = PosterCardDefaults.Style.copy(
+        width = uiState.posterCardWidthDp.dp,
+        height = (uiState.posterCardWidthDp * 3 / 2).dp,
+        cornerRadius = uiState.posterCardCornerRadiusDp.dp
+    )
 
     val routeCloudPlayback: (CloudLibraryPlaybackInfo) -> Unit = { info ->
         scope.launch {
@@ -298,7 +273,6 @@ fun LibraryScreen(
 
         Box(
             modifier = Modifier
-                .sidebarPageContent()
                 .fillMaxSize(),
             contentAlignment = androidx.compose.ui.Alignment.Center
         ) {
@@ -326,8 +300,6 @@ fun LibraryScreen(
 
     val lastKeyRepeatTime = remember { longArrayOf(0L) }
 
-    Box(Modifier.fillMaxSize().background(NuvioTheme.colors.Background)) {
-    if (LocalV2Appearance.current != null) V2Atmosphere(background = LocalV2Appearance.current!!.settingsBackground)
     val globalLandscape = com.nuvio.tv.ui.components.LocalLandscapePosterMode.current
 
     LazyVerticalGrid(
@@ -336,8 +308,8 @@ fun LibraryScreen(
         ),
         state = gridState,
         modifier = Modifier
-            .sidebarPageContent()
             .fillMaxSize()
+            .background(NuvioTheme.colors.Background)
             .focusRestorer {
                 val lastKey = lastFocusedPosterKey
                 (if (lastKey != null && lastKey in posterFocusRequesters) {
@@ -406,12 +378,9 @@ fun LibraryScreen(
                     {
                         Button(
                             onClick = viewModel::refreshCloudLibrary,
-                modifier = Modifier.nuvioControlSurface(RoundedCornerShape(12.dp)),
                             enabled = !uiState.cloudLibrary.isRefreshing,
                             colors = ButtonDefaults.colors(
-                                containerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.BackgroundCard,
-                    focusedContainerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.FocusBackground,
-                    focusedContentColor = if (LocalV2Appearance.current != null) Color.White else NuvioTheme.colors.Primary,
+                                containerColor = NuvioTheme.colors.BackgroundCard,
                                 contentColor = NuvioTheme.colors.TextPrimary
                             )
                         ) {
@@ -496,7 +465,6 @@ fun LibraryScreen(
                     val title = when {
                         uiState.sourceMode == LibrarySourceMode.TRAKT && !uiState.isTrackingAuthenticated -> stringResource(R.string.library_empty_trakt_not_auth_title)
                         uiState.sourceMode == LibrarySourceMode.SIMKL && !uiState.isTrackingAuthenticated -> stringResource(R.string.library_empty_simkl_not_auth_title)
-                        uiState.sourceMode == LibrarySourceMode.MDBLIST && !uiState.isTrackingAuthenticated -> stringResource(R.string.library_empty_mdblist_not_auth_title)
                         uiState.sourceMode == LibrarySourceMode.TRAKT || uiState.sourceMode == LibrarySourceMode.MDBLIST -> stringResource(R.string.library_empty_trakt_title, selectedTypeLabel)
                         uiState.sourceMode == LibrarySourceMode.SIMKL -> stringResource(R.string.library_empty_simkl_title, selectedTypeLabel)
                         else -> stringResource(R.string.library_empty_local_title, selectedTypeLabel)
@@ -504,7 +472,6 @@ fun LibraryScreen(
                     val subtitle = when {
                         uiState.sourceMode == LibrarySourceMode.TRAKT && !uiState.isTrackingAuthenticated -> stringResource(R.string.library_empty_trakt_not_auth_subtitle)
                         uiState.sourceMode == LibrarySourceMode.SIMKL && !uiState.isTrackingAuthenticated -> stringResource(R.string.library_empty_simkl_not_auth_subtitle)
-                        uiState.sourceMode == LibrarySourceMode.MDBLIST && !uiState.isTrackingAuthenticated -> stringResource(R.string.library_empty_mdblist_not_auth_subtitle)
                         uiState.sourceMode == LibrarySourceMode.TRAKT || uiState.sourceMode == LibrarySourceMode.MDBLIST -> stringResource(R.string.library_empty_trakt_subtitle)
                         uiState.sourceMode == LibrarySourceMode.SIMKL -> stringResource(R.string.library_empty_simkl_subtitle)
                         else -> stringResource(R.string.library_empty_local_subtitle)
@@ -530,8 +497,6 @@ fun LibraryScreen(
                     focusRequester = posterFocusRequesters[focusKey],
                     showLabel = true,
                     onFocused = {
-                        HeroBackdropState.selectPageArtwork(focusKey,
-                            viewModel.getCachedBackdrop(item.id, item.type) ?: previewForLongPress.backdropUrl)
                         lastFocusedPosterKey = focusKey
                         viewModel.prefetchMetaOnFocus(item.id, item.type)
                     },
@@ -654,8 +619,6 @@ fun LibraryScreen(
 
         item(span = { GridItemSpan(maxLineSpan) }) { Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm)) }
     }
-
-    } // Browse atmosphere and grid
 
     if (uiState.showManageDialog && uiState.listManagement != null) {
         ManageListsDialog(
@@ -784,19 +747,14 @@ private fun LibraryViewModeRow(
                 val selected = mode == selectedMode
                 Button(
                     onClick = { onSelected(mode) },
-                    shape = ButtonDefaults.shape(if (LocalV2Appearance.current != null) RoundedCornerShape(12.dp) else RoundedCornerShape(50)),
-                    scale = ButtonDefaults.scale(focusedScale = if (LocalV2Appearance.current != null) 1f else 1.1f),
                     modifier = Modifier
-                        .nuvioControlSurface(RoundedCornerShape(12.dp))
                         .then(if (selected) Modifier.focusRequester(primaryFocusRequester) else Modifier)
                         .semantics {
                             role = Role.Tab
                             this.selected = selected
                         },
                     colors = ButtonDefaults.colors(
-                        containerColor = if (LocalV2Appearance.current != null) { if (selected) NuvioTheme.colors.Secondary.copy(alpha = .12f) else Color.Transparent } else if (selected) NuvioTheme.colors.FocusBackground else NuvioTheme.colors.BackgroundCard,
-                        focusedContainerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.FocusBackground,
-                        focusedContentColor = if (LocalV2Appearance.current != null) Color.White else NuvioTheme.colors.Primary,
+                        containerColor = if (selected) NuvioTheme.colors.FocusBackground else NuvioTheme.colors.BackgroundCard,
                         contentColor = NuvioTheme.colors.TextPrimary
                     )
                 ) {
@@ -912,18 +870,17 @@ private fun CloudLibrarySearchRow(
             onClick = { editing = true },
             modifier = Modifier
                 .weight(1f)
-                .focusRequester(fieldFocusRequester)
-                .nuvioControlSurface(RoundedCornerShape(NuvioTheme.radii.md)),
+                .focusRequester(fieldFocusRequester),
             colors = ClickableSurfaceDefaults.colors(
-                containerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.BackgroundCard,
-                focusedContainerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.BackgroundCard
+                containerColor = NuvioTheme.colors.BackgroundCard,
+                focusedContainerColor = NuvioTheme.colors.BackgroundCard
             ),
             border = ClickableSurfaceDefaults.border(
-                border = if (LocalV2Appearance.current != null) Border.None else Border(
+                border = Border(
                     border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
                     shape = RoundedCornerShape(NuvioTheme.radii.md)
                 ),
-                focusedBorder = if (LocalV2Appearance.current != null) Border.None else Border(
+                focusedBorder = Border(
                     border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
                     shape = RoundedCornerShape(NuvioTheme.radii.md)
                 )
@@ -992,15 +949,12 @@ private fun CloudLibrarySearchRow(
 
         if (query.isNotEmpty()) {
             Button(
-                modifier = Modifier.nuvioControlSurface(RoundedCornerShape(12.dp)),
                 onClick = {
                     onQueryChange("")
                     editing = false
                 },
                 colors = ButtonDefaults.colors(
-                    containerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.BackgroundCard,
-                    focusedContainerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.FocusBackground,
-                    focusedContentColor = if (LocalV2Appearance.current != null) Color.White else NuvioTheme.colors.Primary,
+                    containerColor = NuvioTheme.colors.BackgroundCard,
                     contentColor = NuvioTheme.colors.TextPrimary
                 )
             ) {
@@ -1039,17 +993,17 @@ private fun CloudLibraryCard(
     val fileLine = cloudLibraryFileLine(item)
     Card(
         onClick = { if (!isResolving) onClick() },
-        modifier = Modifier.fillMaxWidth().nuvioControlSurface(RoundedCornerShape(10.dp)),
+        modifier = Modifier.fillMaxWidth(),
         shape = CardDefaults.shape(RoundedCornerShape(10.dp)),
         colors = CardDefaults.colors(
-            containerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.BackgroundCard,
-            focusedContainerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.FocusBackground
+            containerColor = NuvioTheme.colors.BackgroundCard,
+            focusedContainerColor = NuvioTheme.colors.FocusBackground
         ),
         border = CardDefaults.border(
-            border = if (LocalV2Appearance.current != null) Border.None else Border(border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border), shape = RoundedCornerShape(10.dp)),
-            focusedBorder = if (LocalV2Appearance.current != null) Border.None else Border(border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs), shape = RoundedCornerShape(10.dp))
+            border = Border(border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border), shape = RoundedCornerShape(10.dp)),
+            focusedBorder = Border(border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs), shape = RoundedCornerShape(10.dp))
         ),
-        scale = CardDefaults.scale(focusedScale = if (LocalV2Appearance.current != null) 1f else 1.02f)
+        scale = CardDefaults.scale(focusedScale = 1.02f)
     ) {
         Column(
             modifier = Modifier
@@ -1153,16 +1107,46 @@ private fun CloudFilePickerDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 420.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
         ) {
             items(item.playableFiles, key = { it.stableKey }) { file ->
                 val resolving = resolvingFileKey == "${item.stableKey}:${file.stableKey}"
-                PlayerPanelRow(
-                    title = file.name,
-                    selected = false,
+                Card(
                     onClick = { if (!resolving) onPlay(file) },
-                    subtitle = formatCloudSize(file.sizeBytes)
-                )
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.colors(
+                        containerColor = NuvioTheme.colors.BackgroundCard,
+                        focusedContainerColor = NuvioTheme.colors.FocusBackground
+                    ),
+                    shape = CardDefaults.shape(RoundedCornerShape(10.dp)),
+                    scale = CardDefaults.scale(focusedScale = 1f)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
+                    ) {
+                        Text(
+                            text = file.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = NuvioTheme.colors.TextPrimary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        formatCloudSize(file.sizeBytes)?.let { size ->
+                            Text(
+                                text = size,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NuvioTheme.colors.TextSecondary
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.cloud_library_play_file),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = NuvioTheme.colors.Primary
+                        )
+                    }
+                }
             }
         }
     }
@@ -1388,15 +1372,14 @@ private fun LibraryDropdownPicker(
                         Modifier
                     }
                 )
-                .nuvioControlSurface(RoundedCornerShape(14.dp))
                 .onSizeChanged { anchorSize = it }
                 .onFocusChanged { isFocused = it.isFocused },
             shape = CardDefaults.shape(shape = RoundedCornerShape(14.dp)),
             colors = CardDefaults.colors(
-                containerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.BackgroundCard,
-                focusedContainerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.FocusBackground
+                containerColor = NuvioTheme.colors.BackgroundCard,
+                focusedContainerColor = NuvioTheme.colors.FocusBackground
             ),
-            border = if (LocalV2Appearance.current != null) CardDefaults.border(border = androidx.tv.material3.Border.None, focusedBorder = androidx.tv.material3.Border.None) else CardDefaults.border(
+            border = CardDefaults.border(
                 border = androidx.tv.material3.Border(
                     border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
                     shape = RoundedCornerShape(14.dp)
@@ -1451,10 +1434,9 @@ private fun LibraryDropdownPicker(
             },
             modifier = Modifier
                 .width(with(LocalDensity.current) { anchorSize.width.toDp() })
-                .heightIn(max = 320.dp)
-                .then(if (LocalV2Appearance.current != null) Modifier.nuvioGlass(GlassRole.PANEL, shape = RoundedCornerShape(14.dp)) else Modifier),
+                .heightIn(max = 320.dp),
             shape = RoundedCornerShape(14.dp),
-            containerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.BackgroundCard,
+            containerColor = NuvioTheme.colors.BackgroundCard,
             tonalElevation = NuvioTheme.spacing.none,
             shadowElevation = NuvioTheme.spacing.sm,
             border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border)
@@ -1463,12 +1445,12 @@ private fun LibraryDropdownPicker(
                 val isSelected = option.value == selectedValue
                 val isOptionFocused = option.value == focusedOptionValue
                 val itemTextColor = when {
-                    isOptionFocused && LocalV2Appearance.current == null -> NuvioTheme.colors.OnSecondary
+                    isOptionFocused -> NuvioTheme.colors.OnSecondary
                     isSelected -> NuvioTheme.colors.TextPrimary
                     else -> NuvioTheme.colors.TextPrimary
                 }
                 val itemBackgroundColor = when {
-                    isOptionFocused -> NuvioTheme.colors.Secondary.copy(alpha = if (LocalV2Appearance.current != null) .20f else 1f)
+                    isOptionFocused -> NuvioTheme.colors.Secondary
                     isSelected -> NuvioTheme.colors.FocusBackground
                     else -> Color.Transparent
                 }
@@ -1485,7 +1467,6 @@ private fun LibraryDropdownPicker(
                             }
                         )
                         .padding(horizontal = 6.dp, vertical = NuvioTheme.spacing.xxs)
-                        .nuvioV2Focus(isOptionFocused, RoundedCornerShape(10.dp), stationary = true)
                         .background(
                             color = itemBackgroundColor,
                             shape = RoundedCornerShape(10.dp)
@@ -1544,12 +1525,9 @@ private fun LibraryActionsRow(
         if (showManageLists) {
             Button(
                 onClick = onManageLists,
-                modifier = Modifier.nuvioControlSurface(RoundedCornerShape(12.dp)),
                 enabled = !pending && !isSyncing,
                 colors = ButtonDefaults.colors(
-                    containerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.BackgroundCard,
-                    focusedContainerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.FocusBackground,
-                    focusedContentColor = if (LocalV2Appearance.current != null) Color.White else NuvioTheme.colors.Primary,
+                    containerColor = NuvioTheme.colors.BackgroundCard,
                     contentColor = NuvioTheme.colors.TextPrimary
                 )
             ) {
@@ -1558,12 +1536,9 @@ private fun LibraryActionsRow(
         }
         Button(
             onClick = onRefresh,
-                modifier = Modifier.nuvioControlSurface(RoundedCornerShape(12.dp)),
             enabled = !pending && !isSyncing,
             colors = ButtonDefaults.colors(
-                containerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.BackgroundCard,
-                    focusedContainerColor = if (LocalV2Appearance.current != null) Color.Transparent else NuvioTheme.colors.FocusBackground,
-                    focusedContentColor = if (LocalV2Appearance.current != null) Color.White else NuvioTheme.colors.Primary,
+                containerColor = NuvioTheme.colors.BackgroundCard,
                 contentColor = NuvioTheme.colors.TextPrimary
             )
         ) {
@@ -1585,10 +1560,16 @@ private fun ConfirmDeleteDialog(
         subtitle = stringResource(R.string.library_delete_subtitle),
         width = 420.dp
     ) {
-        PanelActionRow(
-            label = stringResource(R.string.library_list_delete),
+        Button(
             onClick = onConfirm,
-            enabled = !pending
-        )
+            enabled = !pending,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.colors(
+                containerColor = Color(0xFF4A2323),
+                contentColor = NuvioTheme.colors.TextPrimary
+            )
+        ) {
+            Text(stringResource(R.string.library_list_delete))
+        }
     }
 }

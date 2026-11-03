@@ -4,7 +4,6 @@ import android.os.SystemClock
 import android.util.Log
 import com.nuvio.tv.core.auth.AuthManager
 import com.nuvio.tv.core.profile.ProfileManager
-import com.nuvio.tv.data.local.ProfileDataStore
 import com.nuvio.tv.data.remote.supabase.SupabaseProfileLockState
 import com.nuvio.tv.data.remote.supabase.SupabaseProfile
 import com.nuvio.tv.data.remote.supabase.SupabaseProfilePinVerifyResult
@@ -12,9 +11,6 @@ import com.nuvio.tv.domain.model.UserProfile
 import com.nuvio.tv.domain.model.AuthState
 import io.github.jan.supabase.postgrest.Postgrest
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -27,8 +23,6 @@ import javax.inject.Singleton
 
 private const val TAG = "ProfileSyncService"
 private const val PROFILE_PULL_MIN_INTERVAL_MS = 10_000L
-
-private class ProfilePullOwnerRetiredException : IllegalStateException("Profile sync owner changed")
 
 internal data class ProfilePullFreshness(
     val userId: String? = null,
@@ -52,7 +46,6 @@ sealed class SetProfilePinResult {
 class ProfileSyncService @Inject constructor(
     private val authManager: AuthManager,
     private val postgrest: Postgrest,
-    private val profileDataStore: ProfileDataStore,
     private val profileManager: ProfileManager,
     private val syncClientIdentity: SyncClientIdentity
 ) {
@@ -107,22 +100,14 @@ class ProfileSyncService @Inject constructor(
     suspend fun pullFromRemote(force: Boolean = false): Result<List<UserProfile>> = withContext(Dispatchers.IO) {
         pullMutex.withLock {
             val userId = (authManager.authState.value as? AuthState.FullAccount)?.userId
-                ?: return@withLock Result.failure(ProfilePullOwnerRetiredException())
-            val ownerJob = currentCoroutineContext()[Job]
-            fun isCurrentOwner(): Boolean = ownerJob?.isActive != false &&
-                (authManager.authState.value as? AuthState.FullAccount)?.userId == userId
-            if (!isCurrentOwner()) return@withLock Result.failure(ProfilePullOwnerRetiredException())
             val now = SystemClock.elapsedRealtime()
-            if (!force && pullFreshness.isRecent(userId, now)) {
-                return@withLock if (isCurrentOwner()) Result.success(lastPulledProfiles)
-                else Result.failure(ProfilePullOwnerRetiredException())
+            if (!force && userId != null && pullFreshness.isRecent(userId, now)) {
+                return@withLock Result.success(lastPulledProfiles)
             }
             try {
                 val response = withJwtRefreshRetry {
-                    if (!isCurrentOwner()) throw ProfilePullOwnerRetiredException()
                     postgrest.rpc("sync_pull_profiles")
                 }
-                if (!isCurrentOwner()) return@withLock Result.failure(ProfilePullOwnerRetiredException())
                 val remote = response.decodeList<SupabaseProfile>()
 
                 Log.d(TAG, "pullFromRemote: fetched ${remote.size} profiles from Supabase")
@@ -142,19 +127,12 @@ class ProfileSyncService @Inject constructor(
                 }
 
                 if (profiles.isNotEmpty()) {
-                    // Recheck inside the actual queued DataStore edit, rather
-                    // than only before its asynchronous mutation admission.
-                    val previousIds = profileDataStore.profilesList.first().map { it.id }.toSet()
-                    if (!profileDataStore.replaceAllProfilesIfCurrent(profiles, ::isCurrentOwner)) {
-                        return@withLock Result.failure(ProfilePullOwnerRetiredException())
-                    }
-                    profileManager.onProfilesReplaced(previousIds, profiles)
+                    profileManager.replaceAllProfiles(profiles)
                     Log.d(TAG, "Merged ${profiles.size} remote profiles into local store")
                 }
 
-                if (!isCurrentOwner()) return@withLock Result.failure(ProfilePullOwnerRetiredException())
                 val currentUserId = (authManager.authState.value as? AuthState.FullAccount)?.userId
-                if (currentUserId == userId) {
+                if (userId != null && currentUserId == userId) {
                     lastPulledProfiles = profiles
                     pullFreshness = ProfilePullFreshness(
                         userId = userId,
@@ -163,8 +141,7 @@ class ProfileSyncService @Inject constructor(
                 }
                 Result.success(profiles)
             } catch (e: Exception) {
-                if (e is ProfilePullOwnerRetiredException) Log.d(TAG, "Retired profile pull owner")
-                else Log.e(TAG, "Failed to pull profiles from remote", e)
+                Log.e(TAG, "Failed to pull profiles from remote", e)
                 Result.failure(e)
             }
         }

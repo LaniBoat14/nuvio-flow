@@ -30,8 +30,6 @@ data class Stream(
     val badges: List<StreamBadge> = emptyList(),
     val subtitles: List<Subtitle> = emptyList(),
     val serverTarget: ServerPlaybackTarget? = null,
-    /** The file's length when the source states it (a media server's version), else null. */
-    val durationMs: Long? = null,
     val pluginSourceName: String? = null
 ) {
     /**
@@ -302,9 +300,7 @@ data class ProxyHeaders(
 data class AddonStreams(
     val addonName: String,
     val addonLogo: String?,
-    val streams: List<Stream>,
-    /** App debrid streams the resolution rules keep out of [streams]: thumbnail copies only. */
-    val thumbnailCopyStreams: List<Stream> = emptyList()
+    val streams: List<Stream>
 )
 
 private fun String?.isMagnetLink(): Boolean =

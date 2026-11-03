@@ -1,7 +1,6 @@
 package com.nuvio.tv.ui.screens.player
 
 import android.util.Log
-import com.nuvio.tv.core.logging.redactLinksForLog
 import androidx.media3.common.C
 import com.nuvio.tv.R
 import com.nuvio.tv.data.local.InternalPlayerEngine
@@ -18,22 +17,18 @@ internal fun PlayerRuntimeController.maybeAutoSwitchInternalPlayerOnStartupError
     if (startupEngineFailoverTriggered) return false
     if (!isStartupPhaseForEngineFailover()) return false
 
-    // Automatic engine failover is one-directional. Only
-    // an active MPV session (manual switch, or the MPV/AUTO engine settings)
-    // may fail back to ExoPlayer. ExoPlayer startup failures are handled by
-    // the retry ladders and next-source failover instead of silently dropping
-    // into MPV, which loses this fork's passthrough/DV pipeline behaviour.
-    val mpvActive = currentInternalPlayerEngine == InternalPlayerEngine.MVP_PLAYER ||
-        (currentInternalPlayerEngine == InternalPlayerEngine.AUTO && mpvView != null)
-    if (!mpvActive) return false
-    val targetEngine = InternalPlayerEngine.EXOPLAYER
+    val targetEngine = when (currentInternalPlayerEngine) {
+        InternalPlayerEngine.EXOPLAYER -> InternalPlayerEngine.MVP_PLAYER
+        InternalPlayerEngine.MVP_PLAYER -> InternalPlayerEngine.EXOPLAYER
+        InternalPlayerEngine.AUTO -> if (mpvView != null) InternalPlayerEngine.EXOPLAYER else InternalPlayerEngine.MVP_PLAYER
+    }
     beginSwitchTraceSession(reason = "startup-failover", targetEngine = targetEngine)
     logSwitchTrace(
         stage = "startup-failover-trigger",
         message = "allowEngineFailover=$allowEngineFailover detailedError=${detailedError.take(220)}"
     )
     rememberCurrentTrackPreferenceForEngineSwitch()
-    Log.w(PlayerRuntimeController.TAG, "Startup playback error; auto-switching engine: ${detailedError.redactLinksForLog()}")
+    Log.w(PlayerRuntimeController.TAG, "Startup playback error; auto-switching engine: $detailedError")
     startupEngineFailoverTriggered = true
 
     val targetEngineLabel = targetEngineLabel(targetEngine)

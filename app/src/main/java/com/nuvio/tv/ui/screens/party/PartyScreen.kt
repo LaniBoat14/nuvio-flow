@@ -1,686 +1,560 @@
 package com.nuvio.tv.ui.screens.party
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Dialpad
-import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Border
-import androidx.tv.material3.Button
-import androidx.tv.material3.ButtonDefaults
-import androidx.tv.material3.ClickableSurfaceDefaults
-import androidx.tv.material3.Icon
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.nuvio.tv.R
-import com.nuvio.tv.core.party.PartyCode
-import com.nuvio.tv.core.party.PartyHoldReason
-import com.nuvio.tv.core.party.PartyMemberStatus
-import com.nuvio.tv.core.party.PartyMemberView
-import com.nuvio.tv.core.party.PartyRole
-import com.nuvio.tv.core.party.PartyRuntime
-import com.nuvio.tv.core.party.PartyState
-import com.nuvio.tv.domain.model.SettingsPresentation
-import com.nuvio.tv.ui.screens.player.DialogButton
-import com.nuvio.tv.ui.screens.settings.SettingsPageAtmosphere
+import com.nuvio.tv.core.party.ActiveParty
+import com.nuvio.tv.core.party.PARTY_CODE_LENGTH
+import com.nuvio.tv.core.party.PartyError
+import com.nuvio.tv.core.party.PartyMedia
+import com.nuvio.tv.core.party.PartyPreview
+import com.nuvio.tv.core.party.PartyRepository
+import com.nuvio.tv.core.party.isValidPartyCode
+import com.nuvio.tv.core.party.normalizePartyCode
+import com.nuvio.tv.core.party.partyErrorOf
+import com.nuvio.tv.ui.screens.detail.requestFocusAfterFrames
+import com.nuvio.tv.ui.screens.settings.SettingsActionRow
+import com.nuvio.tv.ui.screens.settings.SettingsDetailHeader
+import com.nuvio.tv.ui.screens.settings.SettingsGroupCard
+import com.nuvio.tv.ui.screens.settings.SettingsStandaloneScaffold
+import com.nuvio.tv.ui.screens.settings.SettingsVerticalScrollIndicators
+import com.nuvio.tv.ui.screens.settings.settingsHeaderInset
+import com.nuvio.tv.ui.screens.stream.StreamBackdrop
+import com.nuvio.tv.ui.theme.NuvioMotion
 import com.nuvio.tv.ui.theme.NuvioTheme
-import com.nuvio.tv.ui.v2.appearance.LocalV2Appearance
-import com.nuvio.tv.ui.v2.components.GlassRole
-import com.nuvio.tv.ui.v2.components.nuvioControlSurface
-import com.nuvio.tv.ui.v2.components.nuvioGlass
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
-/** Settings > Watch party: start or join a party, or follow the one this device is in. */
+private enum class PartyScreenMode {
+    Join,
+    Joined,
+    Party,
+}
+
 @Composable
-fun PartyScreen(onBackPress: () -> Unit) {
+fun PartyScreen(
+    initialCode: String,
+    onBackPress: () -> Unit,
+    onWatch: (PartyMedia) -> Unit,
+    viewModel: PartyViewModel = hiltViewModel(),
+) {
+    val repository = viewModel.party
+    val state by repository.state.collectAsStateWithLifecycle()
+    val party = state.party
+    var joined by remember { mutableStateOf<ActiveParty?>(null) }
+    var pendingCode by remember {
+        mutableStateOf(initialCode.takeIf { isValidPartyCode(it) && normalizePartyCode(it) != party?.code }.orEmpty())
+    }
+    var joining by remember { mutableStateOf(party == null || pendingCode.isNotEmpty()) }
+    val mode = when {
+        joined != null -> PartyScreenMode.Joined
+        party != null && !joining -> PartyScreenMode.Party
+        else -> PartyScreenMode.Join
+    }
+    val shown = joined ?: party
+    var previewMedia by remember { mutableStateOf<PartyMedia?>(null) }
+    val backdropMedia = if (mode == PartyScreenMode.Join) previewMedia else shown?.media
+
     BackHandler { onBackPress() }
 
-    val runtime = rememberPartyRuntime()
-    val state by runtime.state.collectAsState()
-    val firstFocus = remember { FocusRequester() }
-    var showLook by remember { mutableStateOf(false) }
-    var lookChanges by remember { mutableIntStateOf(0) }
-    val activeProfile by runtime.activeProfileId.collectAsState()
-    LaunchedEffect(activeProfile) { showLook = false }
-    var showAll by remember { mutableStateOf(false) }
-
-    LaunchedEffect(state.isActive, state.role, showAll) {
-        if (showAll) return@LaunchedEffect
-        delay(150)
-        runCatching { firstFocus.requestFocus() }
+    LaunchedEffect(joined) {
+        val current = joined ?: return@LaunchedEffect
+        delay(1600)
+        onWatch(current.media)
+        joined = null
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        SettingsPageAtmosphere()
-        if (showAll) {
-            Column(
+        Crossfade(
+            targetState = backdropMedia?.let { it.background ?: it.poster },
+            animationSpec = tween(NuvioMotion.tokens.durations.hero),
+            label = "partyBackdrop",
+        ) { image ->
+            if (image != null) StreamBackdrop(backdrop = image, isLoading = false)
+        }
+        SettingsStandaloneScaffold(
+            title = stringResource(R.string.party_title),
+            subtitle = stringResource(R.string.party_settings_description),
+            classicContainer = false,
+        ) {
+            SettingsDetailHeader(
+                title = stringResource(R.string.party_title),
+                subtitle = shown
+                    ?.takeIf { mode != PartyScreenMode.Join }
+                    ?.member(shown.hostMemberId)
+                    ?.displayName
+                    ?.let { stringResource(R.string.party_hosted_by, it) }
+                    ?: stringResource(R.string.party_settings_description),
+            )
+            AnimatedContent(
+                targetState = mode,
+                transitionSpec = {
+                    (fadeIn(tween(260, delayMillis = 60)) + scaleIn(tween(320), initialScale = 0.96f)) togetherWith fadeOut(tween(140))
+                },
+                label = "partyScreenMode",
                 modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 36.dp, vertical = 28.dp),
-            ) {
-                PartyAllFriends(
-                    state = state,
-                    runtime = runtime,
-                    onBack = { showAll = false },
-                    card = { modifier, content -> PartyCard(modifier = modifier) { content() } },
-                )
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(start = settingsHeaderInset()),
+            ) { target ->
+                when (target) {
+                    PartyScreenMode.Join -> JoinContent(
+                        repository = repository,
+                        initialCode = pendingCode,
+                        onPreview = { previewMedia = it },
+                        onJoined = { newParty ->
+                            pendingCode = ""
+                            joining = false
+                            joined = newParty
+                        },
+                    )
+                    PartyScreenMode.Joined -> shown?.let { JoinedContent(it) }
+                    PartyScreenMode.Party -> party?.let { PartyContent(repository, it, onWatch) }
+                }
             }
-        } else {
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        .heightIn(min = maxHeight)
-                        .padding(horizontal = 40.dp, vertical = 28.dp),
-                    horizontalArrangement = Arrangement.spacedBy(36.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
-                    ) {
-                        if (state.isActive) {
-                            PartyRoomStage(
-                                state = state,
-                                runtime = runtime,
-                                firstFocus = firstFocus,
-                                lookChanges = lookChanges,
-                                onLook = { showLook = true },
-                            )
-                        } else {
-                            PartyStartStage(
-                                state = state,
-                                runtime = runtime,
-                                firstFocus = firstFocus,
-                                lookChanges = lookChanges,
-                                onLook = { showLook = true },
-                            )
-                        }
-                    }
-                    PartyCard(modifier = Modifier.width(if (state.isActive) 340.dp else 300.dp)) {
-                        if (state.isActive) PartyMembers(state = state, runtime = runtime)
-                        PartyFriendsSection(
-                            state = state,
-                            runtime = runtime,
-                            onShowAll = { showAll = true },
-                            limit = if (state.isActive) 2 else 4,
+        }
+    }
+}
+
+@Composable
+private fun JoinContent(
+    repository: PartyRepository,
+    initialCode: String,
+    onPreview: (PartyMedia?) -> Unit,
+    onJoined: (ActiveParty) -> Unit,
+) {
+    val state by repository.state.collectAsStateWithLifecycle()
+    val available by repository.available.collectAsStateWithLifecycle()
+    val canUse by repository.canUse.collectAsStateWithLifecycle()
+    val profile by repository.profile.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    val firstKeyFocusRequester = remember { FocusRequester() }
+    val submitFocusRequester = remember { FocusRequester() }
+    val shake = remember { Animatable(0f) }
+    val prefilled = remember { isValidPartyCode(initialCode) }
+    var code by remember {
+        mutableStateOf(if (prefilled) "" else normalizePartyCode(initialCode).take(PARTY_CODE_LENGTH))
+    }
+    var error by remember { mutableStateOf<PartyError?>(null) }
+    var preview by remember { mutableStateOf<PartyPreview?>(null) }
+    var previewing by remember { mutableStateOf(false) }
+    var previewJob by remember { mutableStateOf<Job?>(null) }
+    val blockedError = when {
+        !available -> PartyError.Unavailable
+        !canUse -> PartyError.SignInRequired
+        else -> null
+    }
+    val shownError = blockedError ?: error
+
+    suspend fun reject(result: PartyError) {
+        error = result
+        shake.animateTo(
+            targetValue = 0f,
+            animationSpec = keyframes {
+                durationMillis = 420
+                -14f at 60
+                12f at 120
+                -8f at 180
+                6f at 240
+                -3f at 300
+            },
+        )
+    }
+
+    fun submit() {
+        if (!isValidPartyCode(code) || state.busy || blockedError != null) return
+        scope.launch {
+            error = null
+            val result = repository.join(code)
+            val joinedParty = repository.state.value.party
+            if (result == null && joinedParty != null) {
+                onJoined(joinedParty)
+            } else {
+                reject(result ?: PartyError.Network)
+            }
+        }
+    }
+
+    fun lookUp(target: String) {
+        previewJob?.cancel()
+        previewing = true
+        previewJob = scope.launch {
+            val result = repository.preview(target)
+            previewing = false
+            val failure = partyErrorOf(result.error)
+            when {
+                failure == null && result.media != null -> {
+                    preview = result
+                    if (result.isFull) error = PartyError.Full
+                    submitFocusRequester.requestFocusAfterFrames()
+                }
+                failure != null && failure != PartyError.Network -> reject(failure)
+            }
+        }
+    }
+
+    fun changeCode(value: String) {
+        if (state.busy || value == code) return
+        code = value
+        error = null
+        preview = null
+        previewJob?.cancel()
+        previewing = false
+        if (isValidPartyCode(value)) lookUp(value)
+    }
+
+    LaunchedEffect(Unit) {
+        if (blockedError != null) return@LaunchedEffect
+        if (prefilled) {
+            val target = normalizePartyCode(initialCode).take(PARTY_CODE_LENGTH)
+            delay(250)
+            target.indices.forEach { index ->
+                delay(60)
+                code = target.take(index + 1)
+            }
+            lookUp(target)
+        }
+        firstKeyFocusRequester.requestFocusAfterFrames()
+    }
+
+    LaunchedEffect(preview) { onPreview(preview?.media) }
+
+    Row(
+        modifier = Modifier.fillMaxSize(),
+        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xxxl),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .widthIn(max = 460.dp),
+            verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
+        ) {
+            AnimatedContent(
+                targetState = preview,
+                contentKey = { it != null },
+                transitionSpec = {
+                    (fadeIn(tween(240, delayMillis = 60)) + slideInVertically(tween(300)) { it / 10 }) togetherWith fadeOut(tween(140))
+                },
+                label = "partyJoinPreview",
+            ) { current ->
+                if (current != null) {
+                    PreviewCard(current)
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)) {
+                        SeatsHero(
+                            profile = profile,
+                            size = 64.dp,
+                            ringColor = NuvioTheme.colors.Background,
+                            modifier = Modifier.padding(bottom = NuvioTheme.spacing.xs),
+                        )
+                        Text(
+                            text = stringResource(R.string.party_join_title),
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = NuvioTheme.colors.TextPrimary,
+                        )
+                        Text(
+                            text = stringResource(R.string.party_join_description),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = NuvioTheme.colors.TextSecondary,
                         )
                     }
                 }
             }
+            CodeSlots(
+                code = code,
+                activeIndex = if (blockedError == null && !state.busy) code.length.coerceAtMost(PARTY_CODE_LENGTH - 1) else null,
+                textStyle = MaterialTheme.typography.headlineLarge,
+                slotHeight = 64.dp,
+                modifier = Modifier
+                    .padding(top = NuvioTheme.spacing.xs)
+                    .graphicsLayer { translationX = shake.value.dp.toPx() },
+            )
+            AnimatedContent(
+                targetState = shownError,
+                transitionSpec = {
+                    (fadeIn(tween(180)) + slideInVertically(tween(220)) { -it / 2 }) togetherWith fadeOut(tween(120))
+                },
+                label = "partyJoinError",
+            ) { current ->
+                Text(
+                    text = current?.let { stringResource(it.messageRes) }.orEmpty(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NuvioTheme.colors.Error,
+                    minLines = 1,
+                )
+            }
+            ExperimentalNote()
+            AnimatedVisibility(
+                visible = preview == null,
+                enter = fadeIn(tween(NuvioMotion.tokens.durations.fast)),
+                exit = fadeOut(tween(NuvioMotion.tokens.durations.quick)),
+            ) {
+                Text(
+                    text = stringResource(R.string.party_host_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NuvioTheme.colors.TextTertiary,
+                )
+            }
+        }
+        CodeKeypad(
+            enabled = blockedError == null,
+            canSubmit = isValidPartyCode(code) &&
+                error !in setOf(PartyError.NotFound, PartyError.Removed, PartyError.RateLimited),
+            busy = state.busy || previewing,
+            onKey = { character -> if (code.length < PARTY_CODE_LENGTH) changeCode(code + character) },
+            onDelete = { changeCode(code.dropLast(1)) },
+            onSubmit = ::submit,
+            firstKeyFocusRequester = firstKeyFocusRequester,
+            submitFocusRequester = submitFocusRequester,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun PreviewCard(preview: PartyPreview) {
+    val media = preview.media ?: return
+    val host = preview.host
+    Column(verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)) {
+        MediaHeader(media)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
+        ) {
+            if (host != null) {
+                PartyAvatar(member = host, size = NuvioTheme.sizes.avatars.sm)
+                Text(
+                    text = stringResource(R.string.party_hosted_by, host.displayName),
+                    modifier = Modifier.weight(1f, fill = false),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NuvioTheme.colors.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                text = stringResource(R.string.party_seats, preview.members, preview.maxMembers),
+                style = MaterialTheme.typography.bodySmall,
+                color = NuvioTheme.colors.TextTertiary,
+            )
         }
     }
-
-    if (showLook) {
-        PartyLookDialog(runtime = runtime, onDone = {
-            showLook = false
-            lookChanges++
-        })
-    }
 }
 
 @Composable
-private fun pageSubtitle(state: PartyState): String {
-    if (!state.isActive) return stringResource(R.string.party_settings_subtitle)
-    val count = state.members.size
-    return if (state.role == PartyRole.HOST) {
-        stringResource(R.string.party_page_hosting, count)
-    } else {
-        val host = state.members.firstOrNull { it.isHost && !it.isSelf }?.name
-        if (host.isNullOrBlank()) stringResource(R.string.party_page_guest_unknown, count)
-        else stringResource(R.string.party_page_guest, host, count)
-    }
-}
-
-/** A small line in the accent colour above a headline. */
-@Composable
-private fun Overline(text: String) {
-    Text(
-        text = text.uppercase(),
-        style = MaterialTheme.typography.labelMedium,
-        fontWeight = FontWeight.SemiBold,
-        letterSpacing = 2.sp,
-        color = NuvioTheme.colors.Secondary,
-    )
-}
-
-/** Not in a party: a headline on the page's background, two large buttons and your look as a chip. */
-@Composable
-private fun PartyStartStage(
-    state: PartyState,
-    runtime: PartyRuntime,
-    firstFocus: FocusRequester,
-    lookChanges: Int,
-    onLook: () -> Unit,
-) {
-    var joining by remember { mutableStateOf(false) }
-    var code by remember { mutableStateOf("") }
-    var invalid by remember { mutableStateOf(false) }
-
-    fun leaveCode() {
-        joining = false
-        code = ""
-        invalid = false
-    }
-
-    fun join() {
-        if (runtime.session.joinParty(code)) leaveCode() else invalid = true
-    }
-
-    BackHandler(enabled = joining) { leaveCode() }
-    LaunchedEffect(joining) {
-        if (!joining) {
-            delay(100)
-            runCatching { firstFocus.requestFocus() }
+private fun MediaHeader(media: PartyMedia) {
+    Column(verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)) {
+        MediaTitle(media)
+        media.description?.takeIf { it.isNotBlank() }?.let { description ->
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = NuvioTheme.colors.TextSecondary,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
+}
 
-    Overline(stringResource(R.string.party_title))
-    if (state.endedByHost) {
+@Composable
+private fun MediaTitle(media: PartyMedia, centered: Boolean = false) {
+    var logoFailed by remember(media.logo) { mutableStateOf(false) }
+    val logo = media.logo?.takeIf { it.isNotBlank() && !logoFailed }
+    val textAlign = if (centered) TextAlign.Center else TextAlign.Start
+    Column(
+        horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
+    ) {
+        if (logo != null) {
+            AsyncImage(
+                model = logo,
+                contentDescription = media.title,
+                contentScale = ContentScale.Fit,
+                alignment = if (centered) Alignment.Center else Alignment.CenterStart,
+                onError = { logoFailed = true },
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .height(100.dp),
+            )
+        } else if (media.title.isNotBlank()) {
+            Text(
+                text = media.title,
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = NuvioTheme.colors.TextPrimary,
+                textAlign = textAlign,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        media.episodeLabel()?.let { label ->
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium,
+                color = NuvioTheme.colors.TextPrimary,
+                textAlign = textAlign,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun JoinedContent(party: ActiveParty) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md, Alignment.CenterVertically),
+    ) {
+        AvatarStack(
+            members = party.members,
+            size = NuvioTheme.sizes.avatars.lg,
+            animateIn = true,
+            modifier = Modifier.padding(bottom = NuvioTheme.spacing.sm),
+        )
         Text(
-            text = stringResource(R.string.party_ended_by_host),
-            style = MaterialTheme.typography.bodyMedium,
+            text = stringResource(R.string.party_joined_title),
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.SemiBold,
             color = NuvioTheme.colors.TextPrimary,
         )
-    }
-    Text(
-        text = stringResource(R.string.party_stage_headline),
-        style = MaterialTheme.typography.displaySmall,
-        fontWeight = FontWeight.Bold,
-        color = NuvioTheme.colors.TextPrimary,
-    )
-    Text(
-        text = stringResource(R.string.party_stage_lead),
-        style = MaterialTheme.typography.bodyLarge,
-        color = NuvioTheme.colors.TextSecondary,
-        modifier = Modifier.widthIn(max = 480.dp),
-    )
-    if (joining) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            PartyCodeField(
-                value = code,
-                onValueChange = { typed ->
-                    code = typed.uppercase().filter(PartyCode::isAllowedChar).take(PartyCode.LENGTH)
-                    invalid = false
-                    runtime.session.acknowledgeEnded()
-                },
-                onDone = { if (code.length == PartyCode.LENGTH) join() },
-                autoEdit = true,
-            )
-            DialogButton(
-                text = stringResource(R.string.party_join),
-                onClick = ::join,
-                isPrimary = true,
-                enabled = code.length == PartyCode.LENGTH,
-            )
-            DialogButton(text = stringResource(R.string.action_cancel), onClick = ::leaveCode, isPrimary = false)
-        }
-        if (invalid) {
-            Text(
-                text = stringResource(R.string.party_code_invalid),
-                style = MaterialTheme.typography.bodySmall,
-                color = NuvioTheme.colors.Error,
-            )
-        }
-    } else {
-        Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)) {
-            StageButton(
-                text = stringResource(R.string.party_start_title),
-                icon = Icons.Default.Groups,
-                isPrimary = true,
-                onClick = { runtime.session.createParty() },
-                modifier = Modifier.focusRequester(firstFocus),
-            )
-            StageButton(
-                text = stringResource(R.string.party_join_title),
-                icon = Icons.Default.Dialpad,
-                isPrimary = false,
-                onClick = { joining = true },
-            )
-        }
-    }
-    PartyLook(runtime = runtime, lookChanges = lookChanges, onLook = onLook)
-    StepsLine()
-}
-
-/** Your name and avatar in parties as a chip; it opens [PartyLookDialog]. */
-@Composable
-private fun PartyLook(runtime: PartyRuntime, lookChanges: Int, onLook: () -> Unit) {
-    val activeProfile by runtime.activeProfileId.collectAsState()
-    val catalogueLoads by runtime.avatarCatalogLoads.collectAsState()
-    val name = remember(activeProfile, lookChanges) { runtime.displayName.ifBlank { runtime.defaultName } }
-    val avatar = remember(activeProfile, catalogueLoads, lookChanges) { runtime.partyAvatarChoice ?: runtime.profileAvatar() }
-    PartyLookChip(name = name, avatar = avatar, colour = runtime.profileColour, onClick = onLook)
-}
-
-@Composable
-private fun StepsLine() {
-    val accent = NuvioTheme.colors.Secondary
-    val steps = listOf(R.string.party_step_short_one, R.string.party_step_short_two, R.string.party_step_short_three)
-        .map { stringResource(it) }
-    val line = buildAnnotatedString {
-        steps.forEachIndexed { index, step ->
-            if (index > 0) append("  ·  ")
-            withStyle(SpanStyle(color = accent, fontWeight = FontWeight.SemiBold)) { append("${index + 1}") }
-            append(" ")
-            append(step)
-        }
-    }
-    Text(
-        text = line,
-        style = MaterialTheme.typography.bodySmall,
-        color = NuvioTheme.colors.TextTertiary,
-        modifier = Modifier.padding(top = NuvioTheme.spacing.sm),
-    )
-}
-
-/** A larger version of the app's dialog button for the page's two main actions. */
-@Composable
-private fun StageButton(text: String, icon: ImageVector, isPrimary: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val v2 = LocalV2Appearance.current != null
-    val shape = RoundedCornerShape(NuvioTheme.radii.lg)
-    Button(
-        onClick = onClick,
-        modifier = modifier.nuvioControlSurface(shape),
-        colors = ButtonDefaults.colors(
-            containerColor = if (v2) Color.Transparent else if (isPrimary) NuvioTheme.colors.Secondary else NuvioTheme.colors.BackgroundCard,
-            contentColor = if (v2) Color.White else if (isPrimary) NuvioTheme.colors.OnSecondary else NuvioTheme.colors.TextSecondary,
-            focusedContainerColor = if (v2) Color.Transparent else if (isPrimary) NuvioTheme.colors.SecondaryVariant else NuvioTheme.colors.FocusBackground,
-            focusedContentColor = if (v2) Color.White else if (isPrimary) NuvioTheme.colors.OnSecondaryVariant else NuvioTheme.colors.Primary,
-        ),
-        border = if (v2) ButtonDefaults.border(border = Border.None, focusedBorder = Border.None) else ButtonDefaults.border(
-            focusedBorder = Border(
-                border = if (isPrimary) BorderStroke(NuvioTheme.spacing.xxs, NuvioTheme.colors.SecondaryVariant)
-                else NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                shape = shape,
-            ),
-        ),
-        shape = ButtonDefaults.shape(shape),
-        scale = ButtonDefaults.scale(focusedScale = 1f),
-        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 12.dp),
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm), verticalAlignment = Alignment.CenterVertically) {
-            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(20.dp))
-            Text(text = text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
-        }
+        MediaTitle(
+            media = party.media,
+            centered = true,
+        )
     }
 }
 
-/** The page's cards: glass under Nuvio V2 with the Glass presentation, a solid card otherwise. */
 @Composable
-private fun PartyCard(
-    modifier: Modifier = Modifier,
-    padding: Dp = NuvioTheme.spacing.lg,
-    content: @Composable ColumnScope.() -> Unit,
+private fun PartyContent(
+    repository: PartyRepository,
+    party: ActiveParty,
+    onWatch: (PartyMedia) -> Unit,
 ) {
-    val shape = RoundedCornerShape(NuvioTheme.radii.xl)
-    val glass = LocalV2Appearance.current?.settingsPresentation == SettingsPresentation.GLASS
-    Column(
-        modifier = modifier
-            .clip(shape)
-            .then(
-                if (glass) Modifier.nuvioGlass(GlassRole.PANEL, shape = shape)
-                else Modifier.background(NuvioTheme.colors.BackgroundCard.copy(alpha = 0.72f))
-            )
-            .padding(padding),
-        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
-        content = content,
-    )
-}
+    val listState = rememberLazyListState()
+    val watchFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { watchFocusRequester.requestFocusAfterFrames() }
 
-/** Six boxes for the code. Pressing OK opens the keyboard, like the app's other text fields. */
-@Composable
-private fun PartyCodeField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    onDone: () -> Unit,
-    modifier: Modifier = Modifier,
-    autoEdit: Boolean = false,
-) {
-    val fieldFocus = remember { FocusRequester() }
-    val keyboard = LocalSoftwareKeyboardController.current
-    var editing by remember { mutableStateOf(autoEdit) }
-
-    LaunchedEffect(editing) {
-        if (editing) {
-            fieldFocus.requestFocus()
-            keyboard?.show()
-        }
-    }
-
-    Surface(
-        onClick = { editing = true },
-        modifier = modifier,
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = androidx.compose.ui.graphics.Color.Transparent,
-            focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
-        ),
-        border = ClickableSurfaceDefaults.border(
-            focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                shape = RoundedCornerShape(NuvioTheme.radii.md),
-            ),
-        ),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+    Row(
+        modifier = Modifier.fillMaxSize(),
+        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xxl),
     ) {
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
+        Column(
             modifier = Modifier
-                .padding(NuvioTheme.spacing.xs)
-                .focusRequester(fieldFocus)
-                .onFocusChanged {
-                    if (!it.isFocused && editing) {
-                        editing = false
-                        keyboard?.hide()
+                .weight(0.42f)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xl),
+        ) {
+            MediaHeader(party.media)
+            CodeSection(
+                code = party.code,
+                connected = party.connected,
+                slotHeight = 52.dp,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .weight(0.58f)
+                .fillMaxHeight(),
+        ) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = NuvioTheme.spacing.md),
+                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
+            ) {
+                item(key = "party_actions") {
+                    SettingsGroupCard {
+                        SettingsActionRow(
+                            title = stringResource(R.string.party_watch_with_party),
+                            subtitle = null,
+                            onClick = { onWatch(party.media) },
+                            leadingIcon = Icons.Rounded.PlayArrow,
+                            modifier = Modifier.focusRequester(watchFocusRequester),
+                        )
+                        PartyActions(
+                            party = party,
+                            onLeave = repository::leave,
+                            onEnd = repository::end,
+                        )
                     }
-                },
-            singleLine = true,
-            cursorBrush = SolidColor(androidx.compose.ui.graphics.Color.Transparent),
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.Characters,
-                keyboardType = KeyboardType.Ascii,
-                imeAction = ImeAction.Done,
-            ),
-            keyboardActions = KeyboardActions(onDone = {
-                editing = false
-                keyboard?.hide()
-                onDone()
-            }),
-            decorationBox = { inner ->
-                Box {
-                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-                        repeat(PartyCode.LENGTH) { index ->
-                            if (index == PartyCode.LENGTH / 2) Spacer(Modifier.width(8.dp))
-                            val current = editing && index == value.length.coerceAtMost(PartyCode.LENGTH - 1)
-                            Box(
-                                modifier = Modifier
-                                    .width(38.dp)
-                                    .height(46.dp)
-                                    .clip(RoundedCornerShape(NuvioTheme.radii.sm))
-                                    .background(NuvioTheme.colors.BackgroundCard)
-                                    .border(
-                                        BorderStroke(
-                                            if (current) NuvioTheme.spacing.xxs else NuvioTheme.spacing.hairline,
-                                            if (current) NuvioTheme.colors.FocusRing else NuvioTheme.colors.Border,
-                                        ),
-                                        RoundedCornerShape(NuvioTheme.radii.sm),
-                                    ),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = value.getOrNull(index)?.toString().orEmpty(),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = NuvioTheme.colors.TextPrimary,
-                                )
-                            }
+                }
+                item(key = "party_members") {
+                    SettingsGroupCard {
+                        MembersSection(
+                            party = party,
+                            ringColor = NuvioTheme.colors.BackgroundCard,
+                            onRemove = { member -> repository.removeMember(member.id) },
+                        )
+                        if (!party.isHost && party.hostOnly) HostOnlyNote()
+                    }
+                }
+                if (party.isHost) {
+                    item(key = "party_host_settings") {
+                        SettingsGroupCard {
+                            HostSettings(
+                                party = party,
+                                onHostOnlyChange = repository::setHostOnly,
+                                onSharingChange = repository::setSharing,
+                            )
                         }
                     }
-                    Box(Modifier.size(1.dp)) { inner() }
-                }
-            },
-        )
-    }
-}
-
-/** In a party: the code as the headline, the phone codes under it, what plays and the room's buttons. */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun PartyRoomStage(
-    state: PartyState,
-    runtime: PartyRuntime,
-    firstFocus: FocusRequester,
-    lookChanges: Int,
-    onLook: () -> Unit,
-) {
-    val session = runtime.session
-    val isHost = state.role == PartyRole.HOST
-    val media = session.partyMedia
-    Overline(pageSubtitle(state))
-    rememberHostNotice(state)?.let { notice ->
-        Text(
-            text = notice,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = NuvioTheme.colors.Secondary,
-        )
-    }
-    Text(
-        text = PartyCode.display(state.code.orEmpty()),
-        style = MaterialTheme.typography.displayLarge,
-        fontWeight = FontWeight.ExtraBold,
-        letterSpacing = 7.sp,
-        maxLines = 1,
-        color = NuvioTheme.colors.TextPrimary,
-    )
-    if (isHost) PartyInviteQr(code = state.code.orEmpty(), large = true, captionBetween = true)
-    Text(
-        text = partyStatusLine(state),
-        style = MaterialTheme.typography.bodyMedium,
-        color = NuvioTheme.colors.TextSecondary,
-    )
-    if (media != null) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AsyncImage(
-                model = media.poster,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .width(44.dp)
-                    .height(66.dp)
-                    .clip(RoundedCornerShape(NuvioTheme.radii.sm))
-                    .background(NuvioTheme.colors.BackgroundCard),
-            )
-            Column {
-                val title = listOfNotNull(
-                    media.title.ifBlank { null },
-                    media.episodeTitle?.takeIf { media.season != null },
-                ).joinToString(" · ")
-                Text(
-                    text = stringResource(R.string.party_now_watching, title),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = NuvioTheme.colors.TextPrimary,
-                )
-                val detail = listOfNotNull(
-                    if (media.season != null && media.episode != null) "S${media.season} E${media.episode}" else null,
-                    media.streamName?.lineSequence()?.firstOrNull()?.ifBlank { null },
-                ).joinToString(" · ")
-                if (detail.isNotEmpty()) {
-                    Text(
-                        text = detail,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NuvioTheme.colors.TextSecondary,
-                        maxLines = 1,
-                    )
                 }
             }
+            SettingsVerticalScrollIndicators(state = listState)
         }
-    }
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
-        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
-    ) {
-        if (isHost) {
-            DialogButton(
-                text = stringResource(
-                    if (state.guestsControl) R.string.party_guests_control_on else R.string.party_guests_control_off
-                ),
-                onClick = { session.setGuestsControl(!state.guestsControl) },
-                isPrimary = false,
-                modifier = Modifier.focusRequester(firstFocus),
-            )
-            if (state.hold?.reason == PartyHoldReason.BUFFERING) {
-                DialogButton(
-                    text = stringResource(R.string.party_continue_without),
-                    onClick = { session.continueWithoutWaiting() },
-                    isPrimary = false,
-                )
-            }
-            DialogButton(
-                text = stringResource(R.string.party_end),
-                onClick = { session.endParty() },
-                isPrimary = false,
-            )
-        } else {
-            if (!state.playingPartyTitle && media != null) {
-                DialogButton(
-                    text = stringResource(R.string.party_open_party_title),
-                    onClick = { session.requestPartyTitle() },
-                    isPrimary = true,
-                    modifier = Modifier.focusRequester(firstFocus),
-                )
-            }
-            DialogButton(
-                text = stringResource(R.string.party_leave),
-                onClick = { session.leaveParty() },
-                isPrimary = false,
-                modifier = if (state.playingPartyTitle || media == null) Modifier.focusRequester(firstFocus) else Modifier,
-            )
-        }
-    }
-    PartyLook(runtime = runtime, lookChanges = lookChanges, onLook = onLook)
-}
-
-/** Who is in the party, for the column beside the code. */
-@Composable
-private fun PartyMembers(state: PartyState, runtime: PartyRuntime) {
-    val friends by runtime.friends.collectAsState()
-    Text(
-        text = stringResource(R.string.party_in_the_party),
-        style = MaterialTheme.typography.bodyMedium,
-        color = NuvioTheme.colors.TextSecondary,
-    )
-    state.members.forEach { member ->
-        val isFriend = member.friendKey != null && friends.any { it.key == member.friendKey }
-        PartyMemberRow(
-            member = member,
-            canAdd = !member.isSelf && !isFriend,
-            asked = member.id in state.friendAsked,
-            onAdd = { runtime.session.addFriend(member.id) },
-        )
-    }
-    Spacer(Modifier.height(NuvioTheme.spacing.xs))
-}
-
-@Composable
-private fun PartyMemberRow(member: PartyMemberView, canAdd: Boolean, asked: Boolean, onAdd: () -> Unit) {
-    val name = member.name.ifBlank { stringResource(R.string.party_member_unnamed) }
-    val role = when {
-        member.isSelf && member.isHost -> stringResource(R.string.party_member_role_you_host)
-        member.isSelf -> stringResource(R.string.party_member_role_you)
-        member.isHost -> stringResource(R.string.party_member_role_host)
-        else -> null
-    }
-    val (status, color) = when (member.status) {
-        PartyMemberStatus.IN_SYNC -> stringResource(R.string.party_member_in_sync) to NuvioTheme.colors.Success
-        PartyMemberStatus.SYNCING -> stringResource(R.string.party_member_syncing) to NuvioTheme.colors.TextSecondary
-        PartyMemberStatus.BUFFERING -> stringResource(R.string.party_member_buffering) to NuvioTheme.colors.Warning
-        PartyMemberStatus.CATCHING_UP -> stringResource(R.string.party_member_catching_up) to NuvioTheme.colors.Warning
-        PartyMemberStatus.AWAY -> stringResource(R.string.party_member_away) to NuvioTheme.colors.TextTertiary
-        PartyMemberStatus.NEEDS_UPDATE -> stringResource(R.string.party_member_needs_update) to NuvioTheme.colors.Warning
-    }
-    val content: @Composable RowScope.() -> Unit = {
-        PartyAvatar(name = name, colour = member.colour, avatarUrl = member.avatarUrl)
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xxs)) {
-            Text(text = name, style = MaterialTheme.typography.bodyMedium, color = NuvioTheme.colors.TextPrimary, maxLines = 1)
-            if (canAdd) {
-                PartyActionLabel(
-                    text = stringResource(if (asked) R.string.party_friend_asked else R.string.party_friend_add),
-                    done = asked,
-                )
-            } else if (role != null) {
-                Text(text = role, style = MaterialTheme.typography.bodySmall, color = NuvioTheme.colors.TextSecondary)
-            }
-        }
-        Text(
-            text = status,
-            style = MaterialTheme.typography.labelSmall,
-            color = color,
-            modifier = Modifier
-                .clip(RoundedCornerShape(NuvioTheme.radii.md))
-                .background(NuvioTheme.colors.BackgroundCard)
-                .padding(horizontal = 8.dp, vertical = 2.dp),
-        )
-    }
-    if (canAdd) {
-        PartyRowSurface(onClick = { if (!asked) onAdd() }, content = content)
-    } else {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = NuvioTheme.spacing.sm, vertical = NuvioTheme.spacing.xs),
-            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
-            verticalAlignment = Alignment.CenterVertically,
-            content = content,
-        )
     }
 }

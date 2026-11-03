@@ -50,9 +50,11 @@ object RepositoryWebPage {
     margin-bottom: 2.5rem;
   }
   .header-logo {
-    height: 48px;
+    height: 40px;
     width: auto;
     margin-bottom: 0.5rem;
+    filter: brightness(0) invert(1);
+    opacity: 0.9;
   }
   .header p {
     font-size: 0.875rem;
@@ -308,14 +310,14 @@ object RepositoryWebPage {
   @media (max-width: 480px) {
     .page { padding: 0 1rem 5rem; }
     .header { padding: 2rem 0 2rem; }
-    .header-logo { height: 40px; }
+    .header-logo { height: 32px; }
   }
 </style>
 </head>
 <body>
 <div class="page">
   <div class="header">
-    <img src="/logo.png" alt="${context.getString(R.string.app_name)}" class="header-logo">
+    <img src="/logo.png" alt="NuvioTV" class="header-logo">
     <p>${context.getString(R.string.web_manage_repos_subtitle)}</p>
   </div>
 

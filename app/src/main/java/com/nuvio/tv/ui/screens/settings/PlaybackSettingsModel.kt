@@ -9,7 +9,6 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.QueuePlayNext
-import androidx.compose.material.icons.filled.SettingsRemote
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.VideoSettings
@@ -30,7 +29,6 @@ internal enum class PlaybackSection(
     UP_NEXT(R.string.playback_section_up_next, R.string.playback_section_up_next_desc, Icons.Default.QueuePlayNext),
     SKIP_SEGMENTS(R.string.playback_section_skip, R.string.playback_section_skip_desc, Icons.Default.FastForward),
     PLAYER_INTERFACE(R.string.playback_section_interface, R.string.playback_section_interface_desc, Icons.Default.Layers),
-    REMOTE_BUTTONS(R.string.remote_buttons_section_title, R.string.remote_buttons_section_desc, Icons.Default.SettingsRemote),
     AUDIO(R.string.audio_section, R.string.playback_section_audio_only_desc, Icons.AutoMirrored.Filled.VolumeUp),
     SUBTITLES(R.string.playback_section_subtitles, R.string.playback_section_subtitles_desc, Icons.Default.Subtitles),
     VIDEO(R.string.video_section, R.string.playback_section_video_desc, Icons.Default.VideoSettings),
@@ -55,7 +53,6 @@ internal enum class PlaybackDialog {
     PLAYER_PREFERENCE,
     INTERNAL_ENGINE,
     STREAM_AUTO_PLAY_MODE,
-    STREAM_LIST_SORT,
     STREAM_AUTO_PLAY_SOURCE,
     STREAM_AUTO_PLAY_ADDONS,
     STREAM_AUTO_PLAY_PLUGINS,
@@ -66,10 +63,8 @@ internal enum class PlaybackDialog {
     SECONDARY_AUDIO_LANGUAGE,
     DECODER_PRIORITY,
     AUDIO_OUTPUT_CHANNELS,
-    NIGHT_MODE,
     SUBTITLE_LANGUAGE,
     SECONDARY_SUBTITLE_LANGUAGE,
-    TERTIARY_SUBTITLE_LANGUAGE,
     SUBTITLE_TEXT_COLOR,
     SUBTITLE_BACKGROUND_COLOR,
     SUBTITLE_OUTLINE_COLOR,
@@ -82,11 +77,5 @@ internal enum class PlaybackDialog {
     MPV_HARDWARE_DECODE_MODE,
     P2P_CONSENT,
     TORRENT_PROFILE,
-    TORRENT_CACHE_SIZE,
-    SURROUND_FORMAT_MODE,
-    SURROUND_CHANNEL_TARGET,
-    DTS_HD_TV_PASSTHROUGH,
-    SEEK_THUMBNAIL_PREPARE,
-    SEEK_THUMBNAILS_BEFORE_PLAY,
-    SEEKING
+    TORRENT_CACHE_SIZE
 }

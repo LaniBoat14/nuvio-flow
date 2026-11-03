@@ -36,6 +36,7 @@ data class UpdateUiState(
     val errorMessage: String? = null,
     val feedbackMessage: String? = null,
     val updateBannerEnabled: Boolean = true,
+    val updateChannel: UpdateChannel = UpdateChannel.STABLE,
     val autoInstallEnabled: Boolean = false,
     val autoInstallSupported: Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
     val autoInstallNoticeEnabled: Boolean = true,
@@ -55,19 +56,40 @@ class UpdateViewModel @Inject constructor(
     val uiState: StateFlow<UpdateUiState> = _uiState.asStateFlow()
     private var updateCheckJob: Job? = null
 
+    private var preferencesReady = false
+    private var lastAttemptMs = 0L
+
+    fun onAppForeground() {
+        if (preferencesReady && !BuildConfig.IS_DEBUG_BUILD &&
+            android.os.SystemClock.elapsedRealtime() - lastAttemptMs >= 60_000) {
+            checkForUpdates(force = false, showNoUpdateFeedback = false)
+        }
+    }
+
     init {
         viewModelScope.launch {
             val enabled = updatePreferences.updateBannerEnabled.first()
-            try { updatePreferences.initializeForkStream() } catch (_: java.io.IOException) { /* Retry next launch. */ }
+            val channel = updatePreferences.getOrInitializeUpdateChannel()
             val autoInstallEnabled = updatePreferences.autoInstallEnabled.first()
             val autoInstallNoticeEnabled = updatePreferences.autoInstallNoticeEnabled.first()
             _uiState.update {
                 it.copy(
                     updateBannerEnabled = enabled,
+                    updateChannel = channel,
                     autoInstallEnabled = autoInstallEnabled,
                     autoInstallNoticeEnabled = autoInstallNoticeEnabled
                 )
             }
+            viewModelScope.launch {
+                while (true) {
+                    kotlinx.coroutines.delay(15 * 60 * 1000L)
+                    if (_uiState.value.updateBannerEnabled && !_uiState.value.isDownloading &&
+                        updateCheckJob?.isActive != true && !BuildConfig.IS_DEBUG_BUILD) {
+                        checkForUpdates(force = false, showNoUpdateFeedback = false)
+                    }
+                }
+            }
+            preferencesReady = true
             downloadStore.clearIfInstalled()
             consumeAutoInstalledUpdate()
             syncBackgroundJobs()
@@ -78,29 +100,16 @@ class UpdateViewModel @Inject constructor(
     }
 
     fun checkForUpdates(force: Boolean, showNoUpdateFeedback: Boolean) {
-        if (!BuildConfig.UPDATE_CHECK_ENABLED) {
-            _uiState.update {
-                it.copy(
-                    isChecking = false,
-                    // A manual About-screen check gets the standard "no update" feedback.
-                    feedbackMessage = if (showNoUpdateFeedback) {
-                        context.getString(R.string.update_latest_version)
-                    } else {
-                        null
-                    }
-                )
-            }
-            return
-        }
-        if (_uiState.value.isDownloading) return
         if (!force && !_uiState.value.updateBannerEnabled) return
 
+        if (_uiState.value.isDownloading || updateCheckJob?.isActive == true) return
+        lastAttemptMs = android.os.SystemClock.elapsedRealtime()
         updateCheckJob?.cancel()
         updateCheckJob = viewModelScope.launch {
+            val channel = _uiState.value.updateChannel
             _uiState.update {
                 it.copy(
                     isChecking = true,
-                    showBanner = false,
                     showUnknownSourcesDialog = false,
                     errorMessage = null,
                     feedbackMessage = null
@@ -108,18 +117,18 @@ class UpdateViewModel @Inject constructor(
             }
 
             val dismissedTag = updatePreferences.ignoredTag.first()
-            val result = updateRepository.getLatestUpdate()
-            try { updatePreferences.setLastCheckAtMs(System.currentTimeMillis()) } catch (_: java.io.IOException) { /* Check result remains usable. */ }
+            val result = updateRepository.getLatestUpdate(channel)
+            updatePreferences.setLastCheckAtMs(System.currentTimeMillis())
 
             result
                 .onSuccess { update ->
-                    val remoteNewer = VersionUtils.isRemoteNewer(update.tag, BuildConfig.VERSION_NAME, update.versionCode, BuildConfig.VERSION_CODE.toLong())
+                    val remoteNewer = VersionUtils.isRemoteNewer(update.tag, BuildConfig.VERSION_NAME)
                     val downloadedFile = if (remoteNewer) downloadStore.downloadedFileFor(update) else null
                     // The release just installed carries the notes the "updated" banner can show.
                     val installedUpdate = _uiState.value.installedUpdate?.let { installed ->
                         if (installed.tag == update.tag) update else installed
                     }
-                    if (remoteNewer && downloadedFile == null && update.dismissalKey != dismissedTag && !BuildConfig.IS_DEBUG_BUILD) {
+                    if (remoteNewer && downloadedFile == null && update.tag != dismissedTag && !BuildConfig.IS_DEBUG_BUILD) {
                         UpdateJobService.scheduleCheckNow(context)
                     }
                     val shouldShow = UpdateBannerPolicy.shouldShow(
@@ -127,8 +136,7 @@ class UpdateViewModel @Inject constructor(
                         force = force,
                         bannerEnabled = _uiState.value.updateBannerEnabled,
                         dismissedTag = dismissedTag,
-                        updateTag = update.tag,
-                        updateKey = update.dismissalKey
+                        updateTag = update.tag
                     )
 
                     _uiState.update { state ->
@@ -139,13 +147,13 @@ class UpdateViewModel @Inject constructor(
                             isDownloading = false,
                             downloadProgress = null,
                             downloadedApkPath = downloadedFile?.absolutePath
-                                ?: state.downloadedApkPath.takeIf { remoteNewer && state.update == update },
+                                ?: state.downloadedApkPath.takeIf { remoteNewer && state.update?.tag == update.tag },
                             showBanner = shouldShow || installedUpdate != null,
                             installedUpdate = installedUpdate,
                             showUnknownSourcesDialog = false,
                             errorMessage = null,
                             feedbackMessage = if (showNoUpdateFeedback && !remoteNewer) {
-                                context.getString(R.string.update_latest_version)
+                                noUpdateFeedback(channel)
                             } else {
                                 null
                             }
@@ -156,17 +164,11 @@ class UpdateViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isChecking = false,
-                            update = null,
-                            isUpdateAvailable = false,
-                            isDownloading = false,
-                            downloadProgress = null,
-                            downloadedApkPath = null,
-                            showBanner = it.installedUpdate != null,
                             showUnknownSourcesDialog = false,
                             errorMessage = null,
                             feedbackMessage = if (showNoUpdateFeedback) {
                                 if (error is NoEligibleUpdateException) {
-                                    context.getString(R.string.update_latest_version)
+                                    "No compatible Flow release has been published for this channel yet."
                                 } else {
                                     error.message ?: context.getString(R.string.update_error_check_failed)
                                 }
@@ -179,6 +181,13 @@ class UpdateViewModel @Inject constructor(
         }
     }
 
+    private fun noUpdateFeedback(channel: UpdateChannel): String =
+        if (channel == UpdateChannel.STABLE && VersionUtils.isPrerelease(BuildConfig.VERSION_NAME)) {
+            context.getString(R.string.update_waiting_for_stable)
+        } else {
+            context.getString(R.string.update_latest_version)
+        }
+
     fun dismissBanner() {
         val state = _uiState.value
         _uiState.update {
@@ -189,7 +198,7 @@ class UpdateViewModel @Inject constructor(
                 installedUpdate = null
             )
         }
-        val tag = state.update?.dismissalKey
+        val tag = state.update?.tag
         if (tag != null) {
             viewModelScope.launch {
                 updatePreferences.setIgnoredTag(tag)
@@ -223,10 +232,38 @@ class UpdateViewModel @Inject constructor(
         }
     }
 
+    fun setUpdateChannel(channel: UpdateChannel) {
+        val state = _uiState.value
+        if (state.updateChannel == channel) return
+
+        updateCheckJob?.cancel()
+        UpdateJobService.cancelIdleInstall(context)
+        _uiState.update {
+            it.copy(
+                updateChannel = channel,
+                isChecking = false,
+                update = null,
+                isUpdateAvailable = false,
+                isDownloading = false,
+                downloadProgress = null,
+                downloadedApkPath = null,
+                showBanner = false,
+                showUnknownSourcesDialog = false,
+                errorMessage = null,
+                feedbackMessage = null
+            )
+        }
+        viewModelScope.launch {
+            downloadStore.clear()
+            updatePreferences.setUpdateChannel(channel)
+            if (!BuildConfig.IS_DEBUG_BUILD) {
+                checkForUpdates(force = true, showNoUpdateFeedback = false)
+            }
+        }
+    }
+
     fun downloadUpdate() {
-        if (_uiState.value.isDownloading || _uiState.value.isChecking) return
         val update = _uiState.value.update ?: return
-        _uiState.update { it.copy(isDownloading = true) }
 
         viewModelScope.launch {
             _uiState.update {
@@ -245,9 +282,6 @@ class UpdateViewModel @Inject constructor(
                         null
                     }
                     _uiState.update { it.copy(downloadProgress = progress) }
-                }.mapCatching { file ->
-                    ApkInstaller.validateUpdate(context, file, update.versionCode, update.assetSizeBytes)
-                    file
                 }
             }
 
@@ -264,7 +298,6 @@ class UpdateViewModel @Inject constructor(
                     installUpdateOrRequestPermission()
                 }
                 .onFailure { error ->
-                    downloadStore.clear()
                     _uiState.update {
                         it.copy(
                             isDownloading = false,
@@ -291,43 +324,28 @@ class UpdateViewModel @Inject constructor(
             return
         }
 
-        viewModelScope.launch {
-            val validation = withContext(Dispatchers.IO) {
-                runCatching {
-                    ApkInstaller.validateUpdate(context, apkFile, _uiState.value.update?.versionCode,
-                        _uiState.value.update?.assetSizeBytes)
+        if (!ApkInstaller.canRequestPackageInstalls(context)) {
+            _uiState.update { it.copy(showUnknownSourcesDialog = true, showBanner = true) }
+            return
+        }
+
+        _uiState.update { it.copy(showUnknownSourcesDialog = false) }
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { ApkInstaller.install(context, apkFile, background = false) }
+                .onFailure {
+                    Log.w(TAG, "Session install failed, falling back to the system installer", it)
+                    ApkInstaller.launchSystemInstaller(context, apkFile)
                 }
-            }
-            if (validation.isFailure) {
-                _uiState.update { it.copy(errorMessage = validation.exceptionOrNull()?.message, showBanner = true) }
-                return@launch
-            }
-            if (!ApkInstaller.canRequestPackageInstalls(context)) {
-                _uiState.update { it.copy(showUnknownSourcesDialog = true, showBanner = true) }
-                return@launch
-            }
-            _uiState.update { it.copy(showUnknownSourcesDialog = false) }
-            withContext(Dispatchers.IO) {
-                runCatching { ApkInstaller.install(context, apkFile, background = false) }
-                    .recoverCatching {
-                        Log.w(TAG, "Session install failed, falling back to the system installer", it)
-                        ApkInstaller.launchSystemInstaller(context, apkFile)
-                    }
-            }.onFailure { error ->
-                _uiState.update { it.copy(errorMessage = error.message, showBanner = true) }
-            }
         }
     }
 
     // Shows the "updated" banner once after the idle job installed a release, then forgets it.
     private suspend fun consumeAutoInstalledUpdate() {
         val tag = updatePreferences.autoInstalledTag.first() ?: return
-        val code = updatePreferences.autoInstalledCode.first()
-        val installedCode = BuildConfig.VERSION_CODE.toLong()
-        // Still newer than the installed version means the install has not happened yet.
-        if (VersionUtils.isRemoteNewer(tag, BuildConfig.VERSION_NAME, code, installedCode)) return
+        // Still older than the installed version means the install has not happened yet.
+        if (VersionUtils.isRemoteNewer(tag, BuildConfig.VERSION_NAME)) return
         updatePreferences.setAutoInstalledTag(null)
-        if (VersionUtils.isRemoteNewer(BuildConfig.VERSION_NAME, tag, installedCode, code)) return
+        if (VersionUtils.isRemoteNewer(BuildConfig.VERSION_NAME, tag)) return
         if (!_uiState.value.autoInstallNoticeEnabled) return
         val installed = AppUpdate(
             tag = tag,

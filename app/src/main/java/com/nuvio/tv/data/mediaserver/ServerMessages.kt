@@ -11,8 +11,6 @@ fun ServerFailure.messageRes(): Int = when (this) {
     ServerFailure.INCOMPLETE -> R.string.servers_failure_incomplete
     ServerFailure.FORBIDDEN -> R.string.servers_error_forbidden
     ServerFailure.UNSUPPORTED -> R.string.servers_failure_unsupported
-    ServerFailure.STREAM_LIMIT -> R.string.servers_failure_stream_limit
-    ServerFailure.CERTIFICATE -> R.string.servers_failure_certificate
     ServerFailure.FAILED -> R.string.servers_error_failed
 }
 

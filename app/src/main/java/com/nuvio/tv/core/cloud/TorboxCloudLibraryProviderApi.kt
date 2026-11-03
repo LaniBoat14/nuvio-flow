@@ -1,7 +1,6 @@
 package com.nuvio.tv.core.cloud
 
 import com.nuvio.tv.core.debrid.DebridProviders
-import com.nuvio.tv.core.debrid.ThumbnailCopyAdded
 import com.nuvio.tv.data.remote.api.TorboxApi
 import com.nuvio.tv.data.remote.dto.TorboxCloudFileDto
 import com.nuvio.tv.data.remote.dto.TorboxCloudItemDto
@@ -13,8 +12,7 @@ import retrofit2.Response
 
 @Singleton
 class TorboxCloudLibraryProviderApi @Inject constructor(
-    private val api: TorboxApi,
-    private val thumbnailCopies: ThumbnailCopyAdded
+    private val api: TorboxApi
 ) : CloudLibraryProviderApi {
     override val provider = DebridProviders.Torbox
 
@@ -33,7 +31,6 @@ class TorboxCloudLibraryProviderApi @Inject constructor(
         file: CloudLibraryFile
     ): CloudLibraryPlaybackResult {
         if (!file.playable) return CloudLibraryPlaybackResult.NotPlayable
-        if (item.type == CloudLibraryItemType.Torrent) thumbnailCopies.claimAndWait(null, item.id.trim().toIntOrNull())
 
         return try {
             val authorization = "Bearer $apiKey"

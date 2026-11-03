@@ -4,8 +4,6 @@ import android.content.Context
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.tmdb.TmdbService
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
-import com.nuvio.tv.data.local.TraktAuthDataStore
-import com.nuvio.tv.data.local.TraktAuthState
 import com.nuvio.tv.data.local.TraktSettingsDataStore
 import com.nuvio.tv.data.local.WatchedSeriesStateHolder
 import com.nuvio.tv.data.remote.api.TraktApi
@@ -212,12 +210,7 @@ class TraktProgressServiceRefreshTest {
             layoutPreferenceDataStore = layout,
             traktEpisodeMappingService = mockk(relaxed = true),
             profileManager = profileManager,
-            watchedSeriesStateHolder = watchedSeries,
-            traktAuthDataStore = mockk<TraktAuthDataStore>(relaxed = true) {
-                every { state } returns MutableStateFlow(TraktAuthState(accessToken = "access", refreshToken = "refresh"))
-                coEvery { getCurrentState(any<Int>()) } returns TraktAuthState(accessToken = "access", refreshToken = "refresh")
-            },
-            savedWatchedMovies = TraktSavedWatchedMovies(FakeTraktWatchedMoviesStorage())
+            watchedSeriesStateHolder = watchedSeries
         )
     }
 

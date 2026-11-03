@@ -42,7 +42,6 @@ import com.nuvio.tv.domain.model.MetaTrailer
 import com.nuvio.tv.domain.model.PosterShape
 import com.nuvio.tv.ui.components.GridContentCard
 import com.nuvio.tv.ui.components.PosterCardStyle
-import com.nuvio.tv.ui.components.rememberScaledPosterCardStyle
 
 private data class TrailerListItem(
     val trailer: MetaTrailer,
@@ -153,7 +152,7 @@ fun TrailerSection(
         Modifier
     }
 
-    val landscapeStyle = rememberScaledPosterCardStyle(remember(posterCardCornerRadius) {
+    val landscapeStyle = remember(posterCardCornerRadius) {
         PosterCardStyle(
             width = 260.dp,
             height = 146.dp,
@@ -161,7 +160,7 @@ fun TrailerSection(
             focusedBorderWidth = NuvioTheme.spacing.xxs,
             focusedScale = 1.02f
         )
-    })
+    }
 
     Column(
         modifier = Modifier
@@ -180,7 +179,7 @@ fun TrailerSection(
                     }
                 }
                 .focusGroup(),
-            contentPadding = PaddingValues(start = detailStartInset, end = NuvioTheme.spacing.xxxl, top = 6.dp, bottom = 6.dp),
+            contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.xxxl, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
         ) {
             itemsIndexed(

@@ -1,7 +1,6 @@
 package com.nuvio.tv.data.local
 
 import android.content.Context
-import com.nuvio.tv.R
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.domain.model.AddonCatalogCollectionSource
 import com.nuvio.tv.domain.model.TmdbCollectionFilters
@@ -9,7 +8,6 @@ import com.nuvio.tv.domain.model.TmdbCollectionMediaType
 import com.nuvio.tv.domain.model.TmdbCollectionSource
 import com.nuvio.tv.domain.model.TmdbCollectionSourceType
 import com.nuvio.tv.domain.model.TraktCollectionSource
-import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.junit.Assert.assertEquals
@@ -18,9 +16,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CollectionsDataStoreSourceMigrationTest {
-    private val appContext = mockk<Context>(relaxed = true)
+    private val context = mockk<Context>(relaxed = true)
     private val store = CollectionsDataStore(
-        appContext = appContext,
+        appContext = context,
         factory = mockk<ProfileDataStoreFactory>(relaxed = true),
         profileManager = mockk<ProfileManager>(relaxed = true)
     )
@@ -159,20 +157,12 @@ class CollectionsDataStoreSourceMigrationTest {
               }
             ]
         """.trimIndent()
-        every {
-            appContext.getString(
-                R.string.collections_import_error_missing_trakt_list_id,
-                "Trakt",
-                "Public Lists",
-                1
-            )
-        } returns "Collection \"Trakt\", folder \"Public Lists\", source 1: missing Trakt list ID"
 
         val result = store.validateCollectionsJson(json)
 
         assertFalse(result.valid)
         verify {
-            appContext.getString(
+            context.getString(
                 com.nuvio.tv.R.string.collections_import_error_missing_trakt_list_id,
                 "Trakt",
                 "Public Lists",

@@ -44,9 +44,6 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.R
-import com.nuvio.tv.ui.support.SupportNuvioViewModel
-import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.tv.core.build.AppFeaturePolicy
 import com.nuvio.tv.ui.components.MemberBrandWordmark
 
@@ -135,13 +132,22 @@ fun AboutSettingsContent(
                             )
 
                             Text(
-                                text = stringResource(R.string.about_version, BuildConfig.VERSION_NAME),
+                                text = "Nuvio Flow · " + BuildConfig.VERSION_NAME + "\nUpstream source baseline: Nuvio " + BuildConfig.VERSION_NAME.substringBefore(".flow."),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = NuvioTheme.colors.TextSecondary,
                                 textAlign = TextAlign.Center
                             )
 
                             Spacer(modifier = Modifier.height(NuvioTheme.spacing.xxs))
+
+                            Text(
+                                text = if (BuildConfig.GITHUB_OWNER.isBlank() || BuildConfig.GITHUB_REPO.isBlank())
+                                    "Flow update hosting not configured"
+                                else "Flow updates: ${BuildConfig.GITHUB_OWNER}/${BuildConfig.GITHUB_REPO}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = NuvioTheme.colors.TextSecondary,
+                                textAlign = TextAlign.Center
+                            )
 
                             if (AppFeaturePolicy.inAppUpdatesEnabled) {
                                 UpdateChannelSettings(initialFocusRequester, modifier = firstRowModifier)
@@ -174,14 +180,6 @@ fun AboutSettingsContent(
                                     subtitle = stringResource(R.string.about_supporters_contributors_subtitle),
                                     trailingIcon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                     onClick = onNavigateToSupportersContributors
-                                )
-                                val supportViewModel: SupportNuvioViewModel = hiltViewModel()
-                                val supportState by supportViewModel.uiState.collectAsStateWithLifecycle()
-                                SettingsToggleRow(
-                                    title = stringResource(R.string.support_nuvio_suggestions_setting),
-                                    subtitle = stringResource(R.string.support_nuvio_suggestions_setting_subtitle),
-                                    checked = !supportState.suggestionsHidden,
-                                    onToggle = supportViewModel::toggleSuggestionsHidden
                                 )
                             }
 

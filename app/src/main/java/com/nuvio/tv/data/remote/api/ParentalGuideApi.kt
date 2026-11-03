@@ -28,9 +28,8 @@ data class ImdbApiParentsGuideCategory(
 
 @JsonClass(generateAdapter = true)
 data class ImdbApiSeverityBreakdown(
-    @Json(name = "severityLevel") val severityLevel: String? = null,
-    // IMDb leaves the count out for some levels; a missing count is no votes.
-    @Json(name = "voteCount") val voteCount: Int? = null
+    @Json(name = "severityLevel") val severityLevel: String,
+    @Json(name = "voteCount") val voteCount: Int
 )
 
 @JsonClass(generateAdapter = true)

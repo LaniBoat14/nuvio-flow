@@ -1,6 +1,12 @@
-name: Flow signed release
+name: Restore original Flow 11
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - app/**
+      - scripts/flow_upstream.py
+      - .github/workflows/flow-release.yml
 permissions:
   contents: write
 concurrency:
@@ -31,14 +37,14 @@ jobs:
       - name: Integrate newer official release
         if: github.event_name == 'schedule'
         id: upstream
-        run: echo "changed=false" >> "$GITHUB_OUTPUT"
+        run: python3 scripts/flow_upstream.py
       - name: Check for an unpublished Flow update
         id: pending
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          TAG=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -1)
+          TAG=$(sed -n 's/.*versionName = "\\([^"]*\\)".*/\\1/p' app/build.gradle.kts | head -1)
           READY=$(gh release view "$TAG" --json isDraft,assets --jq '(.isDraft == false) and (.assets | any(.name == "app-full-armeabi-v7a-release.apk"))' 2>/dev/null || echo false)
           if [ "$READY" = true ]; then
             echo "required=false" >> "$GITHUB_OUTPUT"
@@ -49,6 +55,10 @@ jobs:
       - name: Skip unchanged scheduled build
         if: github.event_name == 'schedule' && steps.upstream.outputs.changed == 'false' && steps.pending.outputs.required == 'false'
         run: echo "No newer official release; no publication required."
+      - name: Verify exact Flow 11 application restoration
+        run: |
+          git fetch --depth=1 origin refs/tags/1.1.0-beta.9.flow.11:refs/tags/restore-flow-11
+          git diff --exit-code restore-flow-11 HEAD -- app/src app/libs DV7 ffmpeg-decoder-downmix
       - name: Check required source inputs
         if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true' || steps.pending.outputs.required == 'true'
         run: |
@@ -56,6 +66,7 @@ jobs:
           from pathlib import Path
           required = [
               "app/src/full/java/com/nuvio/tv/core/build/AppFeaturePolicy.kt",
+              "app/src/playstore/java/com/nuvio/tv/core/build/AppFeaturePolicy.kt",
               "app/src/main/java/com/nuvio/tv/core/build/TrailerPlaybackMode.kt",
               "app/src/main/res/raw/isrgrootx1.pem",
               "app/src/main/res/raw/isrg_root_x2.pem",
@@ -70,7 +81,7 @@ jobs:
         if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true' || steps.pending.outputs.required == 'true'
         run: |
           mkdir -p app/src/test/resources
-          test -f app/src/test/resources/subtitle-redirect-test.p12 || keytool -genkeypair -alias subtitle-test -keyalg RSA -keysize 2048 -validity 3650 -storetype PKCS12 -keystore app/src/test/resources/subtitle-redirect-test.p12 -storepass changeit -keypass changeit -dname "CN=127.0.0.1" -ext "SAN=ip:127.0.0.1"
+          keytool -genkeypair -alias subtitle-test -keyalg RSA -keysize 2048 -validity 3650 -storetype PKCS12 -keystore app/src/test/resources/subtitle-redirect-test.p12 -storepass changeit -keypass changeit -dname "CN=127.0.0.1" -ext "SAN=ip:127.0.0.1"
       - name: Restore private build configuration
         if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true' || steps.pending.outputs.required == 'true'
         env:
@@ -96,7 +107,7 @@ jobs:
               path = root / filename
               if not path.exists(): continue
               text = path.read_text()
-              values = {"DOVI_NATIVE_ENABLED": "true", "DOVI_EXTRACTOR_HOOK_READY": "true", "DOVI_ENABLE_REAL_LINK": "true", "AML_FEL_NATIVE_ENABLED": "true", "sdk.dir": os.environ["ANDROID_HOME"], "NUVIO_RELEASE_STORE_FILE": str(root / "flow-signing.keystore"), "DOVI_LIBDOVI_PREBUILT_ROOT": str(root / "DV7/libdovi")}
+              values = {"sdk.dir": os.environ["ANDROID_HOME"], "NUVIO_RELEASE_STORE_FILE": str(root / "flow-signing.keystore"), "DOVI_LIBDOVI_PREBUILT_ROOT": str(root / "DV7/libdovi")}
               for key, value in values.items():
                   pattern = r"(?m)^[ \t]*" + re.escape(key) + r"[ \t]*=.*$"
                   line = key + "=" + value
@@ -106,9 +117,9 @@ jobs:
       - name: Test and assemble optimized Flow
         if: github.event_name != 'schedule' || steps.upstream.outputs.changed == 'true' || steps.pending.outputs.required == 'true'
         run: |
-          python3 scripts/verify_arc_runtime.py
+          python3 scripts/test_flow_upstream.py
           chmod +x gradlew
-          ./gradlew :app:testFullReleaseUnitTest --tests "com.nuvio.tv.ui.screens.player.AutoSpeedup*" --tests "com.nuvio.tv.ui.screens.player.ParallelRange*" --tests "com.nuvio.tv.ui.screens.player.Playback*" --tests "com.nuvio.tv.ui.screens.player.HostSpeedsTest" --tests "com.nuvio.tv.ui.screens.player.TvArcAudioOutputTest" --tests "com.nuvio.tv.ui.screens.player.iec.*" --tests "com.nuvio.tv.core.player.*" --tests "com.nuvio.tv.ui.screens.settings.MemoryBudgetTest" --tests "com.nuvio.tv.ui.screens.settings.BufferSettingsNumbersTest" --tests "com.nuvio.tv.ui.screens.settings.ConnectionsChoiceTest" --tests "com.nuvio.tv.updater.*" :app:assembleFullRelease --max-workers=2 --no-daemon --console=plain --stacktrace "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process
+          ./gradlew :app:testFullReleaseUnitTest --tests com.nuvio.tv.core.network.adaptive.AdaptiveEngineTest --tests com.nuvio.tv.ui.screens.player.FlowFreshConnectionTest --tests com.nuvio.tv.ui.screens.player.FlowAdaptiveSourceTest --tests com.nuvio.tv.ui.screens.player.FlowNetworkPolicyTest --tests com.nuvio.tv.ui.screens.player.FlowBufferedReadTest --tests com.nuvio.tv.ui.screens.player.FlowMuxBitrateTest --tests com.nuvio.tv.ui.screens.player.LibassOverlayGeometryTest --tests com.nuvio.tv.ui.screens.player.PlaybackMatchTextTest --tests com.nuvio.tv.updater.FlowUpdateVersionTest --tests com.nuvio.tv.data.local.ContinueWatchingSnapshotDecoderTest :app:assembleFullRelease --max-workers=2 --no-daemon --console=plain --stacktrace "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process
       - name: Collect test failure diagnostics
         if: failure()
         run: |
@@ -134,7 +145,6 @@ jobs:
         run: |
           APK=app/build/outputs/apk/full/release/app-full-armeabi-v7a-release.apk
           test -f "$APK"
-          python3 scripts/verify_native_apk.py --abi armeabi-v7a "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep "package: name='com.jeffrey.nuvioflow.debug'"
       - uses: actions/upload-artifact@v4
@@ -162,18 +172,10 @@ jobs:
             echo "Release already exists; leaving its APK unchanged."
             exit 0
           fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add --all
-          if ! git diff --cached --quiet; then
-            git commit -m "Integrate verified upstream for $TAG [skip ci]"
-            HEADER=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
-            git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $HEADER" push origin HEAD:main
-          fi
           TARGET=$(git rev-parse HEAD)
           FLAGS=()
           case "$TAG" in *-*) FLAGS+=(--prerelease) ;; esac
-          gh release create "$TAG" --target "$TARGET" --draft --title "Nuvio Flow $TAG" --notes "<!-- nuvio-fork-version-code: 2011 --> Signed Flow update. Official source baseline: $(cat .flow/upstream-tag). Exact supplied Arc runtime: networking, prewarm, classic/V2 statistics, matching player AARs, native DV/FEL bridge, IEC audio and thumbnail allocator. Reference hashes validated in CI. Preserves Flow installation and update identity. Device playback checks remain user-run." "${FLAGS[@]}" app/build/outputs/apk/full/release/*.apk
+          gh release create "$TAG" --target "$TARGET" --draft --title "Nuvio Flow — restore original Flow 11" --notes "<!-- nuvio-fork-version-code: 2012 --> Restores the original Flow 11 application in full. App source and libraries are identical to Flow 11; only the version number is increased so this update can replace Flow 13 without uninstalling." "${FLAGS[@]}" app/build/outputs/apk/full/release/*.apk
           gh release edit "$TAG" --draft=false
       - name: Remove private inputs
         if: always()

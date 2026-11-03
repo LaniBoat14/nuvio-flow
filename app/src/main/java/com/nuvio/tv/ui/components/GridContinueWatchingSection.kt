@@ -66,9 +66,7 @@ fun GridContinueWatchingSection(
     cardStyle: ContinueWatchingCardStyle = ContinueWatchingCardStyle.CARD,
     cornerRadius: Dp = NuvioTheme.radii.md,
     posterCardWidth: Dp? = null,
-    posterCardHeight: Dp? = null,
-    /** Replaces the options dialog on a long press when set. */
-    onLongPress: ((ContinueWatchingItem) -> Unit)? = null
+    posterCardHeight: Dp? = null
 ) {
     if (items.isEmpty()) return
 
@@ -151,9 +149,7 @@ fun GridContinueWatchingSection(
                 val requester = focusRequesters.getOrPut(index) { FocusRequester() }
                 val focusModifier = Modifier.focusRequester(requester)
                 val stableOnClick = remember(progress) { { onItemClick(progress) } }
-                val stableOnLongPress = remember(progress, onLongPress) {
-                    { if (onLongPress != null) onLongPress(progress) else { optionsItem = progress } }
-                }
+                val stableOnLongPress = remember(progress) { { optionsItem = progress } }
                 var isCardFocused by remember { mutableStateOf(false) }
 
                 ContinueWatchingCard(

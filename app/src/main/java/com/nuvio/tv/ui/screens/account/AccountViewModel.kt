@@ -742,7 +742,7 @@ class AccountViewModel @Inject constructor(
             providerCredentialSyncService.syncFromRemote(profileId).getOrElse { throw it }
 
             addonRepository.isSyncingFromRemote = true
-            val remoteAddonUrls = addonSyncService.fetchAndApplyRemoteAddonUrls().getOrElse { throw it }
+            val remoteAddonUrls = addonSyncService.getRemoteAddonUrls().getOrElse { throw it }
             addonRepository.reconcileWithRemoteAddonUrls(
                 remoteUrls = remoteAddonUrls,
                 removeMissingLocal = true

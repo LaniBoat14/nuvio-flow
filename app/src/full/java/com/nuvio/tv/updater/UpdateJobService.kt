@@ -84,21 +84,13 @@ class UpdateJobService : JobService() {
 
         val downloadStore = entryPoint.updateDownloadStore()
         downloadStore.clearIfInstalled()
-        val update = entryPoint.updateRepository().getLatestUpdate().getOrThrow()
+        val channel = preferences.getOrInitializeUpdateChannel()
+        val update = entryPoint.updateRepository().getLatestUpdate(channel).getOrThrow()
         preferences.setLastCheckAtMs(System.currentTimeMillis())
-        if (!VersionUtils.isRemoteNewer(
-                update.tag, BuildConfig.VERSION_NAME, update.versionCode, BuildConfig.VERSION_CODE.toLong()
-            )
-        ) return
-        if (update.dismissalKey == preferences.ignoredTag.first()) return
+        if (!VersionUtils.isRemoteNewer(update.tag, BuildConfig.VERSION_NAME)) return
+        if (update.tag == preferences.ignoredTag.first()) return
 
-        val file = downloadStore.download(update).getOrThrow()
-        try {
-            ApkInstaller.validateUpdate(applicationContext, file, update.versionCode, update.assetSizeBytes)
-        } catch (e: Exception) {
-            downloadStore.clear()
-            throw e
-        }
+        downloadStore.download(update).getOrThrow()
         Log.d(TAG, "Downloaded ${update.tag} in the background")
         if (autoInstallEnabled) scheduleIdleInstall(applicationContext)
     }
@@ -106,17 +98,10 @@ class UpdateJobService : JobService() {
     private suspend fun installDownloaded(entryPoint: UpdateJobEntryPoint) {
         val preferences = entryPoint.updatePreferences()
         if (!canInstallSilently(applicationContext) || !preferences.autoInstallEnabled.first()) return
-        val downloadStore = entryPoint.updateDownloadStore()
-        val (tag, apkFile, code) = downloadStore.pendingInstall() ?: return
-        if (tag == preferences.ignoredTag.first()?.substringBefore('#')) return
-        val valid = runCatching { ApkInstaller.validateUpdate(applicationContext, apkFile, null, null) }
-        if (valid.isFailure) {
-            Log.w(TAG, "Dropping downloaded update $tag", valid.exceptionOrNull())
-            downloadStore.clear()
-            return
-        }
+        val (tag, apkFile) = entryPoint.updateDownloadStore().pendingInstall() ?: return
+        if (tag == preferences.ignoredTag.first()) return
         Log.d(TAG, "Installing $tag while the device is idle")
-        preferences.setAutoInstalledTag(tag, code)
+        preferences.setAutoInstalledTag(tag)
         ApkInstaller.install(applicationContext, apkFile, background = true)
     }
 

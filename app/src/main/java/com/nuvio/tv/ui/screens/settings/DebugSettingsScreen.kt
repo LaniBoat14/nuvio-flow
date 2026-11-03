@@ -36,7 +36,6 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.Color
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Border
@@ -63,7 +62,7 @@ fun DebugSettingsContent(
         Text(
             text = stringResource(R.string.debug_title),
             style = MaterialTheme.typography.headlineMedium,
-            color = Color.White
+            color = NuvioTheme.colors.Secondary
         )
 
         Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
@@ -84,10 +83,6 @@ fun DebugSettingsContent(
             contentPadding = PaddingValues(top = NuvioTheme.spacing.md, bottom = NuvioTheme.spacing.xxl),
             verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
         ) {
-            item(key = "device_ui_diagnostics") {
-                UiDiagnosticsSettingsRow()
-            }
-
             // ── Popup / Dialog Testing ──
             item(key = "debug_popup_header") {
                 Text(
@@ -240,8 +235,8 @@ private fun DebugProgressIndicatorCard() {
         onClick = { },
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.colors(
-            containerColor = Color.Black.copy(alpha = 0.85f),
-            focusedContainerColor = Color.White.copy(alpha = 0.14f)
+            containerColor = NuvioTheme.colors.BackgroundCard,
+            focusedContainerColor = NuvioTheme.colors.FocusBackground
         ),
         border = CardDefaults.border(
             focusedBorder = Border(
@@ -315,8 +310,8 @@ private fun DebugToggleCard(
                 toggleableState = if (checked) ToggleableState.On else ToggleableState.Off
             },
         colors = CardDefaults.colors(
-            containerColor = Color.Black.copy(alpha = 0.85f),
-            focusedContainerColor = Color.White.copy(alpha = 0.14f)
+            containerColor = NuvioTheme.colors.BackgroundCard,
+            focusedContainerColor = NuvioTheme.colors.FocusBackground
         ),
         border = CardDefaults.border(
             focusedBorder = Border(
@@ -354,10 +349,10 @@ private fun DebugToggleCard(
                 checked = checked,
                 onCheckedChange = null,
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.White,
-                    checkedTrackColor = Color.White.copy(alpha = 0.3f),
+                    checkedThumbColor = NuvioTheme.colors.Secondary,
+                    checkedTrackColor = NuvioTheme.colors.Secondary.copy(alpha = 0.3f),
                     uncheckedThumbColor = NuvioTheme.colors.TextSecondary,
-                    uncheckedTrackColor = Color.Black.copy(alpha = 0.85f)
+                    uncheckedTrackColor = NuvioTheme.colors.BackgroundCard
                 )
             )
         }
@@ -378,8 +373,8 @@ private fun DebugActionCard(
             .fillMaxWidth()
             .onFocusChanged { isFocused = it.isFocused },
         colors = CardDefaults.colors(
-            containerColor = Color.Black.copy(alpha = 0.85f),
-            focusedContainerColor = Color.White.copy(alpha = 0.14f)
+            containerColor = NuvioTheme.colors.BackgroundCard,
+            focusedContainerColor = NuvioTheme.colors.FocusBackground
         ),
         border = CardDefaults.border(
             focusedBorder = Border(
@@ -423,8 +418,8 @@ private fun DebugDialogButton(
             .fillMaxWidth()
             .onFocusChanged { isFocused = it.isFocused },
         colors = CardDefaults.colors(
-            containerColor = Color.Black.copy(alpha = 0.85f),
-            focusedContainerColor = Color.White
+            containerColor = NuvioTheme.colors.BackgroundCard,
+            focusedContainerColor = NuvioTheme.colors.Secondary
         ),
         shape = CardDefaults.shape(RoundedCornerShape(NuvioTheme.radii.sm)),
         scale = CardDefaults.scale(focusedScale = 1.0f)
@@ -477,7 +472,7 @@ private fun DebugGenerateLibraryCard(
             Text(
                 text = result,
                 style = MaterialTheme.typography.bodySmall,
-                color = if (result.startsWith("Failed")) NuvioTheme.colors.Error else Color.White
+                color = if (result.startsWith("Failed")) NuvioTheme.colors.Error else NuvioTheme.colors.Secondary
             )
         }
 
@@ -537,7 +532,7 @@ private fun DebugSignInCard(
             Text(
                 text = result,
                 style = MaterialTheme.typography.bodySmall,
-                color = if (result.startsWith("Failed")) NuvioTheme.colors.Error else Color.White
+                color = if (result.startsWith("Failed")) NuvioTheme.colors.Error else NuvioTheme.colors.Secondary
             )
         }
 

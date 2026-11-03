@@ -1,10 +1,7 @@
 package com.nuvio.tv.data.mediaserver
 
 import android.content.Context
-import android.util.Log
 import com.nuvio.tv.R
-import com.nuvio.tv.core.poster.CustomPosterUrlResolver.ContentIds
-import com.nuvio.tv.core.poster.withCustomPosterUrl
 import com.nuvio.tv.core.streams.supportsResource
 import com.nuvio.tv.domain.model.Addon
 import com.nuvio.tv.domain.model.AddonResource
@@ -18,48 +15,18 @@ import com.nuvio.tv.domain.repository.AddonRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.time.TimeSource
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withTimeoutOrNull
 
 data class ServerLibraryRef(
     val connection: ServerConnection,
-    val library: ServerLibrary,
-    val title: String = "${connection.shownName} · ${library.name}"
-)
-
-internal fun serverRowLabels(
-    connections: List<ServerConnection>,
-    productName: (ServerConnection) -> String
-): Map<String, String> {
-    val byName = connections.groupBy { it.shownName.trim().lowercase() }
-    return connections.associate { connection ->
-        val name = connection.shownName
-        val sameName = byName.getValue(name.trim().lowercase())
-        val product = productName(connection)
-        val label = when {
-            sameName.size == 1 -> name
-            sameName.count { productName(it) == product } == 1 -> "$product · $name"
-            else -> "$product · $name (${connection.userName})"
-        }
-        connection.id to label
-    }
+    val library: ServerLibrary
+) {
+    val title: String
+        get() = "${connection.name} · ${library.name}"
 }
 
 internal fun ServerTitle.catalogPreview(addons: List<Addon>): MetaPreview {
@@ -71,88 +38,34 @@ internal fun ServerTitle.catalogPreview(addons: List<Addon>): MetaPreview {
     return preview.copy(id = id, imdbId = externalIds.imdb)
 }
 
-internal fun ServerTitle.withPosterPattern(item: MetaPreview, pattern: String): MetaPreview {
-    if (pattern.isBlank() || item.apiType == ServerMediaKind.COLLECTION.contentType) return item
-    if (!ServerItemRef.isServerId(item.id)) return item.withCustomPosterUrl(pattern)
-    val id = externalIds.catalogIds().firstOrNull() ?: return item
-    val ids = ContentIds(
-        id = id,
-        imdbId = externalIds.imdb,
-        tmdbId = externalIds.tmdb?.toString(),
-        tvdbId = externalIds.tvdb,
-        kitsuId = externalIds.kitsu?.toString(),
-        anilistId = externalIds.anilist?.toString(),
-        malId = externalIds.mal?.toString(),
-        anidbId = externalIds.anidb?.toString()
-    )
-    return item.withCustomPosterUrl(pattern, ids)
-}
-
-private fun MetaPreview.withPosterPatternAfterSwap(before: MetaPreview, pattern: String): MetaPreview = when {
-    pattern.isBlank() || this === before || ServerItemRef.isServerId(id) -> this
-    poster == before.poster -> withCustomPosterUrl(pattern).copy(rawPosterUrl = rawPosterUrl)
-    else -> withCustomPosterUrl(pattern)
-}
-
 @Singleton
-class ServerCatalog internal constructor(
+class ServerCatalog @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val repository: ServerRepository,
-    private val addonRepository: AddonRepository,
-    private val artwork: ServerArtwork,
-    private val kindName: (ServerMediaKind) -> String = { if (it == ServerMediaKind.SERIES) "Series" else "Movies" }
+    private val addonRepository: AddonRepository
 ) {
-    @Inject
-    constructor(
-        @ApplicationContext context: Context,
-        repository: ServerRepository,
-        addonRepository: AddonRepository,
-        artwork: ServerArtwork
-    ) : this(
-        repository = repository,
-        addonRepository = addonRepository,
-        artwork = artwork,
-        kindName = { kind ->
-            context.getString(if (kind == ServerMediaKind.SERIES) R.string.type_series_plural else R.string.type_movies)
-        }
-    )
-
     val detailsLoaded = MutableSharedFlow<ServerItemDetails>(extraBufferCapacity = DETAILS_BUFFER)
 
-    private val refreshedHomeRows = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
-    private val refreshScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val searchLock = Mutex()
-    private val serverSearches = HashMap<String, ServerSearch>()
-    internal var searchWaitMs = SEARCH_WAIT_MS
-
-    val libraryLoaded = MutableSharedFlow<String>(extraBufferCapacity = DETAILS_BUFFER)
-
     val addons: Flow<List<Addon>> = repository.uiState
-        .map { state ->
-            val labels = rowLabels(state.enabledConnections)
-            state.enabledConnections.mapNotNull { addonFor(it, labels) }
-        }
+        .map { state -> state.enabledConnections.mapNotNull(::addonFor) }
         .distinctUntilChanged()
 
-    /** Search rows, one per type and server, and the movie and show libraries Discover browses. */
     val searchAddons: Flow<List<Addon>> = addons.map { addons ->
         addons.map { addon ->
             addon.copy(
                 catalogs = addon.catalogs.filter {
-                    !it.id.startsWith(HOME_ROW_PREFIX) && ServerMediaKind.fromContentType(it.apiType) != null
+                    it.id != RESUME_ID &&
+                        it.apiType != ServerMediaKind.COLLECTION.contentType &&
+                        it.apiType != ServerMediaKind.MIXED.contentType
                 }
             )
         }.filter { it.catalogs.isNotEmpty() }
     }
 
-    fun libraries(): List<ServerLibraryRef> {
-        val connections = repository.enabledConnections()
-        val labels = rowLabels(connections)
-        return connections.flatMap { connection ->
-            connection.selectedLibraries.map { library ->
-                ServerLibraryRef(connection, library, "${labels[connection.id] ?: connection.shownName} · ${library.name}")
-            }
+    fun libraries(): List<ServerLibraryRef> =
+        repository.enabledConnections().flatMap { connection ->
+            connection.selectedLibraries.map { ServerLibraryRef(connection, it) }
         }
-    }
 
     fun titleLibraries(): List<ServerLibraryRef> =
         libraries().filter { it.library.kind != ServerMediaKind.COLLECTION }
@@ -168,30 +81,27 @@ class ServerCatalog internal constructor(
         catalogName: String,
         type: String,
         skip: Int,
-        extraArgs: Map<String, String>,
-        posterPattern: String
+        extraArgs: Map<String, String>
     ): CatalogRow {
         val connectionId = connectionId(addonBaseUrl) ?: throw ServerException(ServerFailure.NOT_FOUND)
         val connection = repository.connection(connectionId) ?: throw ServerException(ServerFailure.NOT_FOUND)
         val query = extraArgs["search"]?.trim()?.takeIf { it.isNotEmpty() }
-        if (skip == 0 && query == null) refreshHomeRowsOnce(connection)
         val page = when {
-            catalogId.startsWith(HOME_ROW_PREFIX) -> homeRowPage(connection, catalogId.removePrefix(HOME_ROW_PREFIX), skip, posterPattern)
-            catalogId.startsWith(COLLECTION_PREFIX) -> pageOf(connection, skip, posterPattern) {
+            catalogId == RESUME_ID -> resumePage(connection, skip)
+            catalogId.startsWith(COLLECTION_PREFIX) -> pageOf(connection, skip) {
                 repository.call(connection.id) { provider, session ->
                     provider.collectionPage(session, catalogId.removePrefix(COLLECTION_PREFIX), skip, PAGE_SIZE)
                 }
             }
-            catalogId.startsWith(SEARCH_PREFIX) ->
-                searchPage(connection, catalogId.removePrefix(SEARCH_PREFIX), query, skip, posterPattern)
+            catalogId.startsWith(SEARCH_PREFIX) -> searchPage(connection, catalogId.removePrefix(SEARCH_PREFIX), query, skip)
             else -> {
                 val library = connection.libraries.firstOrNull { it.id == catalogId }
                     ?: throw ServerException(ServerFailure.NOT_FOUND)
-                pageOf(connection, skip, posterPattern) {
+                pageOf(connection, skip) {
                     repository.call(connection.id) { provider, session ->
                         provider.libraryPage(session, library, skip, PAGE_SIZE)
                     }
-                }.also { if (skip == 0) libraryLoaded.tryEmit(connection.id) }
+                }
             }
         }
         return CatalogRow(
@@ -213,7 +123,7 @@ class ServerCatalog internal constructor(
         )
     }
 
-    suspend fun collectionRow(ref: ServerItemRef, posterPattern: String): CatalogRow {
+    suspend fun collectionRow(ref: ServerItemRef): CatalogRow {
         val connection = repository.connection(ref.connectionId) ?: throw ServerException(ServerFailure.NOT_FOUND)
         val name = details(ref).meta.name
         val row = CatalogRow(
@@ -226,12 +136,11 @@ class ServerCatalog internal constructor(
             rawType = ServerMediaKind.COLLECTION.contentType,
             items = emptyList()
         )
-        return page(row, skip = 0, posterPattern)
+        return page(row, skip = 0)
     }
 
-    suspend fun row(connectionId: String, catalogId: String, posterPattern: String): CatalogRow {
-        val addon = repository.connection(connectionId)?.let { addonFor(it, rowLabels(repository.enabledConnections())) }
-            ?: throw ServerException(ServerFailure.NOT_FOUND)
+    suspend fun row(connectionId: String, catalogId: String): CatalogRow {
+        val addon = repository.connection(connectionId)?.let(::addonFor) ?: throw ServerException(ServerFailure.NOT_FOUND)
         val descriptor = addon.catalogs.firstOrNull { it.id == catalogId } ?: throw ServerException(ServerFailure.NOT_FOUND)
         val row = CatalogRow(
             addonId = addon.id,
@@ -243,86 +152,49 @@ class ServerCatalog internal constructor(
             rawType = descriptor.apiType,
             items = emptyList()
         )
-        return page(row, skip = 0, posterPattern)
+        return page(row, skip = 0)
     }
 
-    suspend fun page(row: CatalogRow, skip: Int, posterPattern: String): CatalogRow =
-        catalog(row.addonBaseUrl, row.addonId, row.addonName, row.catalogId, row.catalogName, row.apiType, skip, row.extraArgs, posterPattern)
+    suspend fun page(row: CatalogRow, skip: Int): CatalogRow =
+        catalog(row.addonBaseUrl, row.addonId, row.addonName, row.catalogId, row.catalogName, row.apiType, skip, row.extraArgs)
 
     suspend fun details(ref: ServerItemRef): ServerItemDetails =
         repository.call(ref.connectionId) { provider, session -> provider.details(session, ref.itemId) }
             .also { detailsLoaded.tryEmit(it) }
 
-    fun withArtwork(row: CatalogRow, posterPattern: String): CatalogRow {
-        val cached = artwork.cached(row.items)
-        if (cached === row.items) return row
-        val items = cached.mapIndexed { index, item -> item.withPosterPatternAfterSwap(row.items[index], posterPattern) }
-        return if (items == row.items) row else row.copy(items = items)
-    }
-
-    val artworkUpdates: StateFlow<Long> get() = artwork.updates
-
-    /** Rows as (row addon base URL, titles about to be shown), most wanted first. */
-    fun requestArtwork(rows: List<Pair<String?, List<MetaPreview>>>) {
-        val items = rows.flatMap { (baseUrl, titles) ->
-            val connection = baseUrl?.let(::connectionId)?.let(repository::connection)
-            if (connection?.useCatalogMetadata == true) titles else emptyList()
-        }
-        if (items.isNotEmpty()) artwork.request(items)
-    }
-
-    suspend fun awaitArtwork(row: CatalogRow) {
-        artwork.settle(row.items, ARTWORK_SETTLE_MS)
-    }
-
-    suspend fun settledArtwork(row: CatalogRow, posterPattern: String): CatalogRow? {
-        awaitArtwork(row)
-        return withArtwork(row, posterPattern).takeIf { it !== row }
-    }
-
-    private fun rowLabels(connections: List<ServerConnection>): Map<String, String> =
-        serverRowLabels(connections) { repository.provider(it)?.displayName ?: it.providerId }
-
-    private fun addonFor(connection: ServerConnection, rowLabels: Map<String, String>): Addon? {
+    private fun addonFor(connection: ServerConnection): Addon? {
         val provider = repository.provider(connection) ?: return null
         val libraries = connection.selectedLibraries
-        val homeRows = connection.homeRows.takeIf { connection.showHomeRows }.orEmpty()
-        val searchKinds = SEARCH_KINDS.filter { kind ->
-            provider.supports(ServerCapability.SEARCH) && connection.librariesHolding(kind).isNotEmpty()
-        }
-        if (libraries.isEmpty() && homeRows.isEmpty() && searchKinds.isEmpty()) return null
-        val rowLabel = rowLabels[connection.id] ?: connection.shownName
-        val homeCatalogs = homeRows.map { row ->
-            CatalogDescriptor(
-                type = row.kind.domainType(),
-                rawType = row.kind.contentType,
-                id = HOME_ROW_PREFIX + row.id,
-                name = "$rowLabel · ${row.title}",
-                extra = emptyList(),
-                showInHome = true,
-                hasExplicitShowInHome = true
-            )
-        }
-        val catalogs = homeCatalogs + libraries.map { library ->
+        if (libraries.isEmpty()) return null
+        val resume = CatalogDescriptor(
+            type = ContentType.MOVIE,
+            id = RESUME_ID,
+            name = "${connection.name} · ${context.getString(R.string.servers_resume_row)}",
+            showInHome = true,
+            hasExplicitShowInHome = true
+        ).takeIf { provider.supports(ServerCapability.USER_STATE_READ) }
+        val catalogs = libraries.map { library ->
             CatalogDescriptor(
                 type = library.kind.domainType(),
                 rawType = library.kind.contentType,
                 id = library.id,
-                name = "$rowLabel · ${library.name}",
+                name = "${connection.name} · ${library.name}",
                 extra = listOf(CatalogExtra(name = "skip")),
                 showInHome = true,
                 hasExplicitShowInHome = true
             )
         }
-        val searches = searchKinds.map { kind ->
-            CatalogDescriptor(
-                type = kind.domainType(),
-                rawType = kind.contentType,
-                id = SEARCH_PREFIX + kind.contentType,
-                name = "$rowLabel · ${kindName(kind)}",
-                extra = listOf(CatalogExtra(name = "search", isRequired = true))
-            )
-        }
+        val searches = SEARCH_KINDS
+            .filter { kind -> provider.supports(ServerCapability.SEARCH) && libraries.any { it.holds(kind) } }
+            .map { kind ->
+                CatalogDescriptor(
+                    type = kind.domainType(),
+                    rawType = kind.contentType,
+                    id = SEARCH_PREFIX + kind.contentType,
+                    name = "${connection.name} · ${context.getString(kind.searchLabel())}",
+                    extra = listOf(CatalogExtra(name = "search", isRequired = true))
+                )
+            }
         val label = repository.sourceLabel(connection)
         return Addon(
             id = addonId(connection.id),
@@ -332,124 +204,45 @@ class ServerCatalog internal constructor(
             description = null,
             logo = null,
             baseUrl = baseUrl(connection.id),
-            catalogs = catalogs + searches,
+            catalogs = listOfNotNull(resume) + catalogs + searches,
             types = listOf(ContentType.MOVIE, ContentType.SERIES),
             resources = listOf(AddonResource(name = "catalog", types = emptyList(), idPrefixes = null))
         )
     }
 
-    /** Once per app run the server's own rows are read again, also when none were read at sign-in. */
-    private fun refreshHomeRowsOnce(connection: ServerConnection) {
-        if (!connection.showHomeRows) return
-        if (repository.provider(connection)?.capabilities?.contains(ServerCapability.HOME_ROWS) != true) return
-        if (!refreshedHomeRows.add(connection.id)) return
-        refreshScope.launch {
-            try {
-                repository.refreshHomeRows(connection.id)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                Log.w(TAG, "Home rows not read again: ${error.forLog()}")
-                if ((error as? ServerException)?.failure == ServerFailure.INCOMPLETE) refreshedHomeRows.remove(connection.id)
-            }
-        }
-    }
-
-    private suspend fun homeRowPage(connection: ServerConnection, rowId: String, skip: Int, posterPattern: String): Page {
+    private suspend fun resumePage(connection: ServerConnection, skip: Int): Page {
         if (skip > 0) return Page(emptyList(), null)
-        val titles = repository.call(connection.id) { provider, session -> provider.homeRowItems(session, rowId) }
-        return Page(present(connection, titles, posterPattern), null)
+        val presenter = presenter(connection)
+        val items = repository.call(connection.id) { provider, session -> provider.resumeItems(session, PAGE_SIZE) }
+            .map(presenter)
+        return Page(items, null)
     }
 
-    private suspend fun searchPage(
-        connection: ServerConnection,
-        contentType: String,
-        query: String?,
-        skip: Int,
-        posterPattern: String
-    ): Page {
+    private suspend fun searchPage(connection: ServerConnection, contentType: String, query: String?, skip: Int): Page {
         val kind = ServerMediaKind.fromContentType(contentType)
         if (query == null || kind == null || skip > 0) return Page(emptyList(), null)
-        val titles = serverSearch(connection, kind, query)
-        return Page(present(connection, titles, posterPattern), null)
+        val libraries = connection.selectedLibraries(kind)
+        val presenter = presenter(connection)
+        val items = repository.call(connection.id) { provider, session ->
+            if (!provider.supports(ServerCapability.SEARCH)) throw ServerException(ServerFailure.UNSUPPORTED)
+            provider.search(session, kind, libraries, query, SEARCH_LIMIT)
+        }.map(presenter)
+        return Page(items, null)
     }
 
-    /**
-     * One search per type on a server at a time, across that type's libraries. A server keeps
-     * working on a search the app has stopped waiting for, so a newer word waits for it, up to
-     * [searchWaitMs], instead of piling up behind it. The same word already running is shared. A
-     * search nobody waits for any more is dropped once that wait is over.
-     */
-    private suspend fun serverSearch(connection: ServerConnection, kind: ServerMediaKind, query: String): List<ServerTitle> {
-        val key = "${connection.id}/${kind.contentType}"
-        while (true) {
-            val search = searchLock.withLock {
-                val running = serverSearches[key]?.takeIf { it.result.isActive && (it.matches(query) || it.waitLeftMs() > 0) }
-                    ?: ServerSearch(query, searchWaitMs, startSearch(connection, kind, query)).also { serverSearches[key] = it }
-                running.also { if (it.matches(query)) it.waiters.incrementAndGet() }
-            }
-            if (!search.matches(query)) {
-                withTimeoutOrNull(search.waitLeftMs()) { search.result.join() }
-                continue
-            }
-            try {
-                return search.result.await()
-            } finally {
-                if (search.waiters.decrementAndGet() == 0 && search.result.isActive) dropWhenUnwanted(search)
-            }
-        }
-    }
-
-    private fun dropWhenUnwanted(search: ServerSearch) {
-        refreshScope.launch {
-            delay(search.waitLeftMs())
-            searchLock.withLock { if (search.waiters.get() == 0) search.result.cancel() }
-        }
-    }
-
-    private fun startSearch(connection: ServerConnection, kind: ServerMediaKind, query: String): Deferred<List<ServerTitle>> =
-        refreshScope.async {
-            repository.call(connection.id) { provider, session ->
-                if (!provider.supports(ServerCapability.SEARCH)) throw ServerException(ServerFailure.UNSUPPORTED)
-                val libraries = session.connection.librariesHolding(kind)
-                if (libraries.isEmpty()) emptyList() else provider.search(session, kind, libraries, query, SEARCH_LIMIT)
-            }
-        }
-
-    private class ServerSearch(val query: String, private val waitMs: Long, val result: Deferred<List<ServerTitle>>) {
-        private val started = TimeSource.Monotonic.markNow()
-
-        val waiters = java.util.concurrent.atomic.AtomicInteger()
-
-        fun matches(other: String): Boolean = query.equals(other, ignoreCase = true)
-
-        fun waitLeftMs(): Long = waitMs - started.elapsedNow().inWholeMilliseconds
-    }
+    private fun ServerMediaKind.searchLabel(): Int =
+        if (this == ServerMediaKind.SERIES) R.string.type_series_plural else R.string.type_movies
 
     private suspend fun pageOf(
         connection: ServerConnection,
         skip: Int,
-        posterPattern: String,
         load: suspend () -> ServerPage<ServerTitle>
     ): Page {
         val page = load()
         val loaded = skip + page.items.size
         val hasMore = page.items.isNotEmpty() && (page.totalCount?.let { loaded < it } ?: (page.items.size >= PAGE_SIZE))
-        return Page(present(connection, page.items, posterPattern), loaded.takeIf { hasMore })
+        return Page(page.items.map(presenter(connection)), loaded.takeIf { hasMore })
     }
-
-    private suspend fun present(connection: ServerConnection, titles: List<ServerTitle>, posterPattern: String): List<MetaPreview> {
-        val items = withAddonArtwork(connection, titles.map(presenter(connection)))
-        if (posterPattern.isBlank()) return items
-        return titles.zip(items) { title, item -> title.withPosterPattern(item, posterPattern) }
-    }
-
-    private suspend fun withAddonArtwork(connection: ServerConnection, items: List<MetaPreview>): List<MetaPreview> =
-        when {
-            !connection.useCatalogMetadata -> items
-            currentCoroutineContext()[ArtworkOnDemand.Key] != null -> artwork.cached(items)
-            else -> artwork.resolve(items, ARTWORK_WAIT_MS)
-        }
 
     private suspend fun presenter(connection: ServerConnection): (ServerTitle) -> MetaPreview {
         if (!connection.useCatalogMetadata) return ServerTitle::preview
@@ -460,15 +253,11 @@ class ServerCatalog internal constructor(
     private class Page(val items: List<MetaPreview>, val nextSkip: Int?)
 
     companion object {
-        private const val TAG = "ServerCatalog"
         const val PAGE_SIZE = 50
         private const val SEARCH_LIMIT = 30
-        private const val SEARCH_WAIT_MS = 6_000L
         private const val DETAILS_BUFFER = 16
-        private const val ARTWORK_WAIT_MS = 700L
-        private const val ARTWORK_SETTLE_MS = 8_000L
+        private const val RESUME_ID = "resume"
         private const val COLLECTION_PREFIX = "collection:"
-        private const val HOME_ROW_PREFIX = "home:"
         private const val SEARCH_PREFIX = "search."
         private val SEARCH_KINDS = listOf(ServerMediaKind.MOVIE, ServerMediaKind.SERIES)
         private const val BASE_URL_PREFIX = "nuvio-server://"

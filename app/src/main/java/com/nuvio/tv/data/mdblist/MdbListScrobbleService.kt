@@ -16,12 +16,7 @@ class MdbListScrobbleService @Inject constructor(
             val projection = sync.currentProjection().takeIf { it !== MdbListProgressProjection.Empty }
             val target = snapshot.mutationTarget(event.media, projection) ?: return@write snapshot to Unit
             if (target.type == MdbListItemType.SHOW || !target.scrobbleCoordinatesResolved) return@write snapshot to Unit
-            val response = api.post(
-                "/scrobble/${action.wireValue}",
-                target.scrobbleBody(event.progressPercent.coerceIn(0.0, 100.0)).toString(),
-                scope,
-                retrySafe = action != TrackingScrobbleAction.START
-            )
+            val response = api.post("/scrobble/${action.wireValue}", target.scrobbleBody(event.progressPercent.coerceIn(0.0, 100.0)).toString(), scope)
             val receipt = decodeMdbListScrobbleReceipt(response, target, action, System.currentTimeMillis())
             snapshot.applyScrobble(receipt, projection?.mediaIndex) to Unit
         }

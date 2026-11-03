@@ -50,13 +50,6 @@ class StreamBadgePresentation @Inject constructor(
         }
     }
 
-    suspend fun badgesFor(stream: Stream): List<StreamBadge> {
-        val rules = dataStore.settings.first().rules
-        val filters = getBadgeFilters(rules)
-        if (filters.isEmpty()) return emptyList()
-        return StreamBadgeMatcher.matchedBadges(stream, filters)
-    }
-
     private fun getBadgeFilters(rules: StreamBadgeRules): List<CompiledStreamBadgeFilter> {
         // The settings flow hands out one rules instance per change, so the same
         // instance arrives for every batch: skip normalizing and deep-comparing it.
@@ -101,6 +94,6 @@ class StreamBadgePresentation @Inject constructor(
             val key = badge.dedupeKey()
             if (key !in merged) merged[key] = badge // already pooled
         }
-        return StreamBadgeMatcher.mostExactDts(merged.values.toList())
+        return merged.values.toList()
     }
 }

@@ -2,9 +2,6 @@ package com.nuvio.tv.ui.screens.library
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.nuvio.tv.core.poster.CustomPosterScreen
-import com.nuvio.tv.core.poster.patternForScreen
-import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.mediaserver.ServerCatalog
 import com.nuvio.tv.data.mediaserver.ServerFailure
 import com.nuvio.tv.data.mediaserver.ServerLibraryRef
@@ -22,11 +19,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class LibraryServerShelf(
@@ -39,8 +31,7 @@ data class LibraryServerShelf(
 @HiltViewModel
 class LibraryServersViewModel @Inject constructor(
     private val serverCatalog: ServerCatalog,
-    repository: ServerRepository,
-    layoutPreferenceDataStore: LayoutPreferenceDataStore
+    repository: ServerRepository
 ) : ViewModel() {
     val servers: StateFlow<ServersUiState> = repository.uiState
     private val _shelves = MutableStateFlow<List<LibraryServerShelf>?>(null)
@@ -50,22 +41,6 @@ class LibraryServersViewModel @Inject constructor(
     var focusedShelfKey: String? = null
         private set
     val focusedIndexes = mutableMapOf<String, Int>()
-    private val posterPattern = combine(
-        layoutPreferenceDataStore.customPosterUrlPattern,
-        layoutPreferenceDataStore.customPosterEnabledScreens
-    ) { pattern, screens -> patternForScreen(pattern, CustomPosterScreen.LIBRARY, screens) }
-        .distinctUntilChanged()
-
-    init {
-        viewModelScope.launch {
-            posterPattern.drop(1).collect {
-                if (_shelves.value != null) {
-                    loadedRevision = null
-                    load()
-                }
-            }
-        }
-    }
 
     fun onItemFocused(shelfKey: String, index: Int) {
         focusedShelfKey = shelfKey
@@ -78,27 +53,16 @@ class LibraryServersViewModel @Inject constructor(
         loadedRevision = revision
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            val pattern = posterPattern.first()
-            val shelves = coroutineScope {
-                serverCatalog.libraries().map { ref -> async { shelf(ref, pattern) } }.awaitAll()
-            }
-            _shelves.value = shelves
-            shelves.forEach { shelf ->
-                val row = shelf.row ?: return@forEach
-                launch {
-                    val updated = serverCatalog.settledArtwork(row, pattern) ?: return@launch
-                    _shelves.update { current ->
-                        current?.map { if (it.key == shelf.key && it.row === row) it.copy(row = updated) else it }
-                    }
-                }
+            _shelves.value = coroutineScope {
+                serverCatalog.libraries().map { ref -> async { shelf(ref) } }.awaitAll()
             }
         }
     }
 
-    private suspend fun shelf(ref: ServerLibraryRef, posterPattern: String): LibraryServerShelf {
+    private suspend fun shelf(ref: ServerLibraryRef): LibraryServerShelf {
         val key = "${ref.connection.id}:${ref.library.id}"
         return try {
-            LibraryServerShelf(key, ref.title, row = serverCatalog.row(ref.connection.id, ref.library.id, posterPattern))
+            LibraryServerShelf(key, ref.title, row = serverCatalog.row(ref.connection.id, ref.library.id))
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {

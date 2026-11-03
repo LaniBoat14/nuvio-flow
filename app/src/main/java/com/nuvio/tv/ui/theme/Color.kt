@@ -102,8 +102,7 @@ data class NuvioContrastPair(
 class NuvioColorScheme(
     palette: ThemeColorPalette,
     amoledMode: Boolean = false,
-    amoledSurfacesMode: Boolean = false,
-    glassPresentation: Boolean = false
+    amoledSurfacesMode: Boolean = false
 ) {
     private val pureBlack = NuvioPrimitives.black
     private val pureBlackSurfaces = amoledMode && amoledSurfacesMode
@@ -130,8 +129,8 @@ class NuvioColorScheme(
     val OnSecondaryVariant = palette.onSecondaryVariant
 
     val TextPrimary = NuvioPrimitives.white
-    val TextSecondary = if (glassPresentation) Color(0xFFDCE2E7) else NuvioPrimitives.neutral400
-    val TextTertiary = if (glassPresentation) Color(0xFFBDC8D1) else NuvioPrimitives.neutral600
+    val TextSecondary = NuvioPrimitives.neutral400
+    val TextTertiary = NuvioPrimitives.neutral600
     val TextDisabled = NuvioPrimitives.neutral700
     val TextInverse = NuvioPrimitives.neutral925
 

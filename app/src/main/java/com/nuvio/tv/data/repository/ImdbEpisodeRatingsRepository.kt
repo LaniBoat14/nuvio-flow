@@ -1,10 +1,8 @@
 package com.nuvio.tv.data.repository
 
 import android.util.Log
-import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.data.remote.api.ImdbTapframeApi
 import com.nuvio.tv.data.remote.api.SeriesGraphApi
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,8 +29,6 @@ class ImdbEpisodeRatingsRepository @Inject constructor(
     private val inFlight = mutableMapOf<String, kotlinx.coroutines.Deferred<Map<Pair<Int, Int>, Double>>>()
     private val inFlightMutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    internal var primaryConfigured = BuildConfig.IMDB_TAPFRAME_API_BASE_URL.isNotBlank()
-    internal val primaryOutage = HostOutage()
 
     suspend fun getEpisodeRatings(
         imdbId: String?,
@@ -85,27 +81,20 @@ class ImdbEpisodeRatingsRepository @Inject constructor(
         imdbId: String?,
         tmdbId: Int?
     ): Map<Pair<Int, Int>, Double> {
-        var primaryUnreachable = false
-        if (!imdbId.isNullOrBlank() && primaryConfigured && !primaryOutage.isDown()) {
-            val primary = fetchFromImdbTapframe(imdbId) { primaryUnreachable = true }
+        if (!imdbId.isNullOrBlank()) {
+            val primary = fetchFromImdbTapframe(imdbId)
             if (primary.isNotEmpty()) return primary
-            if (!primaryUnreachable) Log.w(tag, "Primary episode ratings empty for imdbId=$imdbId, trying fallback.")
+            Log.w(tag, "Primary episode ratings empty for imdbId=$imdbId, trying fallback.")
         }
 
         if (tmdbId != null && tmdbId > 0) {
-            val fallback = fetchFromSeriesGraph(tmdbId)
-            if (primaryUnreachable) primaryOutage.markDown(networkUp = fallback.isNotEmpty(), tag = tag)
-            return fallback
+            return fetchFromSeriesGraph(tmdbId)
         }
 
-        if (primaryUnreachable) primaryOutage.markDown(networkUp = false, tag = tag)
         return emptyMap()
     }
 
-    private suspend fun fetchFromImdbTapframe(
-        imdbId: String,
-        onUnreachable: () -> Unit
-    ): Map<Pair<Int, Int>, Double> {
+    private suspend fun fetchFromImdbTapframe(imdbId: String): Map<Pair<Int, Int>, Double> {
         return try {
             val response = imdbTapframeApi.getSeasonRatings(imdbId)
             if (!response.isSuccessful) {
@@ -113,14 +102,8 @@ class ImdbEpisodeRatingsRepository @Inject constructor(
                 return emptyMap()
             }
             toRatingsMap(response.body().orEmpty())
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: Exception) {
-            if (HostOutage.isUnreachable(e)) {
-                onUnreachable()
-            } else {
-                Log.w(tag, "Error fetching primary season ratings for imdbId=$imdbId", e)
-            }
+            Log.w(tag, "Error fetching primary season ratings for imdbId=$imdbId", e)
             emptyMap()
         }
     }
