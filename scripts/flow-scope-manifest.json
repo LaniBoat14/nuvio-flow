@@ -164,7 +164,7 @@
     "app/src/main/java/com/nuvio/tv/core/player/FilenameEpisodeMatcher.kt": "05b090f27a2bbd1e80cd50524357b5a311524595f85f16140ac8a3d4fc314f61",
     "app/src/main/java/com/nuvio/tv/core/player/FrameRateUtils.kt": "ad35426e94e1db3a91409a4fa757d23984687ca2989520a1c189daf3b745c3d6",
     "app/src/main/java/com/nuvio/tv/core/player/HevcDvRpuStripper.kt": "49a0947e61820484767116ce643bce25259b639da73da137373c70291a5f6769",
-    "app/src/main/java/com/nuvio/tv/core/player/HevcHdr10PlusStripper.kt": "1e154add563710d44fc4d16ac3f0b4155341aa688dd016bcf36a843d1c71d33a",
+    "app/src/main/java/com/nuvio/tv/core/player/HevcHdr10PlusStripper.kt": "09126c17b8f58c921f044a52a04071d7ff39dd15c5d2f130a852cf80e3ce069a",
     "app/src/main/java/com/nuvio/tv/core/player/LetterboxDetector.kt": "0c72b04de9c29e57b03f2345a0bb352acd2e225e88d4039e8994ab5135e16968",
     "app/src/main/java/com/nuvio/tv/core/player/LetterboxRenderPolicy.kt": "542002632f4fc9e18ce7287082efc47b57290139a2159d85d5db0fdc678636bb",
     "app/src/main/java/com/nuvio/tv/core/player/LocalTrailerPlayerPool.kt": "f553735ab1bd2a5d0c113c843b0aa58439264c950b32f4ed34cc34b3a98fed31",
