@@ -673,7 +673,7 @@ internal fun PlayerRuntimeController.rememberAddonSubtitleSelection(subtitle: Su
     persistTrackPreference()
 }
 
-private fun PlayerRuntimeController.currentTrackPreferenceForPersistence(): PlayerRuntimeController.TrackPreference {
+internal fun PlayerRuntimeController.currentTrackPreferenceForPersistence(): PlayerRuntimeController.TrackPreference {
     return rememberedTrackPreference ?: persistedTrackPreference ?: PlayerRuntimeController.TrackPreference()
 }
 

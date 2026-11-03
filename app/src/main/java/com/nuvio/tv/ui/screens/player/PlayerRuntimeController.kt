@@ -7,6 +7,7 @@ import android.media.audiofx.LoudnessEnhancer
 import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.media3.common.C
+import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -558,6 +559,13 @@ class PlayerRuntimeController(
     internal var pendingAudioSelectionAfterSubtitleRefresh: PendingAudioSelection? = null
     internal var rememberedTrackPreference: TrackPreference? = null
     internal var persistedTrackPreference: TrackPreference? = null
+
+    /**
+     * The lossless audio default runs at most once per stream, and only when
+     * no remembered/persisted/carry-over audio preference was seen for it.
+     */
+    internal var losslessAudioDefaultAppliedForStream: Boolean = false
+    internal var persistedAudioPreferenceSeenForStream: Boolean = false
     internal var pendingEngineSwitchTrackPreference: PendingEngineSwitchTrackPreference? = null
     internal var explicitSubtitleSelectionForEngineSwitch: ExplicitSubtitleSelectionForEngineSwitch? = null
     internal var effectiveSubtitleSelectionForEngineSwitch: ExplicitSubtitleSelectionForEngineSwitch? = null
@@ -599,7 +607,14 @@ class PlayerRuntimeController(
     /** USB audio has no hardware A/V sync output, so tunneled playback is skipped while it plays. */
     internal var tunnelingBlockedByUsbAudio: Boolean = false
     internal var audioOutputRouteCallback: AudioDeviceCallback? = null
+    internal var knownAudioOutputDeviceIds: Set<Int> = emptySet()
+    internal var lastBitstreamOutputReading: Pair<PlaybackException, BitstreamOutputReading?>? = null
     internal var audioRouteChangeJob: Job? = null
+    internal var passthroughReturnCheckJob: Job? = null
+    internal val passthroughReturnRebuilds: MutableMap<String, Int> = mutableMapOf()
+    internal var busyOutputCheckJob: Job? = null
+    internal var busyOutputCheckStreamUrl: String? = null
+    internal val busyOutputReturnRebuilds: MutableMap<String, Int> = mutableMapOf()
 
     internal var lastBufferLogTimeMs: Long = 0L
     internal var pendingSeekFlush: Boolean = false
@@ -691,12 +706,27 @@ class PlayerRuntimeController(
     internal val dv7Mode1ForcedStreamUrls: MutableSet<String> = mutableSetOf()
     internal val vc1TrackSelectionBypassStreamUrls: MutableSet<String> = mutableSetOf()
     internal val safeAudioForcedStreamUrls: MutableSet<String> = mutableSetOf()
+    internal val playbackRecoveryGate = PlaybackRecoveryGate()
+    internal var playbackRecoveryJob: Job? = null
+    // Streams that hit a 4001 on a policy-denied audio format and must be
+    // rebuilt with the FFmpeg audio renderer preferred (audio-local reorder).
+    internal val preferFfmpegAudioStreamUrls: MutableSet<String> = mutableSetOf()
+    internal var surroundResolveInputs: SurroundResolveInputs? = null
+    internal var lastAppliedSurroundResolve: SurroundResolveResult? = null
+    internal var lastAppliedSurroundHdmi: AudioChainProbe.HdmiPlugSnapshot? = null
+    // Policy the current player was built with; lets error recovery test denial
+    // without re-deriving settings.
+    internal var currentAudioPassthroughPolicy: com.nuvio.tv.core.player.AudioPassthroughPolicy? = null
+    // Own IEC output failures per stream; from the second one, rebuilds leave HD audio to the system sink.
+    internal val iecFailureStrikes: MutableMap<String, Int> = mutableMapOf()
+    internal val iecOffStreamUrls: MutableSet<String> = mutableSetOf()
     internal val audioDisabledForcedStreamUrls: MutableSet<String> = mutableSetOf()
     internal var isMapDv7ToHevcActiveForCurrentPlayback: Boolean = false
     internal var isManualDv81Mode2ActiveForCurrentPlayback: Boolean = false
     internal var isExperimentalDv7ToDv81ActiveForCurrentPlayback: Boolean = false
     internal var isVc1TrackSelectionBypassActiveForCurrentPlayback: Boolean = false
     internal var isSafeAudioModeActiveForCurrentPlayback: Boolean = false
+    internal var isTunnelingActiveForCurrentPlayback: Boolean = false
     internal var isAudioDisabledForCurrentPlayback: Boolean = false
     internal var hasAttemptedDv7ToDv81ForCurrentPlayback: Boolean = false
     internal var dv7ToDv81BridgeVersionForCurrentPlayback: String? = null
@@ -750,6 +780,12 @@ class PlayerRuntimeController(
     internal var currentVideoTrackHeight: Int = 0
     internal var currentVideoTrackBitrate: Int = -1
     internal var currentVideoTrackColorTransfer: Int? = null
+    // Negotiated audio output path, from onAudioTrackInitialized.
+    internal var currentAudioPathDescription: String? = null
+    // True while the negotiated AudioTrack encoding is non-PCM (bitstream bypass).
+    internal var isAudioOutputBypassing: Boolean = false
+    // The audio session the system sound-effects control was last told is open, until it is told it closed.
+    internal var effectControlSessionId: Int? = null
     internal var currentVideoTrackSelected: Boolean = false
     internal var currentVideoTrackBestSupport: Int = C.FORMAT_UNSUPPORTED_TYPE
     internal var lastLoggedVideoTrackSignature: String? = null

@@ -288,8 +288,13 @@ data class TrackInfo(
     val channelCount: Int? = null,
     val isForced: Boolean = false,
     val isSelected: Boolean = false,
-    val sampleRate: Int? = null
+    val sampleRate: Int? = null,
+    /** The track's own name from the file, as written there. */
+    val title: String? = null,
+    val role: TrackRole? = null
 )
+
+enum class TrackRole { COMMENTARY, AUDIO_DESCRIPTION, HEARING_IMPAIRED, ORIGINAL }
 
 data class NextEpisodeInfo(
     val videoId: String,
