@@ -197,7 +197,7 @@ private fun CustomBufferControls(
 
     val budgetManaged = settings.bufferBudgetManaged
     val parallelActive = settings.parallelNetworkEnabled && settings.useParallelConnections
-    val chunkMb = Math.ceil(settings.parallelChunkSizeKb / 1024.0).toInt().coerceAtMost(MemoryBudget.tierMaxChunkMb)
+    val chunkMb = Math.ceil(settings.parallelChunkSizeKb / 1024.0).toInt().coerceAtMost(MemoryBudget.tierMaxChunkMb(settings.nuvioPerformanceModeEnabled, settings.parallelConnectionCount))
     val parallelOverheadMb = if (parallelActive) {
         MemoryBudget.parallelOverheadMb(settings.parallelConnectionCount, chunkMb)
     } else {
@@ -443,7 +443,7 @@ internal fun PlaybackMemoryUsageCard(settings: PlayerSettings) {
         else -> MemoryBudget.defaultBufferSizeMb
     }
     val parallelActive = settings.parallelNetworkEnabled && settings.useParallelConnections
-    val chunkMb = Math.ceil(settings.parallelChunkSizeKb / 1024.0).toInt().coerceAtMost(MemoryBudget.tierMaxChunkMb)
+    val chunkMb = Math.ceil(settings.parallelChunkSizeKb / 1024.0).toInt().coerceAtMost(MemoryBudget.tierMaxChunkMb(settings.nuvioPerformanceModeEnabled, settings.parallelConnectionCount))
     val parallelOverheadMb = if (parallelActive) {
         MemoryBudget.parallelOverheadMb(settings.parallelConnectionCount, chunkMb)
     } else {

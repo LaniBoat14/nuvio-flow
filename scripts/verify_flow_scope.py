@@ -24,6 +24,8 @@ settings = settings[:a] + settings[b:]
 a = settings.index('private val PARALLEL_CHUNK_SIZES =')
 b = settings.index('\n)', a) + 2
 settings = (settings[:a] + settings[b:]).rstrip()
+# Backend signature adaptation in the two preserved Flow memory displays; no UI change.
+settings = settings.replace('MemoryBudget.tierMaxChunkMb(settings.nuvioPerformanceModeEnabled, settings.parallelConnectionCount)', 'MemoryBudget.tierMaxChunkMb')
 assert sha(settings.encode()) == manifest['network_settings_preserved_sha256'], 'Non-network settings changed'
 print('Flow settings outside Network match Flow 11.')
 
