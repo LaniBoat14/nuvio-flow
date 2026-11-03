@@ -70,15 +70,12 @@ object SeekThumbnailPreferences {
 
     @Volatile private var totalMemBytes = -1L
 
-    private fun defaultMode(context: Context): SeekThumbMode {
-        if (totalMemBytes < 0) {
-            val info = ActivityManager.MemoryInfo()
-            val am = context.applicationContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
-            am?.getMemoryInfo(info)
-            totalMemBytes = info.totalMem
-        }
-        return defaultMode(totalMemBytes)
-    }
+    /**
+     * Flow: thumbnails are opt-in. Building them runs decoders and downloads next to playback, which costs the
+     * UI its smoothness on a TV box, so an install that never chose gets OFF; Settings > Playback turns it on.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun defaultMode(context: Context): SeekThumbMode = SeekThumbMode.OFF
 
     /** A stored choice (or an older key's) always wins; only an install without one gets [default]. */
     internal fun modeOf(prefs: Preferences, default: SeekThumbMode = SeekThumbMode.ALL): SeekThumbMode {
