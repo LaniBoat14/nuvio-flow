@@ -18,6 +18,14 @@ import com.nuvio.tv.data.local.NextEpisodeThresholdMode
 import com.nuvio.tv.data.local.StreamAutoPlayMode
 import com.nuvio.tv.data.local.StreamAutoPlaySource
 import com.nuvio.tv.data.local.AudioOutputChannels
+import com.nuvio.tv.data.local.SurroundFormatMode
+import com.nuvio.tv.data.local.SurroundChannelTarget
+import com.nuvio.tv.data.local.DeniedCodecHandling
+import com.nuvio.tv.ui.screens.player.AudioRejectionReverifier
+import com.nuvio.tv.ui.screens.player.PlayerTunnelAvSyncPolicy
+import com.nuvio.tv.ui.screens.player.iec.PlatformIecAudioTrackFactory
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import com.nuvio.tv.data.local.AutoSkipSegmentType
 import com.nuvio.tv.data.local.MpvHardwareDecodeMode
 import com.nuvio.tv.data.local.SubtitleOrganizationMode
@@ -128,6 +136,9 @@ class PlaybackSettingsViewModel @Inject constructor(
         playerSettingsDataStore.setDownmixEnabled(enabled)
     }
 
+    private val _iecProbeFeedback = MutableSharedFlow<IecProbeFeedback>(extraBufferCapacity = 4)
+    val iecProbeFeedback: SharedFlow<IecProbeFeedback> = _iecProbeFeedback
+
     suspend fun setAudioOutputChannels(channels: AudioOutputChannels) {
         playerSettingsDataStore.setAudioOutputChannels(channels)
     }
@@ -138,10 +149,76 @@ class PlaybackSettingsViewModel @Inject constructor(
 
     suspend fun setTunnelingEnabled(enabled: Boolean) {
         playerSettingsDataStore.setTunnelingEnabled(enabled)
+        PlayerTunnelAvSyncPolicy.resetMemo()
     }
 
     suspend fun setForceOpticalPassthrough(enabled: Boolean) {
         playerSettingsDataStore.setForceOpticalPassthrough(enabled)
+    }
+
+    suspend fun setUseSystemPassthrough(enabled: Boolean) {
+        playerSettingsDataStore.setUseSystemPassthrough(enabled)
+    }
+
+    suspend fun setDtsHdTvPassthrough(enabled: Boolean) {
+        playerSettingsDataStore.setDtsHdTvPassthrough(enabled)
+    }
+
+    fun resetIecPassthroughProbe() {
+        _iecProbeFeedback.tryEmit(IecProbeFeedback.STARTED)
+        PlatformIecAudioTrackFactory.resetIec61937Probe { usable ->
+            _iecProbeFeedback.tryEmit(
+                if (usable) IecProbeFeedback.AVAILABLE else IecProbeFeedback.UNAVAILABLE
+            )
+        }
+    }
+
+    suspend fun setSurroundFormatMode(mode: SurroundFormatMode) {
+        playerSettingsDataStore.setSurroundFormatMode(mode)
+    }
+
+    suspend fun setAllowAc3Passthrough(enabled: Boolean) {
+        playerSettingsDataStore.setAllowAc3Passthrough(enabled)
+    }
+
+    suspend fun setAllowEac3Passthrough(enabled: Boolean) {
+        playerSettingsDataStore.setAllowEac3Passthrough(enabled)
+    }
+
+    suspend fun setAllowTruehdPassthrough(enabled: Boolean) {
+        playerSettingsDataStore.setAllowTruehdPassthrough(enabled)
+    }
+
+    suspend fun setAllowDtsPassthrough(enabled: Boolean) {
+        playerSettingsDataStore.setAllowDtsPassthrough(enabled)
+    }
+
+    suspend fun setAllowDtshdPassthrough(enabled: Boolean) {
+        playerSettingsDataStore.setAllowDtshdPassthrough(enabled)
+    }
+
+    suspend fun setTranscodeDeniedToAc3(enabled: Boolean) {
+        playerSettingsDataStore.setDeniedCodecHandling(
+            if (enabled) DeniedCodecHandling.TRANSCODE_AC3 else DeniedCodecHandling.DECODE_PCM
+        )
+    }
+
+    suspend fun forgetLearnedAudioRejections() {
+        playerSettingsDataStore.clearLearnedAudioRejections()
+        AudioRejectionReverifier.ledger.invalidate()
+    }
+
+    suspend fun forgetTunnelStalls() {
+        PlayerTunnelAvSyncPolicy.resetMemo()
+        playerSettingsDataStore.clearTunnelDeadAudioClasses()
+    }
+
+    suspend fun setSurroundChannelTarget(target: SurroundChannelTarget) {
+        playerSettingsDataStore.setSurroundChannelTarget(target)
+    }
+
+    suspend fun setSurroundTvArcSoundbar(enabled: Boolean) {
+        playerSettingsDataStore.setSurroundTvArcSoundbar(enabled)
     }
 
     suspend fun setSkipSilence(enabled: Boolean) {
@@ -590,3 +667,5 @@ class PlaybackSettingsViewModel @Inject constructor(
         playerSettingsDataStore.setNuvioPerformanceModeEnabled(enabled)
     }
 }
+
+enum class IecProbeFeedback { STARTED, AVAILABLE, UNAVAILABLE }
