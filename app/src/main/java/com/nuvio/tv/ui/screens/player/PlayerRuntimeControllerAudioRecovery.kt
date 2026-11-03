@@ -12,6 +12,7 @@ import androidx.media3.exoplayer.RendererCapabilities
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioTrackBufferSizeProvider
+import com.nuvio.tv.core.player.AudioPassthroughPolicy
 import com.nuvio.tv.data.local.InternalPlayerEngine
 import com.nuvio.tv.ui.screens.player.iec.LiveDirectAudioPlayback
 import kotlinx.coroutines.delay
@@ -302,7 +303,7 @@ internal fun surroundTargetToOutputChannels(
  * persisted as a learned denial only once a fallback has opened audio.
  */
 internal fun PlayerRuntimeController.noteAudioTrackRejection(error: PlaybackException, retryScheduled: Boolean) {
-    if (!error.isAudioTrackFailure()) return
+    if (!error.hasAudioTrackFailure()) return
     val mime = failedAudioTrackInputFormat(error)?.sampleMimeType
     val routeKey = currentAudioOutputRoute?.key
     AudioTrackRejectionLog.labelForMime(mime)?.let { label ->
@@ -584,3 +585,15 @@ internal fun describeAudioEncoding(encoding: Int): String = when (encoding) {
 
 private fun String.safeHost(): String =
     runCatching { android.net.Uri.parse(this).host }.getOrNull().orEmpty()
+
+/** Same test as the file-private check in PlayerRuntimeControllerInitialization, via the shared classifier. */
+private fun PlaybackException.hasAudioTrackFailure(): Boolean {
+    val details = buildString {
+        append(message ?: "")
+        append(' ')
+        append(cause?.message ?: "")
+        append(' ')
+        append(cause?.cause?.message ?: "")
+    }
+    return isAudioTrackFailure(errorCode, details)
+}
