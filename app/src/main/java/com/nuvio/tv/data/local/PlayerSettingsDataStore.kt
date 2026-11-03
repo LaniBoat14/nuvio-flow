@@ -310,6 +310,7 @@ data class PlayerSettings(
     // Only honored when dv7HandlingMode is OFF or DV81_LIBDOVI.
     val dv7LibdoviModeOverride: Int = -1,
     val stripHdr10PlusSei: Boolean = false,
+    val injectHdr10MetadataOnStrip: Boolean = false,
     /** ExoPlayer reads Matroska chapters itself over HTTP; mpv always lists them. */
     val exoChaptersEnabled: Boolean = false,
     val mpvHi10pGnextSoftwareFallbackEnabled: Boolean = false,
@@ -561,7 +562,13 @@ enum class Dv7HandlingMode {
     HDR10_BASE_LAYER,
     DV81_LIBDOVI,
     STRIP_DV,
-    OFF;
+    OFF,
+    /**
+     * Kept for settings/diagnostics compatibility with Arc. The Amlogic native FEL/MEL path
+     * (core/player/amlfel) is NOT part of Flow, so this value is never offered in the UI
+     * and always behaves exactly like [AUTO].
+     */
+    NATIVE_FEL;
 
     companion object {
         /** Tolerant string parser used by the DataStore. */
@@ -571,6 +578,7 @@ enum class Dv7HandlingMode {
             DV81_LIBDOVI.name -> DV81_LIBDOVI
             STRIP_DV.name -> STRIP_DV
             OFF.name -> OFF
+            NATIVE_FEL.name -> NATIVE_FEL
             else -> AUTO
         }
     }
@@ -639,6 +647,7 @@ class PlayerSettingsDataStore @Inject constructor(
     private val legacyMapDv7ToHevcKey = booleanPreferencesKey("map_dv7_to_hevc")
     private val dv7LibdoviModeOverrideKey = intPreferencesKey("dv7_libdovi_mode_override")
     private val stripHdr10PlusSeiKey = booleanPreferencesKey("strip_hdr10plus_sei")
+    private val injectHdr10MetadataOnStripKey = booleanPreferencesKey("inject_hdr10_metadata_on_strip")
     private val exoChaptersEnabledKey = booleanPreferencesKey("exo_chapters_enabled")
     private val mpvHi10pGnextSoftwareFallbackEnabledKey =
         booleanPreferencesKey("mpv_hi10p_gnext_software_fallback_enabled")
@@ -1034,6 +1043,7 @@ class PlayerSettingsDataStore @Inject constructor(
                 },
                 dv7LibdoviModeOverride = (prefs[dv7LibdoviModeOverrideKey] ?: -1).coerceIn(-1, 4),
                 stripHdr10PlusSei = prefs[stripHdr10PlusSeiKey] ?: false,
+                injectHdr10MetadataOnStrip = prefs[injectHdr10MetadataOnStripKey] ?: false,
                 exoChaptersEnabled = prefs[exoChaptersEnabledKey] ?: false,
                 mpvHi10pGnextSoftwareFallbackEnabled =
                     prefs[mpvHi10pGnextSoftwareFallbackEnabledKey] ?: false,
@@ -1700,6 +1710,7 @@ class PlayerSettingsDataStore @Inject constructor(
     suspend fun setDv7HandlingMode(mode: Dv7HandlingMode) { store().edit { it[dv7HandlingModeKey] = mode.name } }
     suspend fun setDv7LibdoviModeOverride(mode: Int) { store().edit { it[dv7LibdoviModeOverrideKey] = mode.coerceIn(-1, 4) } }
     suspend fun setStripHdr10PlusSei(enabled: Boolean) { store().edit { it[stripHdr10PlusSeiKey] = enabled } }
+    suspend fun setInjectHdr10MetadataOnStrip(enabled: Boolean) { store().edit { it[injectHdr10MetadataOnStripKey] = enabled } }
     suspend fun setExoChaptersEnabled(enabled: Boolean) { store().edit { it[exoChaptersEnabledKey] = enabled } }
 
     // Subtitle styles

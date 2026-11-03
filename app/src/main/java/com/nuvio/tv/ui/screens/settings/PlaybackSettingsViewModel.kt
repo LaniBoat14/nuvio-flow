@@ -236,6 +236,10 @@ class PlaybackSettingsViewModel @Inject constructor(
         playerSettingsDataStore.setDv7LibdoviModeOverride(mode)
     }
 
+    suspend fun setInjectHdr10MetadataOnStrip(enabled: Boolean) {
+        playerSettingsDataStore.setInjectHdr10MetadataOnStrip(enabled)
+    }
+
     suspend fun setStripHdr10PlusSei(enabled: Boolean) {
         playerSettingsDataStore.setStripHdr10PlusSei(enabled)
     }
