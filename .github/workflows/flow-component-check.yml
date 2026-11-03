@@ -121,18 +121,15 @@ jobs:
           path: app/build/outputs/apk/full/release/*.apk
           if-no-files-found: error
           retention-days: 14
-      - name: Publish verified signed Flow 15
+      - name: Publish test build for fast download
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          TAG=1.1.0-beta.9.flow.15
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release already exists; preserving published APK."
-            exit 0
-          fi
-          gh release create "$TAG" --target "$GITHUB_SHA" --draft --prerelease --title "Nuvio Flow 15 — Arc networking and analytics" --notes "<!-- nuvio-fork-version-code: 2013 --> Flow 11 interface retained with Arc networking, automatic speed-up, connection/chunk controls and classic analytics panel. Includes required buffering and player integration. Device playback remains to be checked." app/build/outputs/apk/full/release/*.apk
-          gh release edit "$TAG" --draft=false
+          # A tag and title that are not a version, so the in-app updater never offers it.
+          TAG=test-a-overlay-only
+          gh release delete "$TAG" --cleanup-tag --yes >/dev/null 2>&1 || true
+          gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --title "Test A - flow 15 plus glass overlay only" --notes "Test build, not an update. Flow 15 with only the glass stats overlay and its smaller size." app/build/outputs/apk/full/release/*.apk
       - name: Remove private inputs
         if: always()
         run: rm -f flow-signing.keystore local.properties local.dev.properties
