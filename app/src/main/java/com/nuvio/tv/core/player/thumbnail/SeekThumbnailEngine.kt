@@ -18,7 +18,6 @@ import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import com.nuvio.tv.core.player.PlayerSessionTracker
 import com.nuvio.tv.data.local.ImagePerformancePreferences
 import com.nuvio.tv.data.mediaserver.ServerThumbnailSource
 import com.nuvio.tv.ui.screens.player.ParallelRangeDataSource
@@ -3706,7 +3705,7 @@ object SeekThumbnails {
             val sources = source.copySources ?: return
             val screenCopy = usenet || onDemand || copyFirst
             if (afterPlayback || ended || (prepareStage in 1..4 && !screenCopy) || borrow != null || slotKeyframe.isEmpty()) return
-            if (copyFirst && !CopyFirst.startsNow(prepareStage in 1..4, PlayerSessionTracker.firstFrameShown)) {
+            if (copyFirst && !CopyFirst.startsNow(prepareStage in 1..4, false /* Flow's PlayerSessionTracker has no first-frame flag; copy sources are not ported. */)) {
                 if (!copyWaitLogged) Log.i(COPY_TAG, "copy first: the copy starts at the film's first frame")
                 copyWaitLogged = true
                 return

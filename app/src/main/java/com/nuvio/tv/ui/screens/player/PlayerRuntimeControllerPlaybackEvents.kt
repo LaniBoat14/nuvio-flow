@@ -1435,6 +1435,7 @@ fun PlayerRuntimeController.onEvent(
                 .coerceAtLeast(0L)
                 .coerceAtMost(maxDuration)
             pendingPreviewSeekPosition = target
+            com.nuvio.tv.core.player.thumbnail.SeekThumbnails.notePriority(target)
             updatePlaybackTimeline(currentPosition = target)
             if (_uiState.value.showControls) {
                 showControlsTemporarily()
@@ -2214,7 +2215,7 @@ private fun PlayerRuntimeController.sampleAutoSpeedup(player: Player, positionMs
     // The thumbnails' memory floor only holds the read-ahead back while their screen holds the film; once it plays,
     // the buffer comes first and thumbnails decode only with the memory that is left.
     AutoSpeedup.updateReadAhead(roomBytes) {
-        if (player.playWhenReady) 0L else 0L /* Flow has no thumbnail memory owner. */
+        if (player.playWhenReady) 0L else com.nuvio.tv.core.player.thumbnail.SeekThumbnails.memoryFloorBytes()
     }
     val fileBitrate = AutoSpeedup.fileBitrate(
         PlaybackByteCounter.contentLengthFor(currentStreamUrl),

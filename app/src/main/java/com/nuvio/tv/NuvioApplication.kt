@@ -91,6 +91,9 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
         val tag = getSharedPreferences("app_locale", Context.MODE_PRIVATE)
             .getString("locale_tag", null)
         LocaleCache.localeTag = tag ?: ""
+
+        // Expire stored seek thumbnails even when nothing is played.
+        com.nuvio.tv.core.player.thumbnail.SeekThumbnails.scheduleStartupHousekeeping(this)
     }
 
     override fun newImageLoader(context: android.content.Context): ImageLoader {

@@ -79,6 +79,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
@@ -154,6 +155,12 @@ import com.nuvio.tv.ui.screens.party.ConfirmDialog
 import com.nuvio.tv.ui.screens.party.PartyPanel
 import com.nuvio.tv.ui.screens.party.PartyStatusPill
 import com.nuvio.tv.core.player.PlayerWindowBackdrop
+import com.nuvio.tv.core.player.thumbnail.NextEpisodeThumbs
+import com.nuvio.tv.core.player.thumbnail.SeekThumbnailPreferences
+import com.nuvio.tv.core.player.thumbnail.SeekThumbnails
+import com.nuvio.tv.core.player.thumbnail.ThumbSource
+import com.nuvio.tv.core.player.thumbnail.handsPlayerBackOnRestart
+import com.nuvio.tv.core.player.thumbnail.isThumbnailSource
 import com.nuvio.tv.ui.util.localizeEpisodeTitle
 import com.nuvio.tv.data.local.InternalPlayerEngine
 import com.nuvio.tv.data.local.LibassRenderMode
@@ -354,6 +361,11 @@ fun PlayerScreen(
 
     val handleBackPress = handleBackPress@{
         if (externalHandoffInProgress) return@handleBackPress
+        // "Generate thumbnails before play": Back = start watching now.
+        if (SeekThumbnails.prepareUi.value !is SeekThumbnails.PrepareUi.Hidden) {
+            SeekThumbnails.startWatchingNow()
+            return@handleBackPress
+        }
         if (postPlayRecommendationState.canReturnToPlayer && !uiState.playbackEnded) {
             returnToPlayerFromPostPlay()
             viewModel.hideControls()
@@ -486,6 +498,8 @@ fun PlayerScreen(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
+                    SeekThumbnails.hostResumed = false
+                    NextEpisodeThumbs.cancel()
                     viewModel.pauseForLifecycle()
                 }
                 Lifecycle.Event.ON_STOP -> {
@@ -505,6 +519,8 @@ fun PlayerScreen(
                     }
                 }
                 Lifecycle.Event.ON_RESUME -> {
+                    SeekThumbnails.hostResumed = true
+                    NextEpisodeThumbs.resume()
                     // Re-create the MediaSession so media controls work in foreground.
                     // Don't auto-resume playback — let the user press play.
                     viewModel.resumeForLifecycle()
@@ -515,6 +531,66 @@ fun PlayerScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Seek thumbnails follow the stream and the engine; ExoPlayer only (with MPV the provider returns null).
+    val seekThumbsEnabled = SeekThumbnailPreferences.enabledFlow(context).collectAsState(initial = false)
+    val thumbsOnMpv = uiState.internalPlayerEngine == InternalPlayerEngine.MVP_PLAYER
+    val lastThumbRun = remember { mutableStateOf<Pair<String?, Boolean>?>(null) }
+    LaunchedEffect(seekThumbsEnabled.value, uiState.currentStreamUrl, uiState.isTorrentStream, thumbsOnMpv) {
+        val thumbSourceUrl = uiState.currentStreamUrl
+        val previousRun = lastThumbRun.value
+        SeekThumbnails.stopSession(handBackPlayer = handsPlayerBackOnRestart(previousRun, thumbSourceUrl, thumbsOnMpv))
+        val engineChanged = previousRun != null && previousRun.first == thumbSourceUrl && previousRun.second != thumbsOnMpv
+        lastThumbRun.value = thumbSourceUrl to thumbsOnMpv
+        if (!seekThumbsEnabled.value || thumbSourceUrl.isNullOrBlank() || thumbsOnMpv) {
+            SeekThumbnails.dropServerMemory()
+            return@LaunchedEffect
+        }
+        // A media server's own thumbnails first (also for its HLS transcodes); without them our own engine runs.
+        val serverThumbs = viewModel.serverThumbnails(thumbSourceUrl)
+        if (serverThumbs != null && SeekThumbnails.startServerWhenEligible(
+                context = context.applicationContext,
+                source = serverThumbs,
+                playerProvider = { viewModel.exoPlayer }
+            )
+        ) return@LaunchedEffect
+        if (!isThumbnailSource(thumbSourceUrl, viewModel.currentStreamMimeType())) {
+            SeekThumbnails.dropServerMemory()
+            return@LaunchedEffect
+        }
+        // A torrent's own pieces stay with playback; Flow makes no debrid copy, so a torrent gets no thumbnails.
+        val torrent = uiState.isTorrentStream
+        val usenet = !torrent && SlowStartServer.isUsenet(thumbSourceUrl)
+        SeekThumbnails.startWhenEligible(
+            context = context.applicationContext,
+            source = ThumbSource(
+                url = thumbSourceUrl,
+                headers = viewModel.getCurrentHeaders(),
+                identity = viewModel.seekThumbnailIdentity() ?: uiState.title,
+                fileSizeHint = viewModel.getCurrentFileSizeBytes(),
+                holdBeforePlay = !engineChanged && !viewModel.isAutoPlayedEpisode(),
+                playbackConnections = viewModel.playbackConnectionCount(),
+                identityExact = viewModel.seekThumbnailIdentityExact(),
+                usenet = usenet,
+                mediaServer = viewModel.isServerStream(thumbSourceUrl),
+                torrent = torrent,
+                kindNote = { viewModel.seekThumbnailKindNote(thumbSourceUrl, usenet) },
+                settingsNote = { viewModel.seekThumbnailSettingsNote() },
+            ),
+            playerProvider = { viewModel.exoPlayer },
+            reserveProvider = { viewModel.seekThumbnailBufferReserve() },
+            pauseForPrepare = { viewModel.pauseForSeekThumbnails() },
+            letGoForPrepare = { viewModel.letGoForSeekThumbnails() },
+            loadAgainAfterPrepare = { play -> viewModel.loadAgainAfterSeekThumbnails(play) },
+            skipReason = { viewModel.seekThumbnailSkipReason() }
+        )
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            SeekThumbnails.playerClosed()
+            NextEpisodeThumbs.cancel()
         }
     }
 
@@ -621,6 +697,26 @@ fun PlayerScreen(
             containerFocusRequester.requestFocus()
         }
     }
+    val prepareVisible by remember {
+        derivedStateOf { SeekThumbnails.prepareUi.value !is SeekThumbnails.PrepareUi.Hidden }
+    }
+    var prepareWasVisible by remember { mutableStateOf(false) }
+    // A key-down that moved focus; its key-up must not click the control it landed on.
+    var swallowKeyUp by remember { mutableStateOf(-1) }
+    // A failed stream must not stay hidden behind the overlay.
+    LaunchedEffect(uiState.error != null, prepareVisible) {
+        if (uiState.error != null && prepareVisible) {
+            SeekThumbnails.startWatchingNow()
+        }
+    }
+    LaunchedEffect(prepareVisible) {
+        if (prepareVisible) {
+            prepareWasVisible = true
+        } else if (prepareWasVisible) {
+            prepareWasVisible = false
+            if (uiState.error == null) runCatching { containerFocusRequester.requestFocus() }
+        }
+    }
     LaunchedEffect(uiState.showSubtitleDelayOverlay) {
         subtitleDelayFocusTarget = SubtitleDelayFocusTarget.SLIDER
     }
@@ -670,6 +766,25 @@ fun PlayerScreen(
             .focusRequester(containerFocusRequester)
             .focusable(enabled = uiState.error == null)
             .onPreviewKeyEvent { keyEvent ->
+                // The key-up of a press that moved focus to the thumbnail overlay stays out of the controls.
+                if (swallowKeyUp != -1 && keyEvent.nativeKeyEvent.keyCode == swallowKeyUp &&
+                    keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_UP
+                ) {
+                    swallowKeyUp = -1
+                    return@onPreviewKeyEvent true
+                }
+                // While the thumbnail overlay shows, every key but Back belongs to it.
+                if (prepareVisible &&
+                    keyEvent.nativeKeyEvent.keyCode != KeyEvent.KEYCODE_BACK &&
+                    keyEvent.nativeKeyEvent.keyCode != KeyEvent.KEYCODE_ESCAPE &&
+                    (!PrepareOverlayFocus.hasFocus || keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_CAPTIONS)
+                ) {
+                    if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                        PrepareOverlayFocus.grab()
+                        swallowKeyUp = keyEvent.nativeKeyEvent.keyCode
+                    }
+                    return@onPreviewKeyEvent true
+                }
                 // Consume the confirm KEY_UP that opened the subtitle timing dialog before
                 // the newly focused "Sync" button can treat it as a second click. Preview
                 // is required: after open, focus moves into the dialog so onKeyEvent on
@@ -1396,6 +1511,16 @@ fun PlayerScreen(
                     .padding(start = NuvioTheme.spacing.xl, top = NuvioTheme.spacing.xl)
                     .zIndex(2.75f)
                     .then(playerControlsDim)
+            )
+        }
+
+        SeekThumbnailOverlayHost(uiState = uiState, viewModel = viewModel, modifier = Modifier.zIndex(2.65f))
+        if (!prepareVisible) {
+            SeekThumbnailProgressHint(
+                uiState = uiState,
+                modifier = Modifier.zIndex(2.65f),
+                covered = shouldConfirmNextEpisodeOnEnd || postPlayRecommendationState.isVisible ||
+                    postPlayRecommendationState.isLoadingRecommendation
             )
         }
 
@@ -2179,6 +2304,7 @@ fun PlayerScreen(
                 brightness = uiState.playerControlsBrightness
             )
         }
+        ThumbnailPrepareOverlay(backdropUrl = uiState.backdrop, modifier = Modifier.zIndex(3.5f))
     }
 }
 
@@ -2900,7 +3026,7 @@ private fun PlayerControlsOverlay(
                 enter = fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.fast)),
                 exit = fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.fast))
             ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.fillMaxWidth().hideUnderSeekThumbnails()) {
                     val displayName = if (uiState.currentSeason != null && uiState.currentEpisode != null) {
                         uiState.contentName ?: uiState.title
                     } else {
@@ -3452,6 +3578,7 @@ private fun ProgressBar(
         modifier = Modifier
             .fillMaxWidth()
             .height(NuvioTheme.spacing.md)
+            .onGloballyPositioned { SeekBarAnchor.bounds = it.boundsInRoot() }
             .then(
                 if (focusRequester != null) Modifier.focusRequester(focusRequester)
                 else Modifier
