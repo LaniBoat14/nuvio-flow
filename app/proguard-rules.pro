@@ -158,3 +158,8 @@
 -keepclassmembers class androidx.media3.exoplayer.audio.DefaultAudioSink {
     android.media.AudioTrack audioTrack;
 }
+
+# Seek thumbnails: JNI entry points in libnuviothumb (app/src/main/cpp/thumb_shim.cpp)
+-keep class com.nuvio.tv.core.player.thumbnail.ThumbNative {
+    native <methods>;
+}

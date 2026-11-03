@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="seek_thumbnails_title">Seek thumbnails</string>
+  <string name="seek_thumbnails_subtitle">Thumbnails of the title above the progress bar while you seek.</string>
+  <string name="seek_thumbnails_mode_off">Off</string>
+  <string name="seek_thumbnails_mode_off_desc">No thumbnails while seeking.</string>
+  <string name="seek_thumbnails_mode_hd">Up to 1080p</string>
+  <string name="seek_thumbnails_mode_hd_desc">SD and HD titles (480p to 1080p). 4K titles show the time only.</string>
+  <string name="seek_thumbnails_mode_all">All resolutions, including 4K</string>
+  <string name="seek_thumbnails_mode_all_desc">SD, HD and 4K titles. On smaller devices, some 4K thumbnails are made only while paused or after you stop watching.</string>
+  <string name="seek_thumbnails_prepare_title">Generate thumbnails before play</string>
+  <string name="seek_thumbnails_prepare_subtitle">Make a title\'s seek thumbnails before it starts playing.</string>
+  <string name="seek_thumbnails_prepare_off">Off</string>
+  <string name="seek_thumbnails_prepare_off_desc">Start playing at once; thumbnails are made while paused and after you stop watching.</string>
+  <string name="seek_thumbnails_prepare_on">On</string>
+  <string name="seek_thumbnails_prepare_on_desc">Make a title\'s seek thumbnails before it starts. \"Start watching now\" or Back starts playback at any time.</string>
+  <string name="seek_thumbnails_prepare_on_small_desc">On this device, 4K films load after their thumbnails are made.</string>
+  <string name="seek_thumbnails_before_play_title">Thumbnails before play</string>
+  <string name="seek_thumbnails_before_play_subtitle">How many thumbnails are made before a title starts playing. The rest follow while you watch, down to the usual detail.</string>
+  <string name="seek_thumbnails_before_play_full">Full</string>
+  <string name="seek_thumbnails_before_play_full_desc">The whole title covered closely before it starts. The longest wait.</string>
+  <string name="seek_thumbnails_before_play_faster">Faster</string>
+  <string name="seek_thumbnails_before_play_faster_desc">Half as many thumbnails before it starts, spread over the whole title.</string>
+  <string name="seek_thumbnails_before_play_fastest">Fastest</string>
+  <string name="seek_thumbnails_before_play_fastest_desc">A quarter as many before it starts. The shortest wait.</string>
+  <string name="seek_thumbnails_hardware_title">Hardware decoder for thumbnails</string>
+  <string name="seek_thumbnails_hardware_subtitle">Faster thumbnails made by your box\'s hardware decoder. If thumbnails look wrong or your box struggles, turn this off and they are made the usual way.</string>
+  <string name="seek_thumbnails_clear_title">Clear saved thumbnails</string>
+  <string name="seek_thumbnails_clear_subtitle">They are rebuilt the next time you play a title.</string>
+  <string name="seek_thumbnails_cleared">Saved thumbnails cleared</string>
+  <string name="seek_thumbnails_stored_empty">Empty</string>
+  <string name="seek_thumbnails_stored_under_1mb">&lt; 1 MB</string>
+  <string name="seek_thumbnails_stored_mb">%1$d MB</string>
+  <string name="seek_thumbnails_generating">Generating thumbnails</string>
+  <string name="seek_thumbnails_ready">Thumbnails ready</string>
+  <string name="seek_thumbnails_ready_detail">%1$d thumbnails · starting playback</string>
+  <string name="seek_thumbnails_time_left_seconds">About %1$d s left</string>
+  <string name="seek_thumbnails_time_left_minutes">About %1$d min %2$d s left</string>
+  <string name="seek_thumbnails_film_loads_after">4K on this device: the film loads when this is done</string>
+  <string name="seek_thumbnails_count">%1$d of %2$d</string>
+  <string name="seek_thumbnails_start_now">Start watching now</string>
+  <string name="seek_thumbnails_settings_hint">Turn this on or off in Settings › Playback › Player Interface</string>
+  <string name="seek_thumbnails_progress_chip">Thumbnails %1$d%%</string>
+</resources>

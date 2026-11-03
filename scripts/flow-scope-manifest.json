@@ -75,13 +75,13 @@
     "app/src/full/java/com/nuvio/tv/updater/ui/UpdateDialogs.kt": "08ae52bb1c623a7c058e1e7c1e2323c8897aa9a1c19b764340a36af160603edf",
     "app/src/main/AndroidManifest.xml": "eaf6d5d04ca2aa0c05f9291ade1cd01c790c48ce086f1b92d820d3750043e380",
     "app/src/main/baseline-prof.txt": "2bea614e2db7f95546540bd0b31b247c0340135cafbb11548cfaa45716fb8b57",
-    "app/src/main/cpp/CMakeLists.txt": "ac2d55759fd230bac377c9b394b804900dce03ebff3b36dc45602ca1de33b9be",
+    "app/src/main/cpp/CMakeLists.txt": "6844c02ad986d26f3ae0d79e52debaea528fe176c9eb2168f71bc5e29dea024d",
     "app/src/main/cpp/dovi_bridge.cpp": "ad098b4e94c3b5d42c81f79217605792bf84084acec42dbd86a85d76bccbc8da",
     "app/src/main/generated/baselineProfiles/baseline-prof.txt": "98d513a5c922afd2469c3246366a431659acbbd681874cfa2f6af3091fa97688",
     "app/src/main/generated/baselineProfiles/startup-prof.txt": "98d513a5c922afd2469c3246366a431659acbbd681874cfa2f6af3091fa97688",
     "app/src/main/java/com/nuvio/tv/MainActivity.kt": "db3c0fe7293a1988d6eaeded277e5f1a8db484e1992a96b855214817bdd46d75",
     "app/src/main/java/com/nuvio/tv/ModernSidebarBlurPanel.kt": "4f182d8e531d06b9505e11f2efc5e62c18acafd445d77107fe6718d88cecf954",
-    "app/src/main/java/com/nuvio/tv/NuvioApplication.kt": "3c3babbb24fb908e21d4b676338cf4daaf13cbf86a676799e4556f959f808383",
+    "app/src/main/java/com/nuvio/tv/NuvioApplication.kt": "98533369dcebd44fcf87a8afe70c38ad8c05111eff7563ae75c7dbc547b939ee",
     "app/src/main/java/com/nuvio/tv/core/auth/AccountLocalDataResetService.kt": "a433f9d0c2100e79c624e66864c0973cea208f0f01c729fc282f844819441651",
     "app/src/main/java/com/nuvio/tv/core/auth/AuthManager.kt": "4579dd34d18bc38bde23bffccb013b7015e6c31e2b55184b9adb7ee622156390",
     "app/src/main/java/com/nuvio/tv/core/auth/AuthRefreshResponsePolicy.kt": "56bb0e718b71bcaa6e8bcd5d78a8767d8d5877ad9f811955538bc90b686db2b8",
@@ -928,7 +928,7 @@
     "app/src/main/java/com/nuvio/tv/ui/screens/settings/PlaybackPlayerSettings.kt": "e8c12a597e3e779663b029dbe97ca04082e013bddb772ffad9a2fcb858d56d0c",
     "app/src/main/java/com/nuvio/tv/ui/screens/settings/PlaybackSettingsModel.kt": "df69c00d80ee39fd22316bf15e7f51d880e47d8c45248c35bc2a4936b4ad3677",
     "app/src/main/java/com/nuvio/tv/ui/screens/settings/PlaybackSettingsScreen.kt": "bb9ab69fd75a1b45fc4a84e3e461ecb7a49f65d08b23257e5320bc77565338ea",
-    "app/src/main/java/com/nuvio/tv/ui/screens/settings/PlaybackSettingsSections.kt": "c2e39015631bb0ad8caa05c9d0c38bb82d078a294ea4eefd9b2bdd2d8c99ac12",
+    "app/src/main/java/com/nuvio/tv/ui/screens/settings/PlaybackSettingsSections.kt": "42ac8919e2e9ded8895c74f8cd51d395b2c32b84c43833614ba0e611609b6c9e",
     "app/src/main/java/com/nuvio/tv/ui/screens/settings/PlaybackSubtitleSettings.kt": "a413a3b428b869e7439a36afff4c2be224df3b3b3490a0e935aad7bccc541e13",
     "app/src/main/java/com/nuvio/tv/ui/screens/settings/PlaybackVideoSettings.kt": "f36032d74868d6a7152632c53f374666ece1b4f4c9f6477cc21c390c7acbde4e",
     "app/src/main/java/com/nuvio/tv/ui/screens/settings/ProfileSettingsContent.kt": "3b0f4a7e97c5e1b20608d925b266470706f8bae74eab282e906b1223ace3b6c8",
@@ -1524,8 +1524,8 @@
   },
   "ui_boundaries": {
     "app/src/main/java/com/nuvio/tv/ui/screens/player/PlayerScreen.kt": {
-      "prefix": "b910bb599b4c9747526c708d3a3116396360a9d974d865d20e3a8ec35a12b6e2",
-      "suffix": "468b133efe313b11c3b4785e1b71ba7b6321c093c366daa7b12406be1979682e",
+      "prefix": "f2912fc02da5c0ce760cbd37b36d7ecba1ea60a89104ddb430909f9cce4116f9",
+      "suffix": "114083d26f4c26e2c50420d374ffd248e30c0c390cef880df325d03ddc9f6634",
       "start": "        var arcPlaybackStats by remember",
       "end": "\n        // Torrent stats overlay"
     },
@@ -1586,6 +1586,6 @@
     "app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangeChunkLeaseTest.kt",
     "app/src/test/java/com/nuvio/tv/ui/screens/settings/MemoryBudgetTest.kt"
   ],
-  "build_configuration_sha256": "d95981d412c4a25207f118cac8f4456809049f7b1ecf69655ba3366743f0942a",
+  "build_configuration_sha256": "9ca8007b478ab80cad7bc22e62b228b2799e611daaa42a3a9ccf5064ed57cfcb",
   "arc_buffer_settings_page_sha256": "707a53ecb6f0fb5049f394a13b392a2eddeda75ecfef86e77aa9fcd62a5991fc"
 }

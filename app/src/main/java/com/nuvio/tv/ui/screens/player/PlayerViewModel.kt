@@ -964,6 +964,65 @@ class PlayerViewModel @Inject constructor(
 
     fun getCurrentFileSizeBytes(): Long? = controller.currentVideoSize
 
+    /** Stable identity for a title's stored thumbnails (the videoId carries season and episode). */
+    fun seekThumbnailIdentity(): String? =
+        controller.currentVideoId?.takeIf { it.isNotBlank() } ?: controller.contentId?.takeIf { it.isNotBlank() }
+
+    /** True when [seekThumbnailIdentity] is the videoId, not a fallback shared by a show's episodes. */
+    fun seekThumbnailIdentityExact(): Boolean = !controller.currentVideoId.isNullOrBlank()
+
+    fun currentStreamMimeType(): String? = controller.currentStreamMimeType
+
+    /** The media server's own seek thumbnails for [url]; Flow's server providers list none yet. */
+    @Suppress("UNUSED_PARAMETER")
+    fun serverThumbnails(url: String?): com.nuvio.tv.data.mediaserver.ServerThumbnailSource? = null
+
+    /** [url] plays from a media server (Silo, Jellyfin, Emby). */
+    fun isServerStream(url: String?): Boolean = serverPlayback.isServerSource(url)
+
+    /** The current episode followed the previous one by binge autoplay; it is never held before play. */
+    fun isAutoPlayedEpisode(): Boolean = controller.consecutiveAutoPlayCount > 0
+
+    fun pauseForSeekThumbnails(): Boolean? = controller.pauseForSeekThumbnails()
+
+    fun letGoForSeekThumbnails(): Boolean = controller.letGoForSeekThumbnails()
+
+    fun loadAgainAfterSeekThumbnails(play: Boolean) = controller.loadAgainAfterSeekThumbnails(play)
+
+    /** Flow plays no error-card placeholders, so no stream is skipped for being one. */
+    fun seekThumbnailSkipReason(): String? = null
+
+    /** Where [url] comes from, for the thumbnails "gave up" line. Only fixed words. */
+    fun seekThumbnailKindNote(url: String?, usenet: Boolean): String {
+        val ui = controller._uiState.value
+        return when {
+            serverPlayback.isServerSource(url) -> "media server"
+            usenet -> "Usenet"
+            ui.isTorrentStream -> "torrent"
+            else -> "addon HTTP"
+        }
+    }
+
+    /** Player engine and box class, for the thumbnails "gave up" line. */
+    fun seekThumbnailSettingsNote(): String {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+        val info = android.app.ActivityManager.MemoryInfo().also { am?.getMemoryInfo(it) }
+        val engine = when (controller.currentInternalPlayerEngine) {
+            InternalPlayerEngine.EXOPLAYER -> "ExoPlayer"
+            InternalPlayerEngine.MVP_PLAYER -> "MPV"
+            InternalPlayerEngine.AUTO -> "Auto"
+        }
+        return "engine $engine, box ${info.totalMem / (1024L * 1024L)} MB lowRam ${if (am?.isLowRamDevice == true) "yes" else "no"}"
+    }
+
+    /** Connections playback keeps open to the stream. */
+    fun playbackConnectionCount(): Int =
+        controller.mediaSourceFactory.playbackConnections(controller.getCurrentStreamUrl())
+
+    /** Playback's read-ahead reserve; null until the player is built. */
+    fun seekThumbnailBufferReserve(): com.nuvio.tv.core.player.thumbnail.PlaybackBufferReserve? =
+        controller._loadControl as? com.nuvio.tv.core.player.thumbnail.PlaybackBufferReserve
+
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun getPlayerNativeMemoryBytes(): Long? {
         val allocator = controller._loadControl?.allocator as? androidx.media3.exoplayer.upstream.DefaultAllocator ?: return null
