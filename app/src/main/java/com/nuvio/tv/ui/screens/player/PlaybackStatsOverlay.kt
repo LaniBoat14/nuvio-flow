@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -188,10 +187,7 @@ internal val StatsPanelWidth = 380.dp
 
 /** Compact is a view of the same sample; full mode always retains every row. */
 internal fun visibleStatsSections(sections: List<StatsSection>, compact: Boolean): List<StatsSection> {
-    val hidden = setOf("DV HDR", "DV CM", "DV levels", "DV L1", "DV L5", "Mux estimate", "Server latency", "Pos. freeze")
-    if (!compact) return sections.mapNotNull { sec ->
-        sec.rows.filter { it.label !in hidden }.takeIf { it.isNotEmpty() }?.let { sec.copy(rows = it) }
-    }
+    if (!compact) return sections
     val labels = setOf("Position", "Video", "HDR", "DV", "DV HDR", "Audio", "Route", "Speed", "Connections", "Buffer", "Dropped", "Underruns", "Display")
     return sections.mapNotNull { section ->
         section.rows.filter { it.label in labels }.takeIf { it.isNotEmpty() }
@@ -216,11 +212,10 @@ fun PlaybackStatsOverlay(
     ) {
         Column(
             modifier = Modifier
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFF0E1216).copy(alpha = 0.90f))
+                .then(Modifier.playbackStatsGlass(RoundedCornerShape(20.dp)))
                 .width(StatsPanelWidth)
                 .padding(horizontal = NuvioTheme.spacing.md, vertical = NuvioTheme.spacing.sm),
-            verticalArrangement = Arrangement.spacedBy(1.dp)
+            verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xxs)
         ) {
             if (sample == null) {
                 Text(text = "Loading stats…", color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp)
