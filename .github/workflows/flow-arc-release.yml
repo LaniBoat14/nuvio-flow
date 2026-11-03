@@ -148,7 +148,8 @@ jobs:
           fi
           gh release create "$TAG" --target "$(git rev-parse HEAD)" --prerelease --draft --title "Nuvio Flow 13 — exact Arc runtime" --notes "<!-- nuvio-fork-version-code: 2011 --> Original Arc source revision ccfd1d7b5ad681bde4615e5bae82a4e7d710a34d, including networking, prewarming, classic/V2 playback statistics, matching player AARs, native Dolby Vision/FEL, IEC audio and seek thumbnails. 638 reference hashes validated; targeted original Arc tests and native APK/signature verification passed. Flow package, signing identity and update feed retained. TV playback checks remain user-run." app/build/outputs/apk/full/release/*.apk
           gh release edit "$TAG" --draft=false
-          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $HEADER" push origin HEAD:main
+          # Ask GitHub to check ancestry server-side; a shallow checkout lacks main history.
+          gh api --method PATCH "repos/$GH_REPO/git/refs/heads/main" -f sha="$(git rev-parse HEAD)" -F force=false
       - name: Remove private inputs
         if: always()
         run: rm -f flow-signing.keystore local.properties local.dev.properties
