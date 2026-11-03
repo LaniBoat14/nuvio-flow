@@ -1586,6 +1586,6 @@
     "app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangeChunkLeaseTest.kt",
     "app/src/test/java/com/nuvio/tv/ui/screens/settings/MemoryBudgetTest.kt"
   ],
-  "network_settings_preserved_sha256": "6fdb58f0aa864d9db14e7671d97c0b645df0ddcc501fc19ea461f244322a49ab",
-  "build_configuration_sha256": "d95981d412c4a25207f118cac8f4456809049f7b1ecf69655ba3366743f0942a"
+  "build_configuration_sha256": "d95981d412c4a25207f118cac8f4456809049f7b1ecf69655ba3366743f0942a",
+  "arc_buffer_settings_page_sha256": "707a53ecb6f0fb5049f394a13b392a2eddeda75ecfef86e77aa9fcd62a5991fc"
 }

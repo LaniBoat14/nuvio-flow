@@ -14,20 +14,10 @@ for name, spec in manifest['ui_boundaries'].items():
     assert sha(text[end:].encode()) == spec['suffix'], f'Flow UI suffix changed: {name}'
 print(f"Preserved {len(manifest['preserved_files'])} Flow files and checked player/stream UI boundaries.")
 
-settings = (root / 'app/src/main/java/com/nuvio/tv/ui/screens/settings/PlaybackBufferNetworkSettings.kt').read_text()
-a = settings.index('    SettingsToggleRow(\n        title = stringResource(R.string.playback_net_auto_speedup)')
-b = settings.index('\n}\n', a)
-settings = settings[:a] + settings[b:]
-a = settings.index('@Composable\nprivate fun ParallelNetworkControls(')
-b = settings.index('\n@androidx.annotation.OptIn', a)
-settings = settings[:a] + settings[b:]
-a = settings.index('private val PARALLEL_CHUNK_SIZES =')
-b = settings.index('\n)', a) + 2
-settings = (settings[:a] + settings[b:]).rstrip()
-# Backend signature adaptation in the two preserved Flow memory displays; no UI change.
-settings = settings.replace('MemoryBudget.tierMaxChunkMb(settings.nuvioPerformanceModeEnabled, settings.parallelConnectionCount)', 'MemoryBudget.tierMaxChunkMb')
-assert sha(settings.encode()) == manifest['network_settings_preserved_sha256'], 'Non-network settings changed'
-print('Flow settings outside Network match Flow 11.')
+settings = (root / 'app/src/main/java/com/nuvio/tv/ui/screens/settings/PlaybackBufferNetworkSettings.kt').read_bytes()
+# The Buffer & Network page is intentionally Arc's page (ported 1:1); any other edit must update the manifest hash.
+assert sha(settings) == manifest['arc_buffer_settings_page_sha256'], 'Buffer & Network settings page changed'
+print('Buffer & Network settings page matches the ported Arc page.')
 
 import re
 build = (root / "app/build.gradle.kts").read_text()
