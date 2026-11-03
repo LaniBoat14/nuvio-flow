@@ -53,6 +53,12 @@ data class LastPlaybackDiagnostics(
     val dv7DoviSuccess: Int = 0,
     val dv7DoviSignalRewrites: Int = 0,
     val dvSourceProfile: String? = null,
+    // Enhancement-layer type of the last DV7 stream ("FEL", "MEL" or "unknown"), the per-playback
+    // RPU drop counter, and a one-line static HDR mastering summary read from the RPU
+    // (MaxCLL/MaxFALL + MDL peak in nits). Fed by DolbyVisionConversionStats (Arc port).
+    val dvElType: String? = null,
+    val dv7RpuDrops: Int = 0,
+    val dvHdrMastering: String? = null,
     // Set only when a profile 5 or 7 source actually finished converting, so the card can report
     // the last real conversion rather than every playback that merely considered one.
     val dvConvertEndedAtMs: Long = 0L,
@@ -101,6 +107,9 @@ data class LastPlaybackDiagnostics(
         put("dv7DoviSuccess", dv7DoviSuccess)
         put("dv7DoviSignalRewrites", dv7DoviSignalRewrites)
         put("dvSourceProfile", dvSourceProfile ?: JSONObject.NULL)
+        put("dvElType", dvElType ?: JSONObject.NULL)
+        put("dv7RpuDrops", dv7RpuDrops)
+        put("dvHdrMastering", dvHdrMastering ?: JSONObject.NULL)
         put("dvConvertEndedAtMs", dvConvertEndedAtMs)
         put("videoResolution", videoResolution ?: JSONObject.NULL)
         put("videoCodec", videoCodec ?: JSONObject.NULL)
@@ -147,6 +156,9 @@ data class LastPlaybackDiagnostics(
                 dv7DoviSuccess = o.optInt("dv7DoviSuccess", 0),
                 dv7DoviSignalRewrites = o.optInt("dv7DoviSignalRewrites", 0),
                 dvSourceProfile = o.optString("dvSourceProfile", "").let { if (it.isBlank() || it == "null") null else it },
+                dvElType = o.optString("dvElType", "").let { if (it.isBlank() || it == "null") null else it },
+                dv7RpuDrops = o.optInt("dv7RpuDrops", 0),
+                dvHdrMastering = o.optString("dvHdrMastering", "").let { if (it.isBlank() || it == "null") null else it },
                 dvConvertEndedAtMs = o.optLong("dvConvertEndedAtMs", 0L),
                 videoResolution = o.optString("videoResolution", "").let { if (it.isBlank() || it == "null") null else it },
                 videoCodec = o.optString("videoCodec", "").let { if (it.isBlank() || it == "null") null else it },

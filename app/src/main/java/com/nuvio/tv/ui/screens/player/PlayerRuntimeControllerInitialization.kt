@@ -334,8 +334,12 @@ internal fun PlayerRuntimeController.initializePlayer(
             // The persisted enum stays as-is; only the runtime behavior is derived per playback.
             var effectiveDv7Mode: Dv7HandlingMode
             val dv7AutoResult: DolbyVisionBaseLayerPolicy.Result?
-            when (playerSettings.dv7HandlingMode) {
-                Dv7HandlingMode.AUTO -> {
+            // NATIVE_FEL (Arc's Amlogic dual-layer path) is not ported to Flow: it resolves
+            // exactly like AUTO.
+            val autoLikeDv7Mode = playerSettings.dv7HandlingMode == Dv7HandlingMode.AUTO ||
+                playerSettings.dv7HandlingMode == Dv7HandlingMode.NATIVE_FEL
+            when {
+                autoLikeDv7Mode -> {
                     val result = DolbyVisionBaseLayerPolicy.resolve(
                         context = context,
                         bridgeReady = DoviBridge.isLibraryLoaded
@@ -355,6 +359,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                                 "displayHdr10=${result.displayHdr10} " +
                                 "displayHdr10Plus=${result.displayHdr10Plus} " +
                                 "codecDvheDtb=${result.codecSupportsDvheDtb} " +
+                                "codecDvheSt=${result.codecSupportsDvheSt} " +
+                                "manualConversion=${result.usesManualConversion} " +
                                 "bridgeReady=${result.bridgeReady} " +
                                 "api=${result.apiLevel} " +
                                 "host=${url.safeHost()}"
@@ -390,7 +396,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                     Dv7HandlingMode.HDR10_BASE_LAYER -> "hdr10-base-layer-mode"
                     Dv7HandlingMode.STRIP_DV -> "strip-dv-mode"
                     Dv7HandlingMode.OFF -> "dv7-mode-off"
-                    Dv7HandlingMode.AUTO -> "auto-mode-no-dv81"  // unreachable; AUTO is collapsed above
+                    Dv7HandlingMode.AUTO,
+                    Dv7HandlingMode.NATIVE_FEL -> "auto-mode-no-dv81"  // unreachable; AUTO is collapsed above
                     Dv7HandlingMode.DV81_LIBDOVI -> "setting-disabled"  // unreachable
                 }
                 DoviBridge.RealtimeConversionProbe(
@@ -410,7 +417,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                 dv7ToDv81SettingActive && dv7ToDv81Probe.supported && !dv7ConversionDisarmedForUrl
             // AUTO fallback: if AUTO chose DV81 but the probe failed for this stream,
             // downgrade to HDR10_BASE_LAYER so the user still gets a picture.
-            if (playerSettings.dv7HandlingMode == Dv7HandlingMode.AUTO &&
+            if (autoLikeDv7Mode &&
                 effectiveDv7Mode == Dv7HandlingMode.DV81_LIBDOVI &&
                 !dv7ToDv81Probe.supported
             ) {
@@ -898,12 +905,14 @@ internal fun PlayerRuntimeController.initializePlayer(
                 .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS)
                 .setTsExtractorTimestampSearchBytes(1500 * TsExtractor.TS_PACKET_SIZE)
 
-            // Manual Convert-to-DV8.1 uses mode 2; if a prior attempt at this stream
-            // failed to play, force mode 1 this time (before the HDR10 fallback).
+            // Manual Convert-to-DV8.1, and Auto on a device it converts the same way, use mode 2;
+            // if a prior attempt at this stream failed to play, force mode 1 this time (before the
+            // HDR10 fallback).
             val dv7Mode1Forced = dv7Mode1ForcedStreamUrls.contains(url)
             val manualDv81Selected = playerSettings.dv7HandlingMode == Dv7HandlingMode.DV81_LIBDOVI
+            val autoDv81Mode2 = autoLikeDv7Mode && dv7AutoResult?.usesManualConversion == true
             isManualDv81Mode2ActiveForCurrentPlayback =
-                manualDv81Selected &&
+                (manualDv81Selected || autoDv81Mode2) &&
                 effectiveDv7Mode == Dv7HandlingMode.DV81_LIBDOVI &&
                 !libdoviModeOverrideActive &&
                 !dv7Mode1Forced
@@ -922,15 +931,19 @@ internal fun PlayerRuntimeController.initializePlayer(
             // OR the error handler's per-stream override (preserved for retry-after-failure).
             val mapDv7ToHevcEnabled = effectiveDv7Mode == Dv7HandlingMode.HDR10_BASE_LAYER ||
                     dv7ToHevcForcedStreamUrls.contains(url)
-            val isHdr10BaseLayerModeActive = when (playerSettings.dv7HandlingMode) {
-                Dv7HandlingMode.AUTO -> dv7AutoResult?.displayDv != true
+            val isHdr10BaseLayerModeActive = when {
+                autoLikeDv7Mode -> dv7AutoResult?.displayDv != true
                 else -> effectiveDv7Mode == Dv7HandlingMode.HDR10_BASE_LAYER ||
                         effectiveDv7Mode == Dv7HandlingMode.STRIP_DV
             }
             com.nuvio.tv.core.player.dvmkv.DolbyVisionCompatibility.setHdr10BaseLayerModeActive(isHdr10BaseLayerModeActive)
             isMapDv7ToHevcActiveForCurrentPlayback = mapDv7ToHevcEnabled
+            // Key this off the effective mode, not the AUTO policy result: dv7AutoResult is null
+            // in every manual mode, so gating on it would withhold the hidden-DV-decoder fallback
+            // from users who manually select Convert-to-DV8.1. effectiveDv7Mode already
+            // collapses AUTO to DV81_LIBDOVI when the policy chose convert.
             val convertToDv81Active = !mapDv7ToHevcEnabled &&
-                    dv7AutoResult?.decision == DolbyVisionBaseLayerPolicy.Decision.CONVERT_TO_DV81
+                    effectiveDv7Mode == Dv7HandlingMode.DV81_LIBDOVI
             val codecSelector = createDolbyVisionFallbackCodecSelector(convertToDv81Active = convertToDv81Active)
             scope.launch(kotlinx.coroutines.Dispatchers.Default) { softwareOnlyDecoderNames }
             // Bluetooth media sink (A2DP / LE Audio): Media3 only advertises PCM. Do not attempt
@@ -1041,13 +1054,13 @@ internal fun PlayerRuntimeController.initializePlayer(
                                 dv7Mode1Forced -> 1
                                 else -> -1
                             },
-                            preserveMapping = playerSettings.dv7ToDv81PreserveMappingEnabled &&
-                                    manualDv81Selected,
                             dv5Enabled = playerSettings.dv5ToDv81Enabled,
-                            manualDv81 = manualDv81Selected && !dv7Mode1Forced
+                            manualDv81 = manualDv81Selected && !dv7Mode1Forced,
+                            autoMode2 = autoDv81Mode2 && !dv7Mode1Forced
                         ),
                         stripDvRpu = stripDvRpuEnabled,
-                        stripHdr10PlusSei = stripHdr10PlusSei
+                        stripHdr10PlusSei = stripHdr10PlusSei,
+                        injectHdr10Sei = playerSettings.injectHdr10MetadataOnStrip
                     ).let { autoSyncExtractorsFactory(it, url, headers) } // AutoSync hook
 
             setLoadingStatus(
@@ -2866,6 +2879,14 @@ private fun PlayerRuntimeController.recordFirstFrameDiagnostics(
         dv7DoviSuccess = conversionSucceeded.toInt(),
         dv7DoviSignalRewrites = signalingRewrites.toInt(),
         dvSourceProfile = sourceProfile?.toString(),
+        dvElType = when (DolbyVisionConversionStats.getLastElType()) {
+            DoviBridge.EL_TYPE_FEL -> "FEL"
+            DoviBridge.EL_TYPE_MEL -> "MEL"
+            DoviBridge.EL_TYPE_NONE, -1 -> "unknown"
+            else -> null
+        },
+        dv7RpuDrops = DolbyVisionConversionStats.getRpuDropCount().toInt(),
+        dvHdrMastering = DolbyVisionConversionStats.getLastRpuMetadata()?.toDiagnosticLine(),
         videoResolution = if (currentVideoTrackWidth > 0 && currentVideoTrackHeight > 0)
             "${currentVideoTrackWidth}x${currentVideoTrackHeight}" else null,
         videoCodec = friendlyVideoCodecName(currentVideoTrackMimeType, currentVideoTrackCodecs),

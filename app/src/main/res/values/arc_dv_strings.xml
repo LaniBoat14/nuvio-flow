@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="audio_inject_hdr10_sei_title">Inject HDR10 metadata on strip</string>
+    <string name="audio_inject_hdr10_sei_sub">For DV8 (Profile 8) content stripped to an HDR10 base layer, add the source\'s mastering metadata (MaxCLL/MaxFALL and peak luminance) so non-DV HDR10 TVs tone-map correctly. Only active when DV Handling is Strip DV or HDR10 Base Layer; no effect on Profile 7 or on Dolby Vision playback.</string>
+</resources>

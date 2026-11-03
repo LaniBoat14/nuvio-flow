@@ -109,18 +109,21 @@ internal fun PlaybackVideoSection(
             onClick = { onOpenDialog(PlaybackDialog.DV7_HANDLING_MODE) }
         )
         SettingsToggleRow(
-            title = stringResource(R.string.audio_dv7_preserve_mapping_title),
-            subtitle = stringResource(R.string.audio_dv7_preserve_mapping_sub),
-            checked = settings.dv7ToDv81PreserveMappingEnabled && dv81Conversion,
-            onToggle = { onUpdate { setDv7ToDv81PreserveMappingEnabled(!settings.dv7ToDv81PreserveMappingEnabled) } },
-            enabled = enabled && dv81Conversion
-        )
-        SettingsToggleRow(
             title = stringResource(R.string.audio_dv5_to_dv81_title),
             subtitle = stringResource(R.string.audio_dv5_to_dv81_sub),
             checked = settings.dv5ToDv81Enabled && dv81Conversion,
             onToggle = { onUpdate { setDv5ToDv81Enabled(!settings.dv5ToDv81Enabled) } },
             enabled = enabled && dv81Conversion
+        )
+        SettingsToggleRow(
+            title = stringResource(R.string.audio_inject_hdr10_sei_title),
+            subtitle = stringResource(R.string.audio_inject_hdr10_sei_sub),
+            checked = settings.injectHdr10MetadataOnStrip,
+            onToggle = { onUpdate { setInjectHdr10MetadataOnStrip(!settings.injectHdr10MetadataOnStrip) } },
+            enabled = enabled && (
+                settings.dv7HandlingMode == Dv7HandlingMode.STRIP_DV ||
+                    settings.dv7HandlingMode == Dv7HandlingMode.HDR10_BASE_LAYER
+                )
         )
         SettingsToggleRow(
             title = stringResource(R.string.audio_strip_hdr10plus_title),
@@ -204,6 +207,8 @@ private fun dv7HandlingModeLabel(mode: Dv7HandlingMode): String = when (mode) {
     Dv7HandlingMode.DV81_LIBDOVI -> stringResource(R.string.dv7_mode_dv81_libdovi)
     Dv7HandlingMode.STRIP_DV -> stringResource(R.string.dv7_mode_strip_dv)
     Dv7HandlingMode.OFF -> stringResource(R.string.dv7_mode_off)
+    // Native FEL is not ported to Flow; it behaves as Auto and is not offered in the picker.
+    Dv7HandlingMode.NATIVE_FEL -> stringResource(R.string.dv7_mode_auto)
 }
 
 @Composable

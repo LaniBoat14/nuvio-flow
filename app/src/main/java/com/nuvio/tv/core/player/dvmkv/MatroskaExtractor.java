@@ -59,6 +59,7 @@ import androidx.media3.extractor.TrueHdSampleRechunker;
 import androidx.media3.extractor.text.SubtitleParser;
 import androidx.media3.extractor.text.SubtitleTranscodingExtractorOutput;
 import com.google.common.collect.ImmutableList;
+import com.nuvio.tv.core.player.DolbyVisionBaseLayerColor;
 import java.io.ByteArrayOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
@@ -187,6 +188,12 @@ public class MatroskaExtractor implements Extractor {
     default int lastTransformedSampleLength() {
       return 0;
     }
+
+    /**
+     * Media time (us) of the block whose sample the next {@link #transformHevcSample} call carries
+     * (diagnostics only; laced blocks report the block time).
+     */
+    default void onSampleTimeUs(long timeUs) {}
 
     /**
      * Optionally rewrites Dolby Vision codec signaling for output {@link Format}.
@@ -1968,7 +1975,7 @@ public class MatroskaExtractor implements Extractor {
       input.readFully(blockAdditionalData, 0, contentSize);
       track.pendingDolbyVisionBlockAdditionalData = blockAdditionalData;
 
-      if (dolbyVisionSampleTransformer != null) {
+      if (dolbyVisionSampleTransformer != null && !track.hasContentEncryption) {
         try {
           byte[] transformed =
               dolbyVisionSampleTransformer.onDolbyVisionBlockAdditionalData(
@@ -2237,7 +2244,7 @@ public class MatroskaExtractor implements Extractor {
         // If there is supplemental data, the structure of the sample data is:
         // encryption data (if any) || sample size (4 bytes) || sample data || supplemental data
         deferSupplementalMainSampleSizePrefix =
-            track.isHevc && track.requiresDolbyVisionTransform && dolbyVisionSampleTransformer != null;
+            track.isHevc && !track.hasContentEncryption && track.requiresDolbyVisionTransform && dolbyVisionSampleTransformer != null;
         if (!deferSupplementalMainSampleSizePrefix) {
           int sampleSize = size + sampleStrippedBytes.limit() - sampleBytesRead;
           writeSupplementalMainSampleSizePrefix(output, sampleSize);
@@ -2248,7 +2255,7 @@ public class MatroskaExtractor implements Extractor {
       sampleEncodingHandled = true;
     }
     size += sampleStrippedBytes.limit();
-    if (track.isHevc && track.requiresDolbyVisionTransform && dolbyVisionSampleTransformer != null) {
+    if (track.isHevc && !track.hasContentEncryption && track.requiresDolbyVisionTransform && dolbyVisionSampleTransformer != null) {
       try {
         // Phase-2 seam: sample event is surfaced here. Payload replacement is added in a later
         // step once DV conversion is wired for full HEVC access units.
@@ -2259,7 +2266,7 @@ public class MatroskaExtractor implements Extractor {
       }
     }
 
-    if (track.isHevc && track.requiresDolbyVisionTransform && dolbyVisionSampleTransformer != null) {
+    if (track.isHevc && !track.hasContentEncryption && track.requiresDolbyVisionTransform && dolbyVisionSampleTransformer != null) {
       int remainingSampleBytes = size - sampleBytesRead;
       if (dolbyVisionSampleBuffer.length < remainingSampleBytes) {
         int newSize = Math.max(remainingSampleBytes, dolbyVisionSampleBuffer.length * 2);
@@ -2273,6 +2280,7 @@ public class MatroskaExtractor implements Extractor {
       byte[] payloadToWrite = sampleLengthDelimitedData;
       int payloadLength = remainingSampleBytes;
       try {
+        dolbyVisionSampleTransformer.onSampleTimeUs(blockTimeUs);
         byte[] transformedPayload =
             dolbyVisionSampleTransformer.transformHevcSample(
                 sampleLengthDelimitedData,
@@ -3118,6 +3126,8 @@ public class MatroskaExtractor implements Extractor {
     public float whitePointChromaticityY = Format.NO_VALUE;
     public float maxMasteringLuminance = Format.NO_VALUE;
     public float minMasteringLuminance = Format.NO_VALUE;
+    public @C.ColorTransfer int bitstreamColorTransfer = Format.NO_VALUE;
+    public @C.ColorTransfer int dolbyVisionBaseLayerTransfer = Format.NO_VALUE;
     public byte @MonotonicNonNull [] dolbyVisionConfigBytes;
     public byte @MonotonicNonNull [] pendingDolbyVisionBlockAdditionalData;
 
@@ -3189,6 +3199,7 @@ public class MatroskaExtractor implements Extractor {
           initializationData = hevcConfig.initializationData;
           nalUnitLengthFieldLength = hevcConfig.nalUnitLengthFieldLength;
           codecs = hevcConfig.codecs;
+          bitstreamColorTransfer = hevcConfig.colorTransfer;
           break;
         case CODEC_ID_FOURCC:
           Pair<String, @NullableType List<byte[]>> pair =
@@ -3369,7 +3380,7 @@ public class MatroskaExtractor implements Extractor {
           } else {
           codecs = dolbyVisionConfig.codecs;
           mimeType = MimeTypes.VIDEO_DOLBY_VISION;
-          if (dolbyVisionSampleTransformer != null) {
+          if (dolbyVisionSampleTransformer != null && !hasContentEncryption) {
             @Nullable
             String transformedCodecs =
                     dolbyVisionSampleTransformer.onDolbyVisionCodecString(
@@ -3387,12 +3398,17 @@ public class MatroskaExtractor implements Extractor {
               if (DolbyVisionCompatibility.isHdr10BaseLayerModeActive()) {
                 mimeType = MimeTypes.VIDEO_H265;
                 codecs = hevcCodecsString;
+                dolbyVisionBaseLayerTransfer =
+                    DolbyVisionBaseLayerColor.baseLayerTransfer(
+                        dolbyVisionConfig.profile,
+                        DolbyVisionBaseLayerColor.compatibilityId(this.dolbyVisionConfigBytes),
+                        bitstreamColorTransfer);
               }
             }
           }
           }
         }
-      } else if (dolbyVisionSampleTransformer != null && codecs != null) {
+      } else if (dolbyVisionSampleTransformer != null && !hasContentEncryption && codecs != null) {
         String lower = codecs.toLowerCase(Locale.ROOT);
         if (lower.startsWith("dvhe.")
             || lower.startsWith("dvh1.")
@@ -3457,6 +3473,7 @@ public class MatroskaExtractor implements Extractor {
                   .setChromaBitdepth(bitsPerChannel)
                   .build();
         }
+        colorInfo = DolbyVisionBaseLayerColor.colorInfoFor(colorInfo, dolbyVisionBaseLayerTransfer);
         int rotationDegrees = Format.NO_VALUE;
 
         if (name != null && TRACK_NAME_TO_ROTATION_DEGREES.containsKey(name)) {
@@ -3514,6 +3531,7 @@ public class MatroskaExtractor implements Extractor {
               .build();
       requiresDolbyVisionTransform =
           dolbyVisionSampleTransformer != null
+              && !hasContentEncryption
               && dolbyVisionSampleTransformer.shouldTransform(codecs, dolbyVisionConfigBytes);
       isHevc = CODEC_ID_H265.equals(codecId);
     }
