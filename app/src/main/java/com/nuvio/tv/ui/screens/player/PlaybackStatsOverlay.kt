@@ -189,6 +189,9 @@ private val DotBad = Color(0xFFF44336)
 /** Fixed HUD width; toggling stats never changes the player control layout. */
 internal val StatsPanelWidth = 380.dp
 
+/** Rows plus section headings of a full panel; fixed so the panel's scale never changes while it fills. */
+private const val FULL_PANEL_ROWS = 34
+
 /** Compact is a view of the same sample; full mode always retains every row. */
 internal fun visibleStatsSections(sections: List<StatsSection>, compact: Boolean): List<StatsSection> {
     if (!compact) return sections
@@ -213,11 +216,11 @@ fun PlaybackStatsOverlay(
         exit = fadeOut(),
         modifier = modifier
     ) {
-        val sections = visibleStatsSections(sample?.sections.orEmpty(), compact)
         BoxWithConstraints {
             // Shrink the whole panel (text included) uniformly so it never takes over the screen.
-            val rowCount = sections.sumOf { it.rows.size + 2 }.coerceAtLeast(6)
-            val estimatedHeightDp = rowCount * 13f + 40f
+            // Sized for a full panel, never for the rows present right now: rows appear over the first
+            // seconds, and a scale that followed them made the panel jump from one size to another.
+            val estimatedHeightDp = FULL_PANEL_ROWS * 13f + 40f
             val scale = minOf(
                 1f,
                 maxWidth.value * 0.36f / StatsPanelWidth.value,
