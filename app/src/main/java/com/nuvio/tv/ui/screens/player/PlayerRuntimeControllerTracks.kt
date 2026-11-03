@@ -126,7 +126,9 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
                             codec = codecName,
                             channelCount = format.channelCount.takeIf { it > 0 },
                             isSelected = isSelected,
-                            sampleRate = format.sampleRate.takeIf { it > 0 }
+                            sampleRate = format.sampleRate.takeIf { it > 0 },
+                            title = format.label?.trim()?.takeIf { it.isNotEmpty() },
+                            role = trackRoleFromRoleFlags(format.roleFlags, format.containerMimeType)
                         )
                     )
                 }
@@ -316,6 +318,7 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
         audioTracks = audioTracks,
         subtitleTracks = subtitleTracks
     )
+    applyLosslessAudioDefaultIfUnset(audioTracks)
     if (currentStreamHasVideoTrack) {
         maybeScheduleFirstFrameWatchdog()
     } else {
@@ -1007,6 +1010,9 @@ internal fun PlayerRuntimeController.applyPersistedTrackPreference(
     var updatedAddonSubtitle: com.nuvio.tv.domain.model.Subtitle? = null
 
     pending.audio?.let { audioSelection ->
+        // An audio preference existed for this stream (whether or not it
+        // matches a track here), so the lossless default must never run over it.
+        persistedAudioPreferenceSeenForStream = true
         if (audioTracks.isEmpty()) {
             logSwitchTrace(
                 stage = "restore-audio",

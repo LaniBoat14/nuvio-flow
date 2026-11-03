@@ -90,8 +90,8 @@ internal fun PlayerRuntimeController.logAudioStart(
                 mediaVolume = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC),
                 mediaVolumeMax = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
                 mediaMuted = audioManager?.let { runCatching { it.isStreamMute(AudioManager.STREAM_MUSIC) }.getOrNull() },
-                nightMode = ui.nightMode.name,
-                dialogueBoost = ui.dialogueBoostState.name,
+                nightMode = "off",
+                dialogueBoost = "off",
                 gainDb = ui.audioAmplificationDb
             )
         )

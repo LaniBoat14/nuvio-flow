@@ -12,8 +12,14 @@ internal fun PlayerRuntimeController.releasePlayer() {
 // engine's local url, which stops serving once the torrent stream is stopped.
 internal fun PlayerRuntimeController.releasePlayer(
     flushPlaybackState: Boolean,
+    preserveRecovery: Boolean = false,
     keepTorrentStream: Boolean = false
 ) {
+    if (!preserveRecovery) {
+        playbackRecoveryJob?.cancel()
+        playbackRecoveryJob = null
+        playbackRecoveryGate.cancel(resetIdentity = flushPlaybackState)
+    }
     logScrobbleDiagnostic("release_player", "flushPlaybackState=$flushPlaybackState")
 
     // Preserve current subtitle selection across any rebuild. When the user explicitly
@@ -60,6 +66,10 @@ internal fun PlayerRuntimeController.releasePlayer(
     unregisterAudioDelayRouteCallback()
     audioRouteChangeJob?.cancel()
     audioRouteChangeJob = null
+    passthroughReturnCheckJob?.cancel()
+    passthroughReturnCheckJob = null
+    busyOutputCheckJob?.cancel()
+    busyOutputCheckJob = null
 
     releaseMediaSession()
     progressJob?.cancel()
@@ -119,6 +129,8 @@ internal fun PlayerRuntimeController.releasePlayer(
     currentBitrateAwareLoadControl = null
     currentParallelChunkOverheadMb = 0
     ffmpegAudioRenderer = null
+    // No player, no bypass.
+    isAudioOutputBypassing = false
     updateAudioControlAvailability()
     playbackSpeedAwareAudioSink = null
     resetPlaybackTimeline()
@@ -138,6 +150,7 @@ internal fun PlayerRuntimeController.notifyAudioSessionUpdate(active: Boolean) {
                 intent.putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MOVIE)
             }
             context.sendBroadcast(intent)
+            effectControlSessionId = if (active) player.audioSessionId else null
         } catch (e: SecurityException) {
             e.printStackTrace()
         }
