@@ -194,7 +194,7 @@ class PlayerRuntimeController(
     internal val rememberedAudioLanguage: String? = navigationArgs.rememberedAudioLanguage
     internal val rememberedAudioName: String? = navigationArgs.rememberedAudioName
     internal val cloudSessionToken: String? = navigationArgs.cloudSessionToken
-    internal val mediaSourceFactory = PlayerMediaSourceFactory(context.applicationContext).apply {
+    internal val mediaSourceFactory = PlayerMediaSourceFactory(context.applicationContext, serverPlayback::isServerSource).apply {
         onStreamRedirected = { requestedUrl, resolvedUrl -> handleStreamRedirect(requestedUrl, resolvedUrl) }
     }
 
@@ -258,6 +258,7 @@ class PlayerRuntimeController(
     fun getCurrentHeaders(): Map<String, String> = currentHeaders
 
     fun stopAndRelease() {
+        PlayerPlaybackNetworking.cancelSelectedPlaybackPrewarm(currentStreamUrl, currentHeaders)
         leavePartyPlayback()
         // Cache counters only reach the card on a natural finish, so capture them when the user exits too.
         val diagnostics = lastPlaybackDiagnosticsForReport
@@ -493,7 +494,15 @@ class PlayerRuntimeController(
     internal var lastKnownDuration: Long = 0L
 
     internal var playbackStartedForParentalGuide = false
+    internal val skippedFrameTally = PlaybackSkippedFrameTally()
     internal var hasRenderedFirstFrame = false
+    internal var bufferMemoryKeeper: com.nuvio.tv.core.player.BufferMemoryKeeper? = null
+    internal var autoSpeedupLender: com.nuvio.tv.core.player.BufferMemoryKeeper? = null
+    internal var currentManagedBudgetMb: Int = com.nuvio.tv.ui.screens.settings.MemoryBudget.autoBudgetMb
+    internal var lastSeekWallMs: Long = 0L
+    internal var expectedRuntimeMinutes: Int? = savedStateHandle.get<Int>("runtimeMinutes")
+    @Volatile internal var lastAppliedPlayerSettings: com.nuvio.tv.data.local.PlayerSettings? = null
+
     // Prevent the previous stream's end from completing the new stream.
     internal var endDetectionArmed = false
     // Ignore EOF until MPV has reported a non-EOF state for this stream.
@@ -824,6 +833,10 @@ class PlayerRuntimeController(
     }
 
     fun onCleared() {
+        bufferMemoryKeeper?.detach()
+        bufferMemoryKeeper = null
+        autoSpeedupLender?.detach()
+        autoSpeedupLender = null
         playerSession.close()
         stopServerPlayback()
         releasePlayer()

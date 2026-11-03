@@ -1399,10 +1399,30 @@ fun PlayerScreen(
             )
         }
 
-        if (showFlowAnalytics && uiState.error == null) {
-            FlowAnalyticsOverlay(viewModel, uiState, Modifier.align(Alignment.TopEnd)
-                .padding(top = 20.dp, end = 20.dp).zIndex(2.9f))
+        var arcPlaybackStats by remember { mutableStateOf<PlaybackStatsSample?>(null) }
+        val arcStatsHostView = androidx.compose.ui.platform.LocalView.current
+        LaunchedEffect(showFlowAnalytics) {
+            if (!showFlowAnalytics) {
+                arcPlaybackStats = null
+                return@LaunchedEffect
+            }
+            pollPlaybackStats(probe = { viewModel.samplePing() }, sample = { ping ->
+                val display = arcStatsHostView.display
+                val mode = display?.mode
+                val options = display?.supportedModes?.count {
+                    it.physicalWidth == mode?.physicalWidth && it.physicalHeight == mode?.physicalHeight
+                }
+                arcPlaybackStats = viewModel.samplePlaybackStats(mode?.refreshRate, options,
+                    mode?.physicalWidth, mode?.physicalHeight, ping)
+            })
         }
+        PlaybackStatsOverlay(
+            visible = showFlowAnalytics && uiState.error == null,
+            sample = arcPlaybackStats,
+            compact = false,
+            modifier = Modifier.align(Alignment.TopEnd)
+                .padding(top = NuvioTheme.spacing.sm, end = NuvioTheme.spacing.lg).zIndex(2.9f)
+        )
 
         // Torrent stats overlay (top-right corner)
         TorrentOverlay(

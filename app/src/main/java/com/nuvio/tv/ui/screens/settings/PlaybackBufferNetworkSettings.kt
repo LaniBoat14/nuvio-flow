@@ -92,43 +92,16 @@ internal fun PlaybackBufferNetworkSection(
     DiskCacheControls(settings = settings, onUpdate = onUpdate)
 
     SettingsSectionLabel(text = stringResource(R.string.playback_network_label))
-    val networkPrefs=context.getSharedPreferences("flow-adaptive-hosts", android.content.Context.MODE_PRIVATE)
-    var customNetwork by remember { mutableStateOf(networkPrefs.getBoolean("custom_network_enabled",true)) }
     SettingsToggleRow(
-        title = "Custom Network",
-        subtitle = "Off: one standard connection. On: use Automatic speed-up or your fixed connection settings.",
-        checked = customNetwork,
-        onToggle = { customNetwork=!customNetwork;networkPrefs.edit().putBoolean("custom_network_enabled",customNetwork).apply() }
+        title = stringResource(R.string.playback_net_auto_speedup),
+        subtitle = stringResource(R.string.playback_net_auto_speedup_sub),
+        checked = settings.autoSpeedupEnabled,
+        onToggle = { onUpdate { setAutoSpeedupEnabled(!settings.autoSpeedupEnabled) } }
     )
-    if(customNetwork) {
-    var autoSpeedup by remember { mutableStateOf(networkPrefs.getBoolean("enabled",true)) }
-    SettingsToggleRow(
-        title = "Automatic speed-up",
-        subtitle = "Adjust downloads to the movie and available memory. Off: one standard download unless a fixed connection count is selected.",
-        checked = autoSpeedup,
-        onToggle = { autoSpeedup=!autoSpeedup;networkPrefs.edit().putBoolean("enabled",autoSpeedup).apply() }
-    )
-    val choice=if(!settings.parallelNetworkEnabled) 0 else if(!settings.useParallelConnections) 1 else settings.parallelConnectionCount.coerceIn(2,4)
-    SliderSettingsItem(
-        title="Connections",
-        subtitle="Automatic manages downloads. A number uses your fixed setting. Four normal downloads leave recovery capacity within the six-request limit.",
-        value=choice, valueText=if(choice==0) "Automatic" else choice.toString(),
-        minValue=0,maxValue=4,step=1,
-        onValueChange={ count -> updateMemory {
-            setParallelNetworkEnabled(count!=0)
-            setUseParallelConnections(count>=2)
-            if(count>=2)setParallelConnectionCount(count)
-        } }
-    )
-    if(choice>=2) {
-        SliderSettingsItem(title="Chunk size",subtitle="Larger ranges reduce request overhead but require more memory.",
-            value=if(settings.parallelChunkSizeKb>=16*1024) 1 else 0,
-            valueText=if(settings.parallelChunkSizeKb>=16*1024) "16 MB" else "8 MB",
-            minValue=0,maxValue=1,step=1,
-            onValueChange={value->updateMemory{setParallelChunkSizeKb(if(value==1)16*1024 else 8*1024)}})
+    if (settings.autoSpeedupEnabled && settings.parallelNetworkEnabled) {
+        SettingsNote(text = stringResource(R.string.playback_net_auto_speedup_custom_note))
     }
-    }
-
+    ParallelNetworkControls(settings = settings, updateMemory = updateMemory)
 }
 
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -373,27 +346,53 @@ private fun ParallelNetworkControls(
     settings: PlayerSettings,
     updateMemory: PlaybackSettingsUpdate
 ) {
-    SettingsToggleRow(
-        title = stringResource(R.string.playback_net_parallel),
-        subtitle = stringResource(R.string.playback_net_parallel_sub),
-        checked = settings.useParallelConnections,
-        onToggle = { updateMemory { setUseParallelConnections(!settings.useParallelConnections) } }
+    val connections = ConnectionsChoice.from(
+        settings.parallelNetworkEnabled,
+        settings.useParallelConnections,
+        settings.parallelConnectionCount
+    )
+    SliderSettingsItem(
+        title = stringResource(R.string.playback_net_connections),
+        subtitle = stringResource(R.string.playback_net_connections_sub),
+        values = ConnectionsChoice.values(MemoryBudget.maxConnections(settings.nuvioPerformanceModeEnabled)),
+        selected = connections,
+        valueText = if (connections == ConnectionsChoice.AUTOMATIC) {
+            stringResource(R.string.playback_net_connections_auto)
+        } else {
+            connections.toString()
+        },
+        onValueChange = { choice ->
+            updateMemory {
+                when (choice) {
+                    ConnectionsChoice.AUTOMATIC -> setParallelNetworkEnabled(false)
+                    1 -> {
+                        setUseParallelConnections(false)
+                        setParallelNetworkEnabled(true)
+                    }
+                    else -> {
+                        setParallelConnectionCount(choice)
+                        setUseParallelConnections(true)
+                        setParallelNetworkEnabled(true)
+                    }
+                }
+            }
+        }
     )
 
-    if (settings.useParallelConnections) {
-        SliderSettingsItem(
-            title = stringResource(R.string.playback_net_connection_count),
-            subtitle = stringResource(R.string.playback_net_connection_count_sub),
-            value = settings.parallelConnectionCount,
-            valueText = settings.parallelConnectionCount.toString(),
-            minValue = MemoryBudget.MIN_CONNECTIONS,
-            maxValue = if (settings.nuvioPerformanceModeEnabled) 16 else MemoryBudget.MAX_CONNECTIONS,
-            step = 1,
-            onValueChange = { count -> updateMemory { setParallelConnectionCount(count) } }
-        )
+    if (connections >= 2) {
+        val totalRamBytes = NuvioExoPlayerPerformanceHelper.getDevicePhysicalRamBytes(LocalContext.current)
+        if (BufferSettingsNumbers.connectionCountTooHigh(totalRamBytes, settings.parallelConnectionCount)) {
+            SettingsNote(
+                text = stringResource(
+                    R.string.playback_net_connection_count_small_box,
+                    NuvioExoPlayerPerformanceHelper.getFriendlyRamLabel(LocalContext.current)
+                ),
+                tone = SettingsNoteTone.Warning
+            )
+        }
 
         val maxChunkSizeMb = if (settings.nuvioPerformanceModeEnabled) {
-            MemoryBudget.tierMaxChunkMb
+            MemoryBudget.customMaxChunkMb(LocalContext.current, settings)
         } else {
             MemoryBudget.maxChunkMb(
                 MemoryBudget.effectiveBufferMb(settings.bufferSettings.targetBufferSizeMb),
@@ -402,7 +401,7 @@ private fun ParallelNetworkControls(
         }
         val chunkSizes = PARALLEL_CHUNK_SIZES.filter { it.first <= maxChunkSizeMb * 1024 }
         val currentKb = settings.parallelChunkSizeKb
-        val currentIndex = chunkSizes.indexOfFirst { it.first == currentKb }.coerceAtLeast(0)
+        val currentIndex = chunkSizes.indexOfLast { it.first <= currentKb }.coerceAtLeast(0)
         SliderSettingsItem(
             title = stringResource(R.string.playback_net_chunk_size),
             subtitle = stringResource(R.string.playback_net_chunk_size_sub),
@@ -415,14 +414,16 @@ private fun ParallelNetworkControls(
                 chunkSizes.getOrNull(index)?.let { (kb, _) -> updateMemory { setParallelChunkSizeKb(kb) } }
             }
         )
+        SettingsNote(text = stringResource(R.string.playback_net_chunk_size_small_note))
     }
 
-    SettingsResetButton(
-        text = stringResource(R.string.playback_reset_to_default),
-        onClick = { updateMemory { resetNetworkSettingsToDefaults() } }
-    )
+    if (connections != ConnectionsChoice.AUTOMATIC) {
+        SettingsResetButton(
+            text = stringResource(R.string.playback_reset_to_default),
+            onClick = { updateMemory { resetNetworkSettingsToDefaults() } }
+        )
+    }
 }
-
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 internal fun PlaybackMemoryUsageCard(settings: PlayerSettings) {
@@ -500,6 +501,7 @@ private val PARALLEL_CHUNK_SIZES = listOf(
     2048 to "2 MB",
     4096 to "4 MB",
     8192 to "8 MB",
+    12288 to "12 MB",
     16384 to "16 MB",
     24576 to "24 MB",
     32768 to "32 MB",
@@ -532,3 +534,4 @@ private fun resolveManualVodCacheMaxMb(freeDiskBytes: Long): Int {
 }
 
 private const val VOD_CACHE_FREE_SPACE_RESERVE_MB = 1024L
+

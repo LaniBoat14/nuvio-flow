@@ -48,6 +48,8 @@ internal fun PlayerRuntimeController.releasePlayer(
     }
 
     isReleasingPlayer = true
+    PlaybackByteCounter.reset()
+    PlaybackLanes.clear()
     com.nuvio.tv.core.recommendations.TvRecommendationManager.isPlaybackActive.value = false
     if (flushPlaybackState) {
         if (!keepTorrentStream) stopTorrentStream()
@@ -112,6 +114,7 @@ internal fun PlayerRuntimeController.releasePlayer(
     }
     _exoPlayer = null
     activeAssVideoEffect = null
+    attachBufferMemoryKeeper(null)
     _loadControl = null
     currentBitrateAwareLoadControl = null
     currentParallelChunkOverheadMb = 0

@@ -59,6 +59,13 @@ internal fun PlayerRuntimeController.initializeCloudPlaybackSequence() {
 }
 
 internal fun PlayerRuntimeController.applyMetaDetails(meta: Meta) {
+    val episodeRuntime = meta.videos.firstOrNull { it.id == currentVideoId }?.runtime
+    val filmRuntime = meta.runtime?.let {
+        Regex("""^\s*(\d+)\s*(?:min(?:utes?)?)?\s*$""", RegexOption.IGNORE_CASE)
+            .matchEntire(it)?.groupValues?.get(1)?.toIntOrNull()
+    }
+    (episodeRuntime ?: filmRuntime)?.takeIf { it > 0 }?.let { expectedRuntimeMinutes = it }
+
     metaVideos = meta.videos
     metaGenres = meta.genres
     metaCountry = meta.country

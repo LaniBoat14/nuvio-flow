@@ -5,6 +5,92 @@ import com.nuvio.tv.BuildConfig
 import java.util.concurrent.atomic.AtomicLong
 
 object DoviBridge {
+    data class RpuStaticMetadata(
+        val sourceMinPq: Int,
+        val sourceMaxPq: Int,
+        val l6MinMasteringLuminance: Int?,
+        val l6MaxMasteringLuminance: Int?,
+        val maxCll: Int?,
+        val maxFall: Int?
+    ) {
+        /**
+         * A one-line human-readable summary for the Diagnostics card. MaxCLL /
+         * MaxFALL are shown as libdovi reports them (nits); the mastering-display
+         * peak is derived from [sourceMaxPq] via the ST 2084 (PQ) EOTF, which is
+         * always available.
+         */
+        fun toDiagnosticLine(): String {
+            if (maxCll == 0 && maxFall == 0) return "CLL/FALL not set · MDL ${pqCodeToNits(sourceMaxPq)} nits"
+            val parts = ArrayList<String>(3)
+            // A present L6 block with a zero content-light value means "unknown"
+            // (common in WEB-DL masters), not literally zero nits - show a dash
+            // rather than a misleading "0". A wholly absent L6 stays omitted.
+            maxCll?.let { parts += "CLL ${if (it > 0) it.toString() else "-"}" }
+            maxFall?.let { parts += "FALL ${if (it > 0) it.toString() else "-"}" }
+            parts += "MDL ${pqCodeToNits(sourceMaxPq)} nits"
+            return parts.joinToString(" · ")
+        }
+
+        private fun pqCodeToNits(pq12: Int): Int = Math.round(pq12ToNits(pq12)).toInt()
+    }
+
+    /** SMPTE ST 2084 (PQ) EOTF applied to a 12-bit RPU code value, in nits (cd/m²). */
+    fun pq12ToNits(pq12: Int): Double {
+        val e = pq12.coerceIn(0, 4095).toDouble() / 4095.0
+        val m1 = 0.1593017578125
+        val m2 = 78.84375
+        val c1 = 0.8359375
+        val c2 = 18.8515625
+        val c3 = 18.6875
+        val ep = Math.pow(e, 1.0 / m2)
+        val num = (ep - c1).coerceAtLeast(0.0)
+        val den = c2 - c3 * ep
+        val l = if (den <= 0.0) 0.0 else Math.pow(num / den, 1.0 / m1)
+        return l * 10000.0
+    }
+
+    data class RpuDmInfo(
+        /** 40 = CM v4.0 (L254 present), 29 = CM v2.9, null = no DM metadata in this RPU. */
+        val cmVersion: Int?,
+        val levels: Int,
+        val l1MinPq: Int?,
+        val l1MaxPq: Int?,
+        val l1AvgPq: Int?,
+        val l5Left: Int?,
+        val l5Right: Int?,
+        val l5Top: Int?,
+        val l5Bottom: Int?,
+        val guessedProfile: Int?,
+        /** [EL_TYPE_FEL], [EL_TYPE_MEL], [EL_TYPE_NONE] or null. */
+        val elType: Int?,
+        val blBitDepth: Int?,
+        val elBitDepth: Int?,
+        /** True: the EL is coded at half the BL resolution (upsampled by the Dolby core). */
+        val elHalfResolution: Boolean?,
+        val level2Count: Int,
+        val level8Count: Int,
+        val level10Count: Int
+    ) {
+        fun hasLevel(level: Int): Boolean = when (level) {
+            in 1..11 -> levels and (1 shl level) != 0
+            254 -> levels and (1 shl 12) != 0
+            255 -> levels and (1 shl 13) != 0
+            else -> false
+        }
+
+        /** "L1 L2×4 L5 L6 L8×2 L9 L11 L254" (list levels with their block count when > 1). */
+        fun levelsLabel(): String = buildList {
+            for (n in 1..11) {
+                if (!hasLevel(n)) continue
+                val count = when (n) { 2 -> level2Count; 8 -> level8Count; 10 -> level10Count; else -> 1 }
+                add(if (count > 1) "L$n×$count" else "L$n")
+            }
+            if (hasLevel(254)) add("L254")
+            if (hasLevel(255)) add("L255")
+        }.joinToString(" ")
+    }
+
+
     private const val TAG = "DoviBridge"
     private const val LIB_NAME = "dovi_bridge"
 

@@ -206,6 +206,11 @@ fun StreamScreen(
     }
 
     fun launchInternalPlayer(playbackInfo: StreamPlaybackInfo) {
+        if (!playbackInfo.isServerStream) {
+            com.nuvio.tv.ui.screens.player.PlayerPlaybackNetworking.prewarmSelectedPlayback(
+                playbackInfo.url, playbackInfo.headers
+            )
+        }
         viewModel.onInternalPlayerLaunching()
         onStreamSelected(playbackInfo)
     }

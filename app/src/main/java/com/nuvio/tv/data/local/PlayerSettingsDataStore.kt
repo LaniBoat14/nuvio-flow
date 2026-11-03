@@ -217,13 +217,15 @@ data class BufferSettings(
     val backBufferDurationMs: Int = DEFAULT_BACK_BUFFER_DURATION_MS,
     val retainBackBufferFromKeyframe: Boolean = false
 ) {
+    val bufferAheadMs: Int get() = com.nuvio.tv.core.player.BufferAhead.fromStored(minBufferMs, maxBufferMs)
+
     companion object {
         const val DEFAULT_MIN_BUFFER_MS = 15_000
         const val DEFAULT_MAX_BUFFER_MS = 45_000
         const val DEFAULT_BUFFER_FOR_PLAYBACK_MS = 5_000
         const val DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 3_000
-        const val DEFAULT_TARGET_BUFFER_SIZE_MB: Int = 50
-        const val DEFAULT_BACK_BUFFER_DURATION_MS = 0
+        const val DEFAULT_TARGET_BUFFER_SIZE_MB: Int = 150
+        const val DEFAULT_BACK_BUFFER_DURATION_MS = 5_000
     }
 }
 
@@ -342,6 +344,7 @@ data class PlayerSettings(
 
     // Networking
     val bufferEngineEnabled: Boolean = false,
+    val autoSpeedupEnabled: Boolean = true,
     val parallelNetworkEnabled: Boolean = false,
     /** When true the device memory budget caps the buffer; when false Target Buffer Size drives it. */
     val bufferBudgetManaged: Boolean = DEFAULT_BUFFER_BUDGET_MANAGED,
@@ -406,7 +409,7 @@ data class PlayerSettings(
         fun isBoundedTimeout(timeoutSeconds: Int): Boolean =
             timeoutSeconds > 0 && timeoutSeconds != STREAM_AUTOPLAY_TIMEOUT_UNLIMITED
 
-        const val DEFAULT_BUFFER_BUDGET_MANAGED = false
+        const val DEFAULT_BUFFER_BUDGET_MANAGED = true
         const val DEFAULT_ALLOW_LARGE_TARGET_BUFFER = false
         const val LARGE_TARGET_BUFFER_MAX_MB = 2048
         const val DEFAULT_VOD_CACHE_ENABLED = false
@@ -418,7 +421,10 @@ data class PlayerSettings(
         const val DEFAULT_PARALLEL_CONNECTION_COUNT = 2
         const val DEFAULT_PARALLEL_CHUNK_SIZE_KB = 16 * 1024
         const val MIN_PARALLEL_CONNECTION_COUNT = 2
-        const val MAX_PARALLEL_CONNECTION_COUNT = 4
+        const val MAX_PARALLEL_CONNECTION_COUNT = 8
+        const val MAX_PARALLEL_CONNECTION_COUNT_NATIVE_MEMORY = 16
+        fun maxParallelConnectionCount(nativeMemory: Boolean): Int =
+            if (nativeMemory) MAX_PARALLEL_CONNECTION_COUNT_NATIVE_MEMORY else MAX_PARALLEL_CONNECTION_COUNT
         const val MIN_PARALLEL_CHUNK_SIZE_KB = 256
         const val MAX_PARALLEL_CHUNK_SIZE_KB = 128 * 1024
         const val DEFAULT_ENABLE_HTTP2 = false
@@ -672,6 +678,7 @@ class PlayerSettingsDataStore @Inject constructor(
     private val vodCacheSizeMbKey = intPreferencesKey("vod_cache_size_mb")
     private val useParallelConnectionsKey = booleanPreferencesKey("use_parallel_connections")
     private val bufferEngineEnabledKey = booleanPreferencesKey("buffer_engine_enabled")
+    private val autoSpeedupEnabledKey = booleanPreferencesKey("auto_speedup_enabled")
     private val parallelNetworkEnabledKey = booleanPreferencesKey("parallel_network_enabled")
     private val allowLargeTargetBufferKey = booleanPreferencesKey("allow_large_target_buffer")
     private val bufferBudgetManagedKey = booleanPreferencesKey("buffer_budget_managed")
@@ -1096,6 +1103,7 @@ class PlayerSettingsDataStore @Inject constructor(
                 vodCacheSizeMb = (prefs[vodCacheSizeMbKey] ?: PlayerSettings.DEFAULT_VOD_CACHE_SIZE_MB).coerceIn(PlayerSettings.MIN_VOD_CACHE_SIZE_MB, PlayerSettings.MAX_VOD_CACHE_SIZE_MB),
                 useParallelConnections = prefs[useParallelConnectionsKey] ?: PlayerSettings.DEFAULT_USE_PARALLEL_CONNECTIONS,
                 bufferEngineEnabled = prefs[bufferEngineEnabledKey] ?: false,
+                autoSpeedupEnabled = prefs[autoSpeedupEnabledKey] ?: true,
                 parallelNetworkEnabled = prefs[parallelNetworkEnabledKey] ?: false,
                 allowLargeTargetBuffer = prefs[allowLargeTargetBufferKey] ?: PlayerSettings.DEFAULT_ALLOW_LARGE_TARGET_BUFFER,
                 bufferBudgetManaged = prefs[bufferBudgetManagedKey] ?: PlayerSettings.DEFAULT_BUFFER_BUDGET_MANAGED,
@@ -1745,6 +1753,18 @@ class PlayerSettingsDataStore @Inject constructor(
 
     // Buffer settings functions
 
+    suspend fun setBufferAheadMs(ms: Int) = setBufferAheadMs(ms, profileManager.activeProfileId.value)
+
+    /** Min and Max both take the value, so synced profiles and older builds see the same buffer. */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    internal suspend fun setBufferAheadMs(ms: Int, profileId: Int) {
+        store(profileId).edit { prefs ->
+            val value = ms.coerceIn(com.nuvio.tv.core.player.BufferAhead.MIN_MS, com.nuvio.tv.core.player.BufferAhead.limitMs(isNativeMemoryActive(prefs)))
+            prefs[minBufferMsKey] = value
+            prefs[maxBufferMsKey] = value
+        }
+    }
+
     suspend fun setBufferMinBufferMs(ms: Int) {
         store().edit { prefs ->
             val isNativeMemory = isNativeMemoryActive(prefs)
@@ -1829,6 +1849,10 @@ class PlayerSettingsDataStore @Inject constructor(
     suspend fun setUseParallelConnections(enabled: Boolean) { store().edit { it[useParallelConnectionsKey] = enabled } }
     suspend fun setBufferEngineEnabled(enabled: Boolean) {
         store().edit { it[bufferEngineEnabledKey] = enabled }
+    }
+
+    suspend fun setAutoSpeedupEnabled(enabled: Boolean) {
+        store().edit { it[autoSpeedupEnabledKey] = enabled }
     }
 
     suspend fun setParallelNetworkEnabled(enabled: Boolean) {

@@ -1,0 +1,243 @@
+{
+  "commit": "ccfd1d7b5ad681bde4615e5bae82a4e7d710a34d",
+  "archive_sha256": "1c4c7d5abab217ede5dbcdf08395f036ce2a499573745eb1d3e2c581083b820e",
+  "status": "source import; application integration not complete",
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "8b1ba204bb69a0ade2bfcf65ef294a920f6bb361b317dba43c7ef29d96332b9b"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/core/network/PlaybackSocketFactory.kt",
+      "sha256": "ffa0e2b1168ca611b836fae759d74591ea6a7cef25de20c03c1545f968667b31"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/core/player/thumbnail/ConnectionLedger.kt",
+      "sha256": "597d74fd77a7b5c9c2df64923225ccd5b10abc26729482c92269faaeb913dc87"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/core/player/thumbnail/MemoryGovernor.kt",
+      "sha256": "3df9f3835f546d9a7e706f220a06bb515a07a7e08db5cb2dc9865580a7838884"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/core/player/thumbnail/PlaybackLine.kt",
+      "sha256": "64213fe5fb92697ec53621f6da4f37336401be6a60ad3ed7988c18f6296d2836"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/AutoSpeedup.kt",
+      "sha256": "583355aaaabd53447e8cb407e96ebc2f37d59234345498b60dceb5dd2044b5b0"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/AutoSpeedupDataSource.kt",
+      "sha256": "1da2c659c3e12b26808c0b8ead3d6afa51aeb7a2633da11adadc4b4054bd6286"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/AutoSpeedupPolicy.kt",
+      "sha256": "1ceb9ba65159264b18b0d59faf7213e065502f5bbbaffddf702ccdd8764654ab"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/HostSpeeds.kt",
+      "sha256": "ab875eb74329c2fff1437495dacfbea775f4cf2993a58e24d936e10927a37501"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/ParallelRangeDataSource.kt",
+      "sha256": "f9fa3f0c3db70542f9502faabc9e517a9e2508d9dd48bace669bc0255995514c"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/ParallelRangeProbeResponse.kt",
+      "sha256": "fe2671dc9aa2583e86f3b2091f9186c053fea8513e273740eeb280ff9aeca4d1"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/ParallelRangeRateGate.kt",
+      "sha256": "91b792978b771efda51302bfe62cbda8ecb905c6ba3c87447ca758d328c9ed13"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/ParallelRangeRetryAfter.kt",
+      "sha256": "4ef3a1b9fae631235902c0f7067e248c98005330dbbd95f25624a84b0659de9c"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/PlaybackConnectionEvents.kt",
+      "sha256": "54008ef800ab77ca444a3e15ad4fb4ba7fa6d34ac19b62933948b5113f3f1840"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/PlaybackLanes.kt",
+      "sha256": "1b0ce9cfb4b228bd47704b195398e9d9286c08d452adc6af503c0091a79c967a"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/PlaybackStatsDv.kt",
+      "sha256": "8b363268e6e0cad86305d797c436f57cef2f229bad9ab4cea45a748e3b7bb368"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/PlaybackStatsOverlay.kt",
+      "sha256": "fb93607f2b071f7a7b4d86dfd0e800642716bafd6a8686a36d2a9fd9faa3c693"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/PlaybackStatsPolling.kt",
+      "sha256": "9340cc86e8388b5314508759333f6d2862a024825ca5d23ca656c95704f1fe37"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/PlayerMediaSourceFactory.kt",
+      "sha256": "954ac851c680ca9afb3356077e25829064a8da7c2120c467cf83710489c2ac94"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/PlayerPlaybackAnalyticsDiagnostics.kt",
+      "sha256": "de63978f776affa5a66d7054ee0ca853ba1823a7fb71333abdae454c1ddd5978"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/PlayerPlaybackNetworking.kt",
+      "sha256": "32cac90ca1fa16eae6f0979c080e18875a4788b0ebad5c0b41f682d10cb3597b"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/PlayerViewModel.kt",
+      "sha256": "f87eff5c23ae493b1493346a66e73a0793faedc6351522d93b45205f6f9e7d3d"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/RequestMeter.kt",
+      "sha256": "a856f0af5235b198ca6fd3f16eb53a0ce5e8590596192aa32287ea44661f184a"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/settings/ConnectionsChoice.kt",
+      "sha256": "ec596dc620120d8cc4e32537197db7f734b88ca44521775b4b6b9fa6fc9d1d14"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/settings/MemoryBudget.kt",
+      "sha256": "bf3d58ab970ac2449ce01415903b26f666b90a0242f350de7a654afa5099ebe1"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/settings/PlaybackBufferNetworkSettings.kt",
+      "sha256": "5dad2d6d0d0c656732f95753115b515971e1d6860e9532370c1cb629c1ec264b"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/AutoSpeedupDataSourceTest.kt",
+      "sha256": "9537e64220db0d055a712f813e3b59f37c0c69cef44bc3069b7934e6861b4d31"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/AutoSpeedupDeliveredTest.kt",
+      "sha256": "486954a1584f97b55ef9f8e5df9f967bd78fe2f6edef26e95705345c3b149ed7"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/AutoSpeedupLazyMemoryTest.kt",
+      "sha256": "154b7398b3655acabcbc60cf4fa542dd276bc7a58a0790a489c6964473e53526"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/AutoSpeedupLimitsTest.kt",
+      "sha256": "081d6f37696ce1d42813e958ecd4de698f4d4ec3a4af92d81c1653807b5a0394"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/AutoSpeedupPieceBytesTest.kt",
+      "sha256": "3ea24705a8c96a18351d7912956fde65cb8544d08518e4aef2df2d6afa15db2d"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/AutoSpeedupPieceSizeTest.kt",
+      "sha256": "e7a9a665fbe6ec8b2153e8eedbb03157d4460957210f61dc5de183e12cca7260"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/AutoSpeedupPieceTtfbTest.kt",
+      "sha256": "a41be06314bc32107e23c274654ce6f1e7b56d91d6a4be5596764c6bba62ed9b"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/AutoSpeedupPolicyTest.kt",
+      "sha256": "08b00b90b4420217922e0f9309b4c01190dbbcb471826a34c4ad22a07843a69c"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/AutoSpeedupRateLimitTest.kt",
+      "sha256": "3f3ec391f5ca6274581da920835275e6bbfa1286c646ffd4d7697c19308572dd"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/AutoSpeedupRefillTest.kt",
+      "sha256": "f93cca2616adf5629d2a29aa6148589abd4848239011837cddb250d7928bcfac"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/AutoSpeedupServerTest.kt",
+      "sha256": "503355eaddeb3fcdf4737963c911dd10db4748393ea5a754aa6cf71b46744eaf"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/AutoSpeedupStartPieceTest.kt",
+      "sha256": "86246b8d9a98daa523aa7735261355cfd6847e0b2bbeb4ed696fc1f02f805574"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/HostSpeedsTest.kt",
+      "sha256": "b1bdd1c80593a36caff784fc471f3ac7784b97dc849efa7753d8df8b93d45142"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangeBootstrapProgressTest.kt",
+      "sha256": "a80263dcc8bf6996cc739f209a1f474e11497560d4ef60db9401a09ec16e96ce"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangeByteBufferReadTest.kt",
+      "sha256": "b7142705d6d680c78487deed8167023be5aa963cd7cc090914d20e094bd61bf4"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangeChunkLeaseTest.kt",
+      "sha256": "f3436941fa31d010ec5d11aa8cd40f9b582738f104c3ae4707e590e4a461576f"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangeDataSourceTest.kt",
+      "sha256": "c4b59665f36947426a4858450459469844612402c29e4a1028b0f3b0abd2c127"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangeLazyMemoryTest.kt",
+      "sha256": "6f14362516c99efff5fa5acc091fe4759f8733e9fe868b2cfbc0d074393b8051"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangeLinkLookupTest.kt",
+      "sha256": "f8e73e115db20a5d8b19870d0e723964f202a759e1d78b4b17b815f3e6483fc0"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangePieceTimingTest.kt",
+      "sha256": "80e0231f1c30dfe4f302c73fca4fd4479f0b83b9651704dcb78ed8c938f5c948"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangeProbeFailureIntegrationTest.kt",
+      "sha256": "8cd7842f9f9a20de521ba8390c9c3b1c331060807ad7390af5499647ca554a41"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangeProbeOwnershipTest.kt",
+      "sha256": "74b88257185922da3aa83f87c26dcde37ea95c27d9928fffbf5a7e22ea277312"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangeProbeResponseIntegrationTest.kt",
+      "sha256": "52af7ca8755d94de45fc4ab6e513fa7ebc52ecf70e4e5cb4ba9f9b858fb7b08e"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangeProductionWorkloadTest.kt",
+      "sha256": "be487f031a179ffbd07a8d6a0be3c86475b030dd178e8ca1a34e58b9784550aa"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangeRateGateTest.kt",
+      "sha256": "c1e269a4c476267924d2b61b0e1ecf0dad64af4546f7ab3dbb1759c14e45e420"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangeReopenAtStartTest.kt",
+      "sha256": "5a50b42a59e14e5db60a63505cc0da200162e44580e397daac46edb92a2db92d"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangeReopenOwnershipTest.kt",
+      "sha256": "398837abb192e086bbdbe0145b5e4f3028444d861ac3b843e4279d5e296a2551"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/ParallelRangeSeekDropTest.kt",
+      "sha256": "b8b008c432fa615c34802a21c8327ca6c535540960685dfc496dc0e42a141ba7"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/PlaybackStatsDvTest.kt",
+      "sha256": "c95d079b952003af46d299f5598bffa9e0acf86e3183842162fc407ddc769319"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/PlaybackStatsOwnerPresentationTest.kt",
+      "sha256": "1c98b6badbbdb872518c265ef864e8b72f9055c1c7e6a495308c261f28a5d68a"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/player/PlaybackStatsPollingTest.kt",
+      "sha256": "3de1951b6e65039d1321ec5c5ef917316c9d20b93e6b1066440f5acc0eb66795"
+    },
+    {
+      "path": "app/src/test/java/com/nuvio/tv/ui/screens/settings/ConnectionsChoiceTest.kt",
+      "sha256": "8a93ff3bbc2e332e218811b305e3c22223449a9d0cb1f7338c7765eb93c3c842"
+    },
+    {
+      "path": "app/src/main/java/com/nuvio/tv/ui/screens/player/FilmRate.kt",
+      "sha256": "8d70cf301a1fc688afb807bd152ff84613c825ec52cfc1cb3a931e8eb63bdbcd"
+    }
+  ]
+}

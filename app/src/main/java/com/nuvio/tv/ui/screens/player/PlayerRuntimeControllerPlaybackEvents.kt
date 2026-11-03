@@ -23,6 +23,7 @@ import com.nuvio.tv.data.repository.SkipInterval
 import com.nuvio.tv.domain.model.WatchProgress
 import java.io.IOException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -338,12 +339,6 @@ internal fun PlayerRuntimeController.startProgressUpdates() {
     progressJob?.cancel()
     progressJob = scope.launch {
         while (isActive) {
-            currentBitrateAwareLoadControl?.setNetworkReserveBytes(FlowAdaptiveRuntime.reservedMb.toLong()*1024*1024)
-            _exoPlayer?.let {
-                FlowAdaptiveRuntime.bufferSeconds=(it.bufferedPosition-it.currentPosition).coerceAtLeast(0)/1000.0
-                FlowAdaptiveRuntime.durationMs=it.duration.takeIf{d->d>0} ?: 0
-                FlowAdaptiveRuntime.playbackSpeed=it.playbackParameters.speed.toDouble()
-            }
             if (isUsingMpvEngine()) {
                 val view = mpvView
                 if (view != null) {
@@ -453,6 +448,7 @@ internal fun PlayerRuntimeController.startProgressUpdates() {
 
             _exoPlayer?.let { player ->
                 val pos = player.currentPosition.coerceAtLeast(0L)
+                sampleAutoSpeedup(player, pos)
                 val playerDuration = player.duration
                 if (playerDuration > lastKnownDuration) {
                     lastKnownDuration = playerDuration
@@ -1406,6 +1402,8 @@ fun PlayerRuntimeController.onEvent(
             onEvent(PlayerEvent.OnSeekBy(deltaMs = -PlayerScrubRates.STEP_SHORT_MS))
         }
         is PlayerEvent.OnSeekBy -> {
+            lastSeekWallMs = android.os.SystemClock.elapsedRealtime()
+            bufferMemoryKeeper?.onSeek()
             if (_playbackTimeline.value.isLive) return
             pendingPreviewSeekPosition = null
             val current = currentPlaybackPositionMs() ?: 0L
@@ -1467,6 +1465,8 @@ fun PlayerRuntimeController.onEvent(
             }
         }
         is PlayerEvent.OnSeekTo -> {
+            lastSeekWallMs = android.os.SystemClock.elapsedRealtime()
+            bufferMemoryKeeper?.onSeek()
             if (_playbackTimeline.value.isLive) return
             pendingPreviewSeekPosition = null
             val target = if (isPartyControlLocked) ownSeekTarget(event.position) ?: return else event.position
@@ -2159,3 +2159,136 @@ private fun formatTorrentSpeed(context: android.content.Context, bytesPerSec: Lo
         else -> context.getString(R.string.unit_speed_b_s, bytesPerSec)
     }
 }
+
+/** Lets Automatic speed-up start a remux on several downloads before its first byte, see [AutoSpeedup.guessBitrate]. */
+internal fun PlayerRuntimeController.noteSpeedupHint(url: String) {
+    AutoSpeedup.startHint(
+        url,
+        AutoSpeedup.guessBitrate(currentVideoSize, expectedRuntimeMinutes, currentFilename, _uiState.value.currentStreamName)
+    )
+}
+
+/** A heavy film's first start waits for a few seconds of film, see [com.nuvio.tv.core.player.StartCushion]. */
+internal fun PlayerRuntimeController.armStartCushion(url: String) {
+    val cushion = (_loadControl as? com.nuvio.tv.core.player.StartCushionControl)?.startCushion ?: return
+    val fileBps = fileBitrateBeforeBuild(url)
+    val guessedBps = if (fileBps > 0L) 0L else
+        AutoSpeedup.guessBitrate(currentVideoSize, expectedRuntimeMinutes, currentFilename, _uiState.value.currentStreamName)
+    val heavy = com.nuvio.tv.core.player.StartCushion.isHeavy(fileBps, guessedBps, AutoSpeedupPolicy.START_THREE_BPS)
+    val startMs = cushion.arm(heavy)
+    if (startMs > 0) {
+        Log.i(
+            PlayerRuntimeController.TAG,
+            "START_CUSHION: heavy film fileKbps=${fileBps / 1000} guessedKbps=${guessedBps / 1000} " +
+                "startMs=$startMs (set=${cushion.userStartMs})"
+        )
+    }
+}
+
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+private fun PlayerRuntimeController.sampleAutoSpeedup(player: Player, positionMs: Long) {
+    val keeper = autoSpeedupKeeper()
+    if (!AutoSpeedup.active) {
+        if (keeper != null && keeper.lentBytes > 0L) keeper.setLentBytes(0L)
+        return
+    }
+    val control = keeper?.control
+    val bufferFull = control != null && control.allocatorTargetBytes() > 0 &&
+        control.bufferAllocator.totalBytesAllocated >= control.allocatorTargetBytes() - FULL_MARGIN_BYTES
+    val nowMs = android.os.SystemClock.elapsedRealtime()
+    val free = if (bufferMemoryKeeper == null) {
+        com.nuvio.tv.core.player.BufferSizing.read(context.applicationContext)
+    } else {
+        null
+    }
+    val userBudget = bufferMemoryKeeper?.budgetManaged == false
+    val roomBytes = AutoSpeedup.roomBytes(nowMs) {
+        free ?: com.nuvio.tv.core.player.BufferSizing.read(context.applicationContext)
+    }
+    val memoryShort = AutoSpeedupPolicy.memoryShort(
+        warned = bufferMemoryKeeper?.let { it.pressureLevel > 0 },
+        warnedCritical = bufferMemoryKeeper?.pressureLevel == com.nuvio.tv.core.player.BufferMemoryKeeper.LEVEL_CRITICAL,
+        roomBytes = roomBytes,
+        lowMemory = free?.lowMemory == true
+    )
+    // The thumbnails' memory floor only holds the read-ahead back while their screen holds the film; once it plays,
+    // the buffer comes first and thumbnails decode only with the memory that is left.
+    AutoSpeedup.updateReadAhead(roomBytes) {
+        if (player.playWhenReady) 0L else 0L /* Flow has no thumbnail memory owner. */
+    }
+    val fileBitrate = AutoSpeedup.fileBitrate(
+        PlaybackByteCounter.contentLengthFor(currentStreamUrl),
+        currentVideoSize,
+        player.duration
+    )
+    // The buffer lends nothing until the film is on screen and past its start cushion, and never so much that
+    // fewer than a few seconds of film fit: a 5 s buffer against a 6 s cushion froze a 4K remux on a 2 GB box.
+    if (keeper != null) {
+        val cushionArmed = (_loadControl as? com.nuvio.tv.core.player.StartCushionControl)?.startCushion?.armed == true
+        keeper.setLendingHeld(cushionArmed || !hasRenderedFirstFrame)
+        keeper.setLendFloorBytes(
+            com.nuvio.tv.core.player.BufferMemoryKeeper.lendFloorBytes(
+                fileBitrate, maxOf(AutoSpeedup.pieceBytes, AutoSpeedup.activePieceBytes)
+            )
+        )
+    }
+    // A guessed start runs several downloads before the first sample; their memory comes off the buffer as usual.
+    if (keeper != null && keeper.lentBytes == 0L && AutoSpeedup.downloads > 1) keeper.setLentBytes(AutoSpeedup.lentBytes())
+    val before = AutoSpeedup.downloads
+    val targetBytes = control?.allocatorTargetBytes()?.toLong() ?: 0L
+    val maxBufferMs = control?.maxBufferMs?.toLong() ?: 0L
+    val bufferTargetMs = AutoSpeedup.bufferTargetMs(maxBufferMs, targetBytes, fileBitrate)
+    val changed = AutoSpeedup.onPlayerSample(
+        AutoSpeedupPolicy.Sample(
+            nowMs = nowMs,
+            aheadMs = (player.bufferedPosition - positionMs).coerceAtLeast(0L),
+            loading = player.isLoading,
+            rebuffers = rebufferCount,
+            bytes = 0L,
+            memoryShort = memoryShort,
+            playing = player.isPlaying,
+            bufferFull = bufferFull,
+            roomBytes = roomBytes,
+            swapLow = AutoSpeedup.swapLow(nowMs) { com.nuvio.tv.core.player.thumbnail.MemoryGovernor.readMeminfo() },
+            fileBitrate = fileBitrate,
+            idleBytes = control?.bufferAllocator?.availableBytes?.toLong() ?: 0L,
+            userBudget = userBudget,
+            maxBufferMs = maxBufferMs,
+            playerBytes = PlaybackByteCounter.snapshot().readBytes,
+            bufferedMs = player.bufferedPosition,
+            bufferTargetMs = bufferTargetMs,
+            seekAtMs = lastSeekWallMs
+        )
+    )
+    AutoSpeedup.logMemoryPlan(nowMs, control?.bufferAllocator?.totalBytesAllocated?.toLong() ?: 0L, targetBytes,
+        bufferMemoryKeeper?.pressureLevel ?: 0, roomBytes)
+    if (!changed) {
+        // A new piece size changes what the downloads hold with the same count.
+        val lent = AutoSpeedup.lentBytes()
+        if (keeper != null && keeper.lentBytes > 0L && keeper.lentBytes != lent && AutoSpeedup.downloads > 1) {
+            keeper.setLentBytes(lent)
+        }
+        return
+    }
+    if (AutoSpeedup.downloads > before) {
+        keeper?.setLentBytes(AutoSpeedup.lentBytes())
+    } else {
+        // Give the buffer its memory back only once the pieces above the new count are gone.
+        val keep = AutoSpeedup.downloads
+        scope.launch(Dispatchers.IO) {
+            ParallelRangeDataSource.trimRetainedSession(keepAhead = keep)
+            keeper?.setLentBytes(AutoSpeedup.lentBytes())
+        }
+    }
+}
+
+/** The buffer keeper, or on stock buffers (which have none) one used only to lend memory to the extra downloads. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+private fun PlayerRuntimeController.autoSpeedupKeeper(): com.nuvio.tv.core.player.BufferMemoryKeeper? {
+    bufferMemoryKeeper?.let { return it }
+    val control = _loadControl as? com.nuvio.tv.core.player.BufferBudgetControl ?: return null
+    autoSpeedupLender?.takeIf { it.control === control }?.let { return it }
+    return com.nuvio.tv.core.player.BufferMemoryKeeper(control, { null }).also { autoSpeedupLender = it }
+}
+
+private const val FULL_MARGIN_BYTES = 2 * 1024 * 1024

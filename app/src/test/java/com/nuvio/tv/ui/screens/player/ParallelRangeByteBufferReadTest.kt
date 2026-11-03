@@ -71,6 +71,7 @@ class ParallelRangeByteBufferReadTest {
             OkHttpDataSource.Factory(OkHttpClient()),
             parallelConnections = 2,
             chunkSize = 128L * 1024L,
+            isolateSession = true,
         )
         val spec = DataSpec.Builder().setUri(uriOf(server.url("/file").toString())).build()
         val out = ByteArrayOutputStream()

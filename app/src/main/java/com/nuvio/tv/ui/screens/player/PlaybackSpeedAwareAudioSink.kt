@@ -22,6 +22,22 @@ internal class PlaybackSpeedAwareAudioSink(
     forcePcmForBluetooth: Boolean = false
 ) : ForwardingAudioSink(sink) {
 
+    private val arcMonitor = PlaybackAudioSinkMonitor(
+        sink as? androidx.media3.exoplayer.audio.DefaultAudioSink, 0)
+    val activeInputFormat: Format? get() = currentInputFormat
+    fun audioClockJitter(): AudioClockJitter? = arcMonitor.audioClockJitter()
+    fun nativeAudioTrackUnderrunCount(): Int? = arcMonitor.nativeAudioTrackUnderrunCount()
+    fun sampleAudioRoute(): AudioRouteSnapshot? = arcMonitor.sampleAudioRoute()
+    override fun flush() { arcMonitor.onTrackReset(); super.flush() }
+    override fun reset() { arcMonitor.onTrackReset(); super.reset() }
+    override fun play() { super.play(); arcMonitor.setPlaybackActive(true) }
+    override fun pause() { arcMonitor.setPlaybackActive(false); super.pause() }
+    override fun getCurrentPositionUs(sourceEnded: Boolean): Long {
+        val position = super.getCurrentPositionUs(sourceEnded)
+        arcMonitor.onPositionRead(position, playbackSpeed)
+        return position
+    }
+
     // Set when the sink is built with forcePcm (error recovery). Don't clear on speed reset.
     private val startedWithForcedPcm: Boolean = initialForcePcm
 
@@ -73,19 +89,13 @@ internal class PlaybackSpeedAwareAudioSink(
     }
 
     override fun configure(inputFormat: Format, specifiedBufferSize: Int, outputChannels: IntArray?) {
-        FlowAudioTelemetry.rate.reset()
-        FlowAudioTelemetry.encodedBps = null
-        FlowAudioTelemetry.output = if (inputFormat.sampleMimeType == MimeTypes.AUDIO_RAW) "PCM" else "Encoded output"
+        arcMonitor.onTrackReset()
         currentInputFormat = inputFormat
         markPcmFallbackIfNeeded(inputFormat, playbackSpeed)
         super.configure(inputFormat, specifiedBufferSize, outputChannels)
     }
 
     override fun handleBuffer(buffer: ByteBuffer, presentationTimeUs: Long, encodedAccessUnitCount: Int): Boolean {
-        if (currentInputFormat?.sampleMimeType != MimeTypes.AUDIO_RAW) {
-            FlowAudioTelemetry.rate.sample(presentationTimeUs, buffer.remaining())
-            FlowAudioTelemetry.encodedBps = FlowAudioTelemetry.rate.bitsPerSecond
-        }
         return super.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
     }
 
