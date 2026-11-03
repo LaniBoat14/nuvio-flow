@@ -541,7 +541,7 @@ class PlayerViewModel @Inject constructor(
                 dvDiag.dv7DoviSignalRewrites > 0 || dvDiag.dv7DoviSuccess > 0
             val text = PlaybackStatsDv.profileRowText(
                 sourceProfile = sourceProfile,
-                elType = null, // Flow does not expose an EL-type detector.
+                elType = dvDiag.dvElType,
                 modeEffective = dvDiag.dv7ModeEffective,
                 sourceCodecs = controller.currentVideoTrackCodecs ?: player?.videoFormat?.codecs,
                 converting = converting
@@ -549,10 +549,29 @@ class PlayerViewModel @Inject constructor(
             rows += StatsRow("DV", text)
         }
 
+        // RPU display-management rows for a Profile 7 source. Only for DV7 so the panel stays
+        // compact on every other film. The summary is sampled by the conversion extractor hooks
+        // and looked up at the playback position; CM version and levels fall back to the first RPU.
+        val dvDetail = dvDiag.dvSourceProfile?.trim() == "7"
+        (DolbyVisionConversionStats.getLastRpuMetadata()?.toDiagnosticLine() ?: dvDiag.dvHdrMastering)
+            ?.takeIf { dvDetail && it.isNotBlank() }?.let { mastering ->
+                rows += StatsRow("DV HDR", mastering, StatsDot.NONE, marquee = mastering.length > 40)
+            }
+        val dmLive = if (dvDetail) player?.let { DolbyVisionConversionStats.liveDmAt(it.currentPosition * 1000L) } else null
+        val dmFirst = if (dvDetail) DolbyVisionConversionStats.getFirstDm() else null
+        (dmLive ?: dmFirst)?.let { dm ->
+            PlaybackStatsDv.cmText(dm)?.let { rows += StatsRow("DV CM", it) }
+            dm.levelsLabel().takeIf { it.isNotEmpty() }?.let { rows += StatsRow("DV levels", it) }
+        }
+        dmLive?.let { dm ->
+            PlaybackStatsDv.l1Text(dm)?.let { rows += StatsRow("DV L1", it) }
+            PlaybackStatsDv.l5Text(dm, player?.videoFormat?.width ?: 0, player?.videoFormat?.height ?: 0)
+                ?.let { rows += StatsRow("DV L5", it) }
+        }
         player?.videoFormat?.let { format ->
             PlaybackStatsDv.formatRowText(
                 format = format,
-                dm = null,
+                dm = dmFirst,
                 nativeFel = false
             )?.let { rows += StatsRow("Format", it, marquee = it.length > 46) }
         }
