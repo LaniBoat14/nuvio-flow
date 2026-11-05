@@ -1966,12 +1966,6 @@
     <string name="audio_maintain_original_audio_on_downmix_title">Mantener audio original en mezcla descendente</string>
     <string name="audio_maintain_original_audio_on_downmix_subtitle">Cuando está deshabilitado, la normalización de la mezcla descendente puede reducir el volumen general.</string>
 
-    <string name="audio_downmix_lfe_level">Nivel LFE al mezclar canales</string>
-    <string name="audio_downmix_lfe_level_sub">Mezcla el canal del subwoofer (LFE) con los demás altavoces en lugar de descartarlo. Solo se usa en distribuciones sin LFE, como 2.0.</string>
-    <string name="audio_downmix_lfe_level_desc">Se usa cuando la distribución de mezcla no tiene un canal LFE. Se aplica a partir de la próxima reproducción.</string>
-    <string name="audio_downmix_lfe_level_off">Desactivado</string>
-    <string name="audio_downmix_lfe_level_half">50%</string>
-    <string name="audio_downmix_lfe_level_full">100%</string>
     <string name="subtitle_dialog_title">Subtítulos</string>
     <string name="subtitle_no_builtin">No hay subtítulos integrados disponibles</string>
     <string name="subtitle_loading_addon">Cargando subtítulos de los addons\u2026</string>

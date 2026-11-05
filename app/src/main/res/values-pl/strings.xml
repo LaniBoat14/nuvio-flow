@@ -3505,12 +3505,6 @@
     <string name="settings_stream_player_badges_title">Znaczniki w odtwarzaczu</string>
     <string name="settings_stream_player_badges_description">Wybierz pakiet znaczników używany przez odtwarzacz.</string>
     <string name="settings_stream_player_badges_same">Takie same jak znaczniki strumieni</string>
-    <string name="audio_downmix_lfe_level">Poziom LFE przy downmiksie</string>
-    <string name="audio_downmix_lfe_level_sub">Miksuje kanał subwoofera (LFE) do pozostałych głośników zamiast go pomijać. Tylko dla układów bez LFE, takich jak 2.0.</string>
-    <string name="audio_downmix_lfe_level_desc">Używane, gdy układ downmiksu nie ma kanału LFE. Obowiązuje od następnego odtwarzania.</string>
-    <string name="audio_downmix_lfe_level_off">Wył.</string>
-    <string name="audio_downmix_lfe_level_half">50%</string>
-    <string name="audio_downmix_lfe_level_full">100%</string>
     <string name="cd_enable_scraper">Włącz %1$s</string>
     <string name="cd_enable_addon">Włącz %1$s</string>
     <string name="cd_color_swatch">Kolor %1$s</string>

@@ -3445,10 +3445,4 @@
     <string name="audio_night_mode_strong_desc">Až do +15 dB, na sledovanie neskoro v noci pri nízkej hlasitosti</string>
     <string name="sub_hdr_dim_player_controls">Stlmiť ovládacie prvky prehrávača v HDR</string>
     <string name="sub_hdr_dim_player_controls_sub">Použiť jas pre HDR na ovládacie prvky prehrávača a ponuky zobrazené nad videom v HDR a Dolby Vision</string>
-    <string name="audio_downmix_lfe_level">Úroveň LFE pri downmixovaní</string>
-    <string name="audio_downmix_lfe_level_sub">Zmieša kanál subwoofera (LFE) do ostatných reproduktorov namiesto jeho vynechania. Len pre konfigurácie bez LFE, ako je napríklad 2.0.</string>
-    <string name="audio_downmix_lfe_level_desc">Používa sa, keď rozloženie pre downmix nemá kanál LFE. Prejaví sa od nasledujúceho prehrávania.</string>
-    <string name="audio_downmix_lfe_level_off">Vypnuté</string>
-    <string name="audio_downmix_lfe_level_half">50 %</string>
-    <string name="audio_downmix_lfe_level_full">100 %</string>
 </resources>
