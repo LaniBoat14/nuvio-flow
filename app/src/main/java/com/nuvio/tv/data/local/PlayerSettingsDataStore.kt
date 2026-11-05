@@ -268,6 +268,19 @@ enum class AudioOutputChannels(
     }
 }
 
+enum class NightMode(val settingValue: String) {
+    OFF("off"),
+    LIGHT("light"),
+    MEDIUM("medium"),
+    STRONG("strong");
+
+    companion object {
+        fun fromSettingValue(value: String?): NightMode {
+            return entries.firstOrNull { it.settingValue == value } ?: OFF
+        }
+    }
+}
+
 /**
  * Data class representing player settings
  */
@@ -304,6 +317,7 @@ data class PlayerSettings(
     val tunnelDeadAudioClasses: Set<String> = emptySet(),
     val tunnelDeadAudioSignature: String? = null,
     val skipSilence: Boolean = false,
+    val nightMode: NightMode = NightMode.OFF,
     val audioAmplificationDb: Int = 0,
     val centerMixLevelDb: Int = 0,
     val persistAudioAmplification: Boolean = false,
@@ -725,6 +739,7 @@ class PlayerSettingsDataStore @Inject constructor(
     internal var tunnelStallClock: () -> Long = System::currentTimeMillis
     internal var tunnelStallAppVersion: () -> Int = { BuildConfig.VERSION_CODE }
     private val skipSilenceKey = booleanPreferencesKey("skip_silence")
+    private val nightModeKey = stringPreferencesKey("night_mode")
     private val audioAmplificationDbKey = intPreferencesKey("audio_amplification_db")
     private val centerMixLevelDbKey = intPreferencesKey("center_mix_level_db")
     private val persistAudioAmplificationKey = booleanPreferencesKey("persist_audio_amplification")
@@ -1139,6 +1154,7 @@ class PlayerSettingsDataStore @Inject constructor(
                 tunnelDeadAudioClasses = if (tunnelStallsRunOut) emptySet() else prefs[tunnelDeadAudioClassesKey] ?: emptySet(),
                 tunnelDeadAudioSignature = if (tunnelStallsRunOut) null else prefs[tunnelDeadAudioSignatureKey],
                 skipSilence = prefs[skipSilenceKey] ?: false,
+                nightMode = NightMode.fromSettingValue(prefs[nightModeKey]),
                 audioAmplificationDb = (prefs[audioAmplificationDbKey] ?: 0).coerceIn(
                     AUDIO_AMPLIFICATION_DB_MIN,
                     AUDIO_AMPLIFICATION_DB_MAX
@@ -1588,6 +1604,12 @@ class PlayerSettingsDataStore @Inject constructor(
     suspend fun setSkipSilence(enabled: Boolean) {
         store().edit { prefs ->
             prefs[skipSilenceKey] = enabled
+        }
+    }
+
+    suspend fun setNightMode(mode: NightMode) {
+        store().edit { prefs ->
+            prefs[nightModeKey] = mode.settingValue
         }
     }
 

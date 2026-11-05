@@ -155,6 +155,20 @@ private fun PlayerRuntimeController.disposeExoPlayerBeforeRebuild() {
     playbackSpeedAwareAudioSink = null
 }
 
+/**
+ * Starts the current stream again, as a retry or a rebuild of the same playback, in the engine it
+ * plays in: an engine chosen in the player, by hand or by a startup failover, holds until the
+ * stream changes. Without it, the restart would fall back to the settings' engine.
+ */
+internal fun PlayerRuntimeController.reinitializeCurrentStream(startPaused: Boolean = false) {
+    initializePlayer(
+        url = currentStreamUrl,
+        headers = currentHeaders,
+        overrideInternalPlayerEngine = runtimeInternalPlayerEngineOverride,
+        startPaused = startPaused
+    )
+}
+
 @androidx.annotation.OptIn(UnstableApi::class)
 internal fun PlayerRuntimeController.initializePlayer(
     url: String,
@@ -1008,6 +1022,7 @@ internal fun PlayerRuntimeController.initializePlayer(
             } else {
                 playerSettings.audioOutputChannels
             }
+            nightModeAudioProcessor.setMode(playerSettings.nightMode)
             if (isBluetoothAudioOutput) {
                 Log.i(
                     PlayerRuntimeController.TAG,
@@ -1101,6 +1116,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                     if (pv != null) pv.videoBoundsFraction(videoAspectRatio) else null
                 },
                 gainAudioProcessor = gainAudioProcessor,
+                nightModeAudioProcessor = nightModeAudioProcessor,
                 downmixEnabled = surroundDownmixEnabled,
                 audioOutputChannels = surroundAudioOutputChannels,
                 downmixNormalizationEnabled = !playerSettings.maintainOriginalAudioOnDownmix,
@@ -1206,7 +1222,7 @@ internal fun PlayerRuntimeController.initializePlayer(
             if (!afrPreflightGate.isCurrent(afrPreflightToken)) return@launch
             // Left the foreground while preparing: build on return instead of claiming a decoder
             // the foreground app may need. The resume rebuild uses currentStreamUrl.
-            if (isInBackground && url == currentStreamUrl) {
+            if (releaseDecoderOnBackground && isInBackground && url == currentStreamUrl) {
                 pendingBackgroundCrashRecovery = true
                 return@launch
             }
@@ -2072,6 +2088,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                             format = format,
                             reuseEvaluation = decoderReuseEvaluation
                         )
+                        onVideoInputFormatForHdr(format)
                     }
 
                     override fun onVideoSizeChanged(eventTime: AnalyticsListener.EventTime, videoSize: androidx.media3.common.VideoSize) {
@@ -2459,6 +2476,7 @@ private class SubtitleOffsetRenderersFactory(
     private val isSidecarAddonSubtitleActiveProvider: () -> Boolean = { false },
     private val videoBoundsFractionProvider: () -> RectF?,
     private val gainAudioProcessor: GainAudioProcessor,
+    private val nightModeAudioProcessor: NightModeAudioProcessor,
     private val downmixEnabled: Boolean,
     private val audioOutputChannels: com.nuvio.tv.data.local.AudioOutputChannels,
     private val downmixNormalizationEnabled: Boolean,
@@ -2569,7 +2587,7 @@ private class SubtitleOffsetRenderersFactory(
         })
             .setEnableFloatOutput(enableFloatOutput)
             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-            .setAudioProcessors(arrayOf(gainAudioProcessor))
+            .setAudioProcessors(arrayOf(gainAudioProcessor, nightModeAudioProcessor))
             .setAudioTrackBufferSizeProvider(cappedPassthroughBufferSizeProvider)
         val baseAudioSink = builder.build()
         // Read-only capability snapshot for the diagnostics page. Never opens an
