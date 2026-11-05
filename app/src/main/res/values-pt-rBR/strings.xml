@@ -823,17 +823,6 @@
     <string name="audio_preferred_lang">Idioma de áudio preferido</string>
     <string name="audio_skip_silence">Pular silêncio</string>
     <string name="audio_skip_silence_sub">Pular partes silenciosas</string>
-    <string name="audio_night_mode">Modo noturno</string>
-    <string name="audio_night_mode_sub">Destaca as falas e os sons mais baixos para você assistir com o volume reduzido</string>
-    <string name="audio_night_mode_desc">Deixa as falas e os sons baixos mais audíveis sem alterar o volume das cenas altas. Funciona apenas com áudio decodificado pelo app. Áudio Dolby e DTS enviado diretamente a um receiver ou soundbar não é alterado.</string>
-    <string name="audio_night_mode_value">Modo noturno: %1$s</string>
-    <string name="audio_night_mode_off">Desligado</string>
-    <string name="audio_night_mode_light">Leve</string>
-    <string name="audio_night_mode_light_desc">Ajuste suave, de até +6 dB</string>
-    <string name="audio_night_mode_medium">Médio</string>
-    <string name="audio_night_mode_medium_desc">Destaca mais as falas, até +10 dB</string>
-    <string name="audio_night_mode_strong">Forte</string>
-    <string name="audio_night_mode_strong_desc">Até +15 dB para assistir à noite com o volume baixo</string>
     <string name="audio_remember_delay_per_device">Lembrar atraso de áudio por dispositivo</string>
     <string name="audio_remember_delay_per_device_sub">Salva o ajuste de áudio para cada saída de som</string>
     <string name="audio_advanced_section">Áudio avançado</string>
@@ -1965,12 +1954,6 @@
     <string name="audio_center_mix_unavailable">O nível do canal central só está disponível quando a mixagem FFmpeg está ativa.</string>
     <string name="audio_maintain_original_audio_on_downmix_title">Manter volume original na mixagem</string>
     <string name="audio_maintain_original_audio_on_downmix_subtitle">Se desativado, a normalização da mixagem pode reduzir o volume geral do áudio.</string>
-    <string name="audio_downmix_lfe_level">Graves do subwoofer (LFE)</string>
-    <string name="audio_downmix_lfe_level_sub">Inclui os graves do canal LFE nos outros alto-falantes, em vez de descartá-los. Vale apenas para sistemas sem canal LFE, como estéreo 2.0.</string>
-    <string name="audio_downmix_lfe_level_desc">Usado quando a saída de áudio não tem canal LFE. A mudança vale a partir da próxima reprodução.</string>
-    <string name="audio_downmix_lfe_level_off">Desligado</string>
-    <string name="audio_downmix_lfe_level_half">50%</string>
-    <string name="audio_downmix_lfe_level_full">100%</string>
 
     <string name="subtitle_dialog_title">Legendas</string>
     <string name="subtitle_no_builtin">Sem legendas embutidas</string>

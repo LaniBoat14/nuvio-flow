@@ -827,17 +827,6 @@
     <string name="audio_preferred_lang">שפת שמע מועדפת</string>
     <string name="audio_skip_silence">דילוג על שקט</string>
     <string name="audio_skip_silence_sub">זיהוי ודילוג אוטומטי על קטעים שקטים במהלך הניגון</string>
-    <string name="audio_night_mode">מצב לילה</string>
-    <string name="audio_night_mode_sub">מגביר דיאלוגים וצלילים שקטים, כדי שאפשר יהיה להשאיר את עוצמת הקול נמוכה</string>
-    <string name="audio_night_mode_desc">מגביר דיאלוגים וצלילים שקטים; סצנות רועשות נשארות כפי שמיקסו. פועל על שמע שמפוענח על ידי האפליקציה. Dolby ו-DTS שנשלחים למקלט או לסאונדבר במעבר ישיר (passthrough) נשארים ללא שינוי.</string>
-    <string name="audio_night_mode_value">מצב לילה: %1$s</string>
-    <string name="audio_night_mode_off">כבוי</string>
-    <string name="audio_night_mode_light">קל</string>
-    <string name="audio_night_mode_light_desc">הגברה עדינה, עד ‎+6 dB</string>
-    <string name="audio_night_mode_medium">בינוני</string>
-    <string name="audio_night_mode_medium_desc">דיאלוג מוגבר בבירור, עד ‎+10 dB</string>
-    <string name="audio_night_mode_strong">חזק</string>
-    <string name="audio_night_mode_strong_desc">עד ‎+15 dB, לצפייה בשעות הלילה המאוחרות בעוצמת קול נמוכה</string>
     <string name="audio_remember_delay_per_device">זכירת עיכוב שמע לפי מכשיר</string>
     <string name="audio_remember_delay_per_device_sub">שמירה ושחזור של עיכוב השמע בנגן עבור נתיב פלט השמע הנוכחי</string>
     <string name="audio_advanced_section">שמע מתקדם</string>
