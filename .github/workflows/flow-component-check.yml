@@ -127,9 +127,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           # A tag and title that are not a version, so the in-app updater never offers it.
-          TAG=test-e-beta13
+          TAG=test-e1-beta13
           gh release delete "$TAG" --cleanup-tag --yes >/dev/null 2>&1 || true
-          gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --title "Test E - D2 plus stock Nuvio beta.12 and beta.13" --notes "Test build, not an update. Test D2 plus stock Nuvio 1.1.0-beta.12 and beta.13 changes (Flow in-app updater untouched)." app/build/outputs/apk/full/release/*.apk
+          gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --title "Test E1 - D2 plus stock Nuvio beta.12 and beta.13" --notes "Test build, not an update. Test D2 plus stock Nuvio 1.1.0-beta.12 and beta.13 changes (Flow in-app updater untouched)." app/build/outputs/apk/full/release/*.apk
       - name: Remove private inputs
         if: always()
         run: rm -f flow-signing.keystore local.properties local.dev.properties
