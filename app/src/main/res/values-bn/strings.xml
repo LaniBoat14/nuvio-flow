@@ -3187,12 +3187,6 @@
     <string name="settings_stream_player_badges_same">স্ট্রিম ব্যাজের মতো একই</string>
     <string name="player_engine_switch_title">%1$s-এ সুইচ করবেন?</string>
     <string name="player_engine_switch_message">ভিডিওটি বর্তমান অবস্থান থেকে পুনরায় লোড হবে।</string>
-    <string name="audio_downmix_lfe_level">ডাউনমিক্সে LFE লেভেল</string>
-    <string name="audio_downmix_lfe_level_sub">সাবউফার (LFE) চ্যানেলটি বাদ না দিয়ে অন্য স্পিকারগুলোতে মিক্স করে। কেবল LFE বিহীন লেআউট যেমন 2.0-এর জন্য প্রযোজ্য।</string>
-    <string name="audio_downmix_lfe_level_desc">ডাউনমিক্স লেআউটে কোনো LFE চ্যানেল না থাকলে ব্যবহৃত হয়। পরবর্তী প্লেব্যাক থেকে প্রযোজ্য।</string>
-    <string name="audio_downmix_lfe_level_off">বন্ধ</string>
-    <string name="audio_downmix_lfe_level_half">50%</string>
-    <string name="audio_downmix_lfe_level_full">100%</string>
     <string name="subtitle_style_text_color_hdr">টেক্সটের রঙ (HDR)</string>
     <string name="subtitle_style_text_opacity_hdr">টেক্সট অপাসিটি (HDR)</string>
     <string name="subtitle_style_brightness_hdr">উজ্জ্বলতা (HDR)</string>

@@ -1967,12 +1967,6 @@
     <string name="audio_center_mix_unavailable">センターミックスはFFmpegダウンミックスが有効な場合のみ利用可能です。</string>
     <string name="audio_maintain_original_audio_on_downmix_title">ダウンミックス時に元の音声を維持</string>
     <string name="audio_maintain_original_audio_on_downmix_subtitle">無効にすると、ダウンミックス正規化により全体の音量が低下する可能性があります。</string>
-    <string name="audio_downmix_lfe_level">ダウンミックス時のLFEレベル</string>
-    <string name="audio_downmix_lfe_level_sub">サブウーファー(LFE)チャンネルをドロップする代わりに他のスピーカーにミックスします。2.0などLFEのないレイアウト専用。</string>
-    <string name="audio_downmix_lfe_level_desc">ダウンミックスレイアウトにLFEチャンネルがない場合に使用。次の再生から適用されます。</string>
-    <string name="audio_downmix_lfe_level_off">オフ</string>
-    <string name="audio_downmix_lfe_level_half">50%</string>
-    <string name="audio_downmix_lfe_level_full">100%</string>
 
     <string name="subtitle_dialog_title">字幕</string>
     <string name="subtitle_no_builtin">内蔵字幕はありません</string>

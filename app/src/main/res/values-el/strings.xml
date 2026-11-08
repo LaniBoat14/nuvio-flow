@@ -1785,12 +1785,6 @@
   <string name="audio_center_mix_unavailable">Το center mix είναι διαθέσιμο μόνο όταν το downmix FFmpeg είναι ενεργό.</string>
   <string name="audio_maintain_original_audio_on_downmix_title">Διατήρηση αρχικού ήχου στο downmix</string>
   <string name="audio_maintain_original_audio_on_downmix_subtitle">Όταν είναι απενεργοποιημένο, η κανονικοποίηση downmix μπορεί να μειώσει τη συνολική ένταση.</string>
-  <string name="audio_downmix_lfe_level">Επίπεδο LFE στο downmix</string>
-  <string name="audio_downmix_lfe_level_sub">Αναμιγνύει το κανάλι του subwoofer (LFE) στα υπόλοιπα ηχεία αντί να το απορρίπτει. Μόνο για διατάξεις χωρίς LFE, όπως 2.0.</string>
-  <string name="audio_downmix_lfe_level_desc">Χρησιμοποιείται όταν η διάταξη downmix δεν έχει κανάλι LFE. Εφαρμόζεται από την επόμενη αναπαραγωγή.</string>
-  <string name="audio_downmix_lfe_level_off">Απενεργοποιημένο</string>
-  <string name="audio_downmix_lfe_level_half">50%</string>
-  <string name="audio_downmix_lfe_level_full">100%</string>
   <!-- SubtitleDialog / SubtitleStyleSidePanel -->
   <string name="subtitle_dialog_title">Υπότιτλοι</string>
   <string name="subtitle_no_builtin">Δεν υπάρχουν ενσωματωμένοι υπότιτλοι</string>

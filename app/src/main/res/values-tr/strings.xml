@@ -1971,12 +1971,6 @@
     <string name="audio_center_mix_unavailable">Merkez miks yalnızca FFmpeg downmix aktifken kullanılabilir.</string>
     <string name="audio_maintain_original_audio_on_downmix_title">Downmix\'te orijinal sesi koru</string>
     <string name="audio_maintain_original_audio_on_downmix_subtitle">Devre dışı bırakıldığında, downmix normalleştirmesi genel sesi azaltabilir.</string>
-    <string name="audio_downmix_lfe_level">Downmix\'te LFE seviyesi</string>
-    <string name="audio_downmix_lfe_level_sub">Subwoofer (LFE) kanalını yok saymak yerine diğer hoparlörlere miksler. Yalnızca 2.0 gibi LFE kanalı bulunmayan hoparlör düzenleri içindir.</string>
-    <string name="audio_downmix_lfe_level_desc">Downmix düzeninde LFE kanalı bulunmadığında kullanılır. Sonraki oynatmadan itibaren geçerli olur.</string>
-    <string name="audio_downmix_lfe_level_off">Kapalı</string>
-    <string name="audio_downmix_lfe_level_half">%50</string>
-    <string name="audio_downmix_lfe_level_full">%100</string>
 
     <!-- SubtitleDialog / SubtitleStyleSidePanel -->
     <string name="subtitle_dialog_title">Altyazılar</string>

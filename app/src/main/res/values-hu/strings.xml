@@ -1960,12 +1960,6 @@
     <string name="audio_maintain_original_audio_on_downmix_title">Eredeti hang megtartása lekeveréskor</string>
     <string name="audio_maintain_original_audio_on_downmix_subtitle">Ha le van tiltva, a lekeverés normalizálása csökkentheti az általános hangerőt.</string>
 
-    <string name="audio_downmix_lfe_level">LFE-szint lekeveréskor</string>
-    <string name="audio_downmix_lfe_level_sub">A mélynyomó (LFE) csatornáját elhagyás helyett belekeveri a többi hangszóró jelébe. Csak LFE-csatorna nélküli kiosztásokhoz, például 2.0-hoz.</string>
-    <string name="audio_downmix_lfe_level_desc">Akkor használatos, ha a lekeverés csatornakiosztása nem tartalmaz LFE-csatornát. A következő lejátszástól érvényes.</string>
-    <string name="audio_downmix_lfe_level_off">Kikapcsolva</string>
-    <string name="audio_downmix_lfe_level_half">50%</string>
-    <string name="audio_downmix_lfe_level_full">100%</string>
     <string name="subtitle_dialog_title">Feliratok</string>
     <string name="subtitle_no_builtin">Nincs elérhető beépített felirat</string>
     <string name="subtitle_loading_addon">Külső feliratok betöltése a bővítményekből\u2026</string>
