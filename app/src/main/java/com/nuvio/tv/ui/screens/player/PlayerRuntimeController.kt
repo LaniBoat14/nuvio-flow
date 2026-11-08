@@ -509,6 +509,8 @@ class PlayerRuntimeController(
     internal var endDetectionArmed = false
     // Ignore EOF until MPV has reported a non-EOF state for this stream.
     internal var mpvEofSeenClear = false
+    // Set once the Exo progress loop forced a natural end for a position past duration.
+    internal var exoEndOverrunHandled = false
     internal var shouldEnforceAutoplayOnFirstReady = true
 
     internal var rebufferCount: Int = 0
@@ -568,6 +570,9 @@ class PlayerRuntimeController(
      */
     internal var losslessAudioDefaultAppliedForStream: Boolean = false
     internal var persistedAudioPreferenceSeenForStream: Boolean = false
+    // Snapshot of what was loaded from storage. persistedTrackPreference is consumed as tracks
+    // get restored, so it cannot serve as the base when something else is saved later.
+    internal var loadedTrackPreference: TrackPreference? = null
     internal var pendingEngineSwitchTrackPreference: PendingEngineSwitchTrackPreference? = null
     internal var explicitSubtitleSelectionForEngineSwitch: ExplicitSubtitleSelectionForEngineSwitch? = null
     internal var effectiveSubtitleSelectionForEngineSwitch: ExplicitSubtitleSelectionForEngineSwitch? = null
